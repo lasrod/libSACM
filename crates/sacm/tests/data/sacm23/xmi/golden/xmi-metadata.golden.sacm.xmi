@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="doc" xmi:uuid="urn:uuid:doc">
+  <xmi:documentation xmi:id="d1"><xmi:exporter>Tool</xmi:exporter></xmi:documentation>
+  <sacm:ArgumentPackage xmi:id="p" xmi:uuid="urn:uuid:p" xmi:label="Arguments">
+    <name content="Arguments" xmi:uuid="urn:uuid:p-name" />
+    <xmi:Extension extender="Tool" xmi:id="x1"><layout x="1" /></xmi:Extension>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" xmi:uuid="urn:uuid:c1">
+      <name content="C1" />
+    </argumentElement>
+  </sacm:ArgumentPackage>
+  <xmi:extension extender="Tool" />
+</xmi:XMI>

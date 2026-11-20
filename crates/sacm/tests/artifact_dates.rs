@@ -752,27 +752,25 @@ fn sacm23_art_002_a_date_attribute_on_a_kind_without_it_or_a_malformed_value_ele
             all_held(holder_element)
         );
     }
-    // An XMI-namespace value element is XMI metadata this version does not
-    // read yet (SACM23-XMI-019): refused at its start tag.
+    // An XMI-namespace value element is no XMI metadata: XMI 2.5.1 defines
+    // no such element, so it is kept whole at its start tag with
+    // SACM-XMI-003 (SACM23-XMI-019, ADR 0042 D4; `Unsupported` naming
+    // SACM23-XMI-019 until slice 0073a).
     for (class, name) in HELD {
         let what = format!("<xmi:{name}> on an {class}");
-        let (input, at) = one_mark(
-            &what,
-            &in_a(&asset(
-                class,
-                "h",
-                "",
-                &format!("{MARK}<xmi:{name}>2024</xmi:{name}>"),
-            )),
-        );
-        let error = refused(&what, &input);
-        let ReadError::Unsupported { reason, .. } = &error else {
-            panic!("{ROW}: {what}: not Unsupported: {error:?}");
-        };
+        let template = in_a(&asset(
+            class,
+            "h",
+            "",
+            &format!("{MARK}<xmi:{name}>2024</xmi:{name}>"),
+        ));
+        let doc = assert_preserved_at(&what, &template, "h");
         assert!(
-            error.location() == Some(at)
-                && reason.ends_with("(a limit of this version; SACM23-XMI-019 reads it)"),
-            "{ROW}: {what}: not Unsupported at its start tag naming SACM23-XMI-019: {error:?}"
+            all_held(element(&doc, "h"))
+                .iter()
+                .all(|(_, value)| value.is_none()),
+            "{ROW}: {what}: a value was read: {:?}",
+            all_held(element(&doc, "h"))
         );
     }
 }

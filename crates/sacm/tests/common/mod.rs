@@ -4,9 +4,10 @@
 
 /// The catalog code of a `ReadError::Unsupported` refusal, from the label its
 /// reason and its `Display` end with (LIB-API-017; ADR 0030 amendment 3):
-/// SACM-XMI-014 for `(a limit of this version; ROW reads it)`, except
-/// SACM-XMI-007 when ROW is SACM23-XMI-029, which reads the cross-document
-/// links SACM23-XMI-027 does not (slice 0068, ADR 0040); for
+/// SACM-XMI-007 for `(a limit of this version; SACM23-XMI-029 reads it)`,
+/// the cross-document links SACM23-XMI-027 does not read (slice 0068, ADR
+/// 0040), the only `Interim` label left since slice 0073a reads XMI
+/// metadata and retires SACM-XMI-014 (SACM23-XMI-019, ADR 0042); for
 /// `(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)`
 /// (ADR 0041 D6), SACM-XMI-008 for a root in an older SACM revision's
 /// namespace, whose reason names the revision (`… of SACM 2.2, not …`), and
@@ -22,8 +23,6 @@
 pub(crate) fn unsupported_code(text: &str) -> &'static str {
     if text.ends_with("(a limit of this version; SACM23-XMI-029 reads it)") {
         "SACM-XMI-007"
-    } else if text.ends_with(" reads it)") && text.contains("(a limit of this version; ") {
-        "SACM-XMI-014"
     } else if text
         .ends_with("(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)")
     {

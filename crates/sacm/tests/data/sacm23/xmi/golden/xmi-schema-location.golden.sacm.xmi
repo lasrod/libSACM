@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.omg.org/spec/SACM/20220301 sacm.xsd">
+  <name content="Arguments" />
+</sacm:ArgumentPackage>

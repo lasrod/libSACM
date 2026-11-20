@@ -270,14 +270,16 @@ catalog! {
     /// and the second as the document's preserved content (ADR 0035).
     /// A tolerant [`xmi::write`](crate::xmi::write) writes it back; a strict
     /// one refuses it (SACM-XMI-006). Named after the C++ library's
-    /// `kXmiUnknownElement`; it covers attributes and text too. Fix: remove
-    /// the content, or keep it in an `xmi:Extension` once SACM23-XMI-019
-    /// reads one.
+    /// `kXmiUnknownElement`; it covers attributes and text too. It also
+    /// reports a same-file proxy (SACM23-XMI-030) that is kept instead of
+    /// resolved: of no root, of the wrong kind, shared, or in a cycle. Fix:
+    /// remove the content, or keep it in an `xmi:Extension`, which both
+    /// saves write back (SACM23-XMI-019).
     pub const XMI_UNKNOWN_CONTENT: Code = Code::from_static("SACM-XMI-003");
 
     /// SACM-XMI-006: a strict [`xmi::write`](crate::xmi::write) refuses a
-    /// document that holds preserved content (SACM-XMI-003, SACM-XMI-007,
-    /// SACM-XMI-014), because it cannot show that content it did not read
+    /// document that holds preserved content (SACM-XMI-003, SACM-XMI-007),
+    /// because it cannot show that content it did not read
     /// is schema-valid. The code of
     /// [`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)
     /// (SACM23-XMI-008, ADR 0033, ADR 0035). Fix: write it in tolerant mode,
@@ -350,14 +352,11 @@ catalog! {
     /// amendment 2).
     pub const XMI_SPELLING_VARIANT: Code = Code::from_static("SACM-XMI-013");
 
-    /// SACM-XMI-014: conforming content this release does not read yet,
-    /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
-    /// content with one Warning: XMI metadata not read yet, such as
-    /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`. It is not a
-    /// defect: the message ends naming the row that reads it. A strict read refuses it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
-    /// this code, and a strict write refuses a document that holds it
-    /// (SACM-XMI-006) (LIB-API-011, LIB-API-017, ADR 0035).
+    /// SACM-XMI-014: XMI metadata a release did not read yet, such as
+    /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`. No input
+    /// gives this code since 0.4.0 (slice 0073): both modes read XMI metadata
+    /// and both saves write it back (SACM23-XMI-019, ADR 0042). The constant
+    /// stays, and the code is never reused.
     pub const XMI_UNREAD_CONTENT: Code = Code::from_static("SACM-XMI-014");
 
     /// SACM-XMI-015: an element named `XMI` is not in the XMI 2.5.1
@@ -950,7 +949,7 @@ impl Details {
     }
 
     /// The template id, `<CODE>/<form>`, such as
-    /// `SACM-XMI-014/unread-attribute`: a stable name for the sentence form
+    /// `SACM-XMI-003/unread-attribute`: a stable name for the sentence form
     /// (ADR 0030 amendment 3).
     #[must_use]
     pub fn template(&self) -> &'static str {

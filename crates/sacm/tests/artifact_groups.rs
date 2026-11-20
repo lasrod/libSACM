@@ -33,8 +33,6 @@ use sacm::model::{Document, ElementId, ElementKind, ReferenceEnd, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
-mod common;
-
 const ROW: &str = "SACM23-ART-011";
 
 /// Both modes, strict first.
@@ -470,59 +468,52 @@ fn sacm23_art_011_an_empty_or_qualified_attribute_is_preserved_by_the_group() {
 }
 
 /// A group's `artifactElement` is a reference end, so an `artifactElement`
-/// element in a group is a reference element. A nested element there is
-/// refused at its first attribute that no reference element has (SACM23-XMI-010's
-/// "an xmi:type on a reference element", "an xmi:id on a reference
-/// element"), conforming XMI this version does not read yet
-/// (SACM23-XMI-019). One with no link and only a name is a defect, kept whole
-/// as preserved content of the group (ADR 0033). Never read as a child; the
-/// same as SACM23-ARG-013 for an `ArgumentGroup`.
+/// element in a group is a reference element. A nested element there, with
+/// an `xmi:id` or a type attribute, is kept whole as preserved content of
+/// the group with SACM-XMI-003 at its start tag (production 2c, rule 4e;
+/// ADR 0042 D4; `Unsupported` at the attribute naming SACM23-XMI-019 until
+/// slice 0073a). So is one with no link and only a name, a defect (ADR
+/// 0033). Never read as a child; the same as SACM23-ARG-013 for an
+/// `ArgumentGroup`.
 #[test]
-fn sacm23_art_011_a_nested_element_under_a_group_is_unsupported_or_preserved_at_that_construct() {
-    let label = "(a limit of this version; SACM23-XMI-019 reads it)";
+fn sacm23_art_011_a_nested_element_under_a_group_is_preserved_at_that_construct() {
     for (what, nested) in [
         (
             "a typed Technique",
             format!(
-                "<artifactElement {MARK}xmi:type=\"sacm:Technique\" xmi:id=\"t9\">\
+                "{MARK}<artifactElement xmi:type=\"sacm:Technique\" xmi:id=\"t9\">\
                  <name content=\"T9\"/></artifactElement>"
             ),
         ),
         (
             "a typed Property with no content",
-            format!("<artifactElement {MARK}xmi:type=\"sacm:Property\" xmi:id=\"p9\"/>"),
+            format!("{MARK}<artifactElement xmi:type=\"sacm:Property\" xmi:id=\"p9\"/>"),
         ),
         (
             "a typed ArtifactGroup",
-            format!("<artifactElement {MARK}xmi:type=\"sacm:ArtifactGroup\" xmi:id=\"g9\"/>"),
+            format!("{MARK}<artifactElement xmi:type=\"sacm:ArtifactGroup\" xmi:id=\"g9\"/>"),
         ),
         (
             "an element by xsi:type",
-            format!("<artifactElement {MARK}xsi:type=\"sacm:Technique\" xmi:id=\"t9\"/>"),
+            format!("{MARK}<artifactElement xsi:type=\"sacm:Technique\" xmi:id=\"t9\"/>"),
         ),
         (
             "an untyped element with an id",
-            format!("<artifactElement {MARK}xmi:id=\"t9\"/>"),
+            format!("{MARK}<artifactElement xmi:id=\"t9\"/>"),
         ),
         (
             "a typed Technique after a member element",
             format!(
                 "<artifactElement xmi:idref=\"t1\"/>\
-                 <artifactElement {MARK}xmi:type=\"sacm:Technique\" xmi:id=\"t9\"/>"
+                 {MARK}<artifactElement xmi:type=\"sacm:Technique\" xmi:id=\"t9\"/>"
             ),
         ),
     ] {
         let what = format!("{what} inside an ArtifactGroup");
-        let (input, marks) = marked(&g_in("", &nested));
-        let error = refused(&what, &input);
+        let doc = assert_preserved_at(&what, &g_in("", &nested), "g");
         assert!(
-            matches!(
-                &error,
-                ReadError::Unsupported { location, reason, .. }
-                    if *location == Some(marks[0]) && reason.ends_with(label)
-            ) && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-            "{ROW}: {what}: not Unsupported at {} naming SACM23-XMI-019: {error:?}",
-            marks[0]
+            !doc.contains("t9") && !doc.contains("p9") && !doc.contains("g9"),
+            "{ROW}: {what}: read as an element"
         );
     }
     let what = "an element with only a name inside an ArtifactGroup";
@@ -1216,19 +1207,34 @@ fn sacm23_art_011_no_artifact_class_has_a_composite_role_and_a_reference_end_of_
                 )),
             }
         }
-        // An end name, as a nested typed element, is no composite role: a strict
-        // read refuses it, never reading it as a child.
+        // An end name, as a nested typed element, is no composite role: a
+        // reference element with a type and an id, which a strict read keeps
+        // whole with one SACM-XMI-003 at its start tag (production 2c, rule
+        // 4e; SACM23-XMI-019; refused until slice 0073a), never reading it as
+        // a child.
         for end in &ends {
-            let input = element_of(
+            let (input, marks) = marked(&element_of(
                 "",
                 &format!(
-                    "<{end} xmi:type=\"sacm:Technique\" xmi:id=\"z9\"><name content=\"Z\"/></{end}>"
+                    "{MARK}<{end} xmi:type=\"sacm:Technique\" xmi:id=\"z9\"><name content=\"Z\"/></{end}>"
                 ),
-            );
+            ));
             match read(Mode::Strict, &input) {
-                Err(error @ ReadError::Unsupported { .. }) if error.location().is_some() => {}
+                Ok(output)
+                    if output
+                        .diagnostics()
+                        .iter()
+                        .map(|found| (found.code(), found.location(), found.affected().to_vec()))
+                        .eq([(
+                            Code::XMI_UNKNOWN_CONTENT,
+                            marks.first().copied(),
+                            list(&["x"]),
+                        )])
+                        && !output.document().contains("z9") => {}
                 other => failures.push(format!(
-                    "a nested Technique in {end} of a {kind}: not Unsupported: {other:?}"
+                    "a nested Technique in {end} of a {kind}: not kept whole with one \
+                     SACM-XMI-003 at its start tag: {:?}",
+                    other.map(|output| output.diagnostics().to_vec())
                 )),
             }
         }

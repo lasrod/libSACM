@@ -81,21 +81,6 @@
   },
   {
     "type": "Unsupported",
-    "code": "SACM-XMI-014",
-    "template": "SACM-XMI-014/xmi-child-of-root",
-    "arguments": {
-      "element": "xmi:Extension",
-      "container": "sacm:AssuranceCasePackage",
-      "row": "SACM23-XMI-019"
-    },
-    "location": {
-      "line": 3,
-      "column": 3
-    },
-    "reason": "the XMI element \"xmi:Extension\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)"
-  },
-  {
-    "type": "Unsupported",
     "code": "SACM-XMI-007",
     "template": "SACM-XMI-007/href",
     "arguments": {

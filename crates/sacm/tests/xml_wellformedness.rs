@@ -932,14 +932,16 @@ fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kin
 // `]]>`. A scan that ends one early reads its text as markup, refusing what
 // is not there or missing what is.
 
-/// An `xmi:Extension` document element: recognised but not read yet, so a
-/// read refuses it as `Unsupported` at its start tag in both modes (ADR 0035;
-/// SACM23-XMI-019). Until slice 0067 this was a `TerminologyPackageInterface`
-/// root, which that slice reads (SACM23-TERM-007).
-const XMI_ROOT: &str = concat!(
-    "<xmi:Extension",
-    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
-    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>",
+/// A package in the SACM 2.4 namespace: recognised but not read, so a read
+/// refuses it as `Unsupported` at its start tag in both modes (SACM-XMI-008,
+/// LIB-COMPAT-018). Until slice 0067 this was a
+/// `TerminologyPackageInterface` root, which that slice reads
+/// (SACM23-TERM-007), and until slice 0073a an `xmi:Extension` document
+/// element, which is `InvalidRoot` since (SACM23-XMI-019, ADR 0042 D4).
+const UNREAD_ROOT: &str = concat!(
+    "<sacm:ArgumentPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20260504\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>",
 );
 
 #[test]
@@ -962,7 +964,7 @@ fn lib_sec_005_a_comment_starting_with_gt_or_dash_gt_is_skipped_whole() {
         assert_ok_with_id(row, &root_holding(prolog), "p");
         // Before a root not read yet: refused at that root (line 2,
         // column 1), never for the comment's or PI's text.
-        let before_xmi_root = format!("{prolog}\n{XMI_ROOT}");
+        let before_xmi_root = format!("{prolog}\n{UNREAD_ROOT}");
         assert_unsupported_at(row, before_xmi_root.as_bytes(), 2, 1);
     }
 }
@@ -1065,7 +1067,7 @@ fn lib_sec_005_a_pi_targeted_xml_and_followed_by_a_delimiter_is_malformed_at_its
         // Inside the root, at line 1, column 134.
         assert_malformed_exactly(row, &root_holding(pi), 1, 134, &reason);
         // Before a root not read yet: Malformed, not Unsupported.
-        let before_xmi_root = format!("{pi}\n{XMI_ROOT}");
+        let before_xmi_root = format!("{pi}\n{UNREAD_ROOT}");
         assert_malformed_exactly(row, before_xmi_root.as_bytes(), 1, 1, &reason);
     }
 }
@@ -1403,10 +1405,10 @@ fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
         // TerminologyPackageInterface root until slice 0067 read it):
         // Malformed comes first, not Unsupported.
         format!("{XMI_START} xmi:id=\"f\"\n  xmlns:xmlns=\"urn:x\"/>"),
-        // On an xmi:XMI wrapper that holds an xmi:Extension.
+        // On an xmi:XMI wrapper that holds a root it does not read.
         format!(
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"\n  \
-             xmlns:xmlns=\"urn:x\">{XMI_ROOT}</xmi:XMI>"
+             xmlns:xmlns=\"urn:x\">{UNREAD_ROOT}</xmi:XMI>"
         ),
         // With an empty value: this reason, not the undeclaring one.
         format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"\"/>"),

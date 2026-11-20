@@ -9,8 +9,10 @@
 //! nested in another ArtifactPackage's `artifactElement` role with a type.
 //! It holds every `ArtifactElement` kind this release reads in
 //! `artifactElement`, in document order. An untyped `artifactElement` child is
-//! SACM-XMI-005; one in reference form is a proxy, not read yet (SACM23-XMI-019
-//! for `xmi:idref`, SACM23-XMI-029 for `href`). Every kind it can hold that
+//! SACM-XMI-005; one in reference form is a proxy: of a root of the same
+//! document, moved into place, or kept with SACM-XMI-003 (SACM23-XMI-030,
+//! since slice 0073a), or of an element of another document (SACM23-XMI-029).
+//! Every kind it can hold that
 //! this release does not read yet is refused as `Interim(row)`, its
 //! `interface` end is read (SACM23-ART-012, slice 0066), and the model's spelling
 //! `ArtifactAssertedRelationship` as `Tolerance(SACM23-XMI-009)`, each at an
@@ -33,8 +35,6 @@ use sacm::edit::{self, DeleteElement, EditError, PackageDeletePolicy};
 use sacm::model::{Document, ElementId, ElementKind, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
-
-mod common;
 
 const ROW: &str = "SACM23-ART-001";
 
@@ -245,42 +245,6 @@ fn refused(what: &str, input: &str) -> ReadError {
         ),
         Err(error) => error,
     }
-}
-
-/// The label of `Interim(row)`.
-fn interim(row: &str) -> String {
-    format!("(a limit of this version; {row} reads it)")
-}
-
-/// Asserts that `template`, without its one mark, is `Unsupported` in both
-/// modes, with no code, at the mark, its one-line reason ending with `label`
-/// and holding no other label.
-fn assert_unsupported_with(what: &str, template: &str, label: &str) {
-    let (input, at) = one_mark(what, template);
-    let error = refused(what, &input);
-    let ReadError::Unsupported {
-        location, reason, ..
-    } = &error
-    else {
-        panic!("{ROW}: {what}: not Unsupported: {error:?} ({error})");
-    };
-    assert_eq!(
-        (*location, error.code().as_str()),
-        (Some(at), crate::common::unsupported_code(label)),
-        "{ROW}: {what}: not refused with the code of its label at {at}: {error}"
-    );
-    let labels = [
-        "(a limit of this version",
-        "(strict mode never reads it",
-        "(a defect",
-    ]
-    .iter()
-    .map(|opening| reason.matches(opening).count())
-    .sum::<usize>();
-    assert!(
-        reason.ends_with(label) && labels == 1 && !reason.contains('\n'),
-        "{ROW}: {what}: the reason {reason:?} does not end with the one label {label:?}"
-    );
 }
 
 /// Asserts that `template`, without its one mark, reads in both modes and
@@ -621,43 +585,58 @@ fn sacm23_art_001_an_untyped_artifact_element_child_is_missing_type_at_its_start
 }
 
 #[test]
-fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_not_read_yet() {
+fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_same_file_proxy() {
     // Under an ArtifactPackage, `artifactElement` is the composite role, so a
     // role element in reference form is a proxy (XMI 2.5.1 §7.10.1), not a
-    // group member and not SACM-XMI-005: refused as not read yet, naming
-    // SACM23-XMI-019 for `xmi:idref` and SACM23-XMI-029 for `href`; untyped
-    // at its start tag, typed at the attribute (as LIB-COMPAT-010 and
-    // LIB-API-011 pin for argumentElement).
+    // group member and not SACM-XMI-005. Since slice 0073a, `xmi:idref` and
+    // `href="#t1"` make a same-file proxy (SACM23-XMI-030): `t1` is a nested
+    // Technique, no root, so each is kept with `SACM-XMI-003/proxy-of-no-root`
+    // at its start tag, typed or untyped, in both modes. Until then a strict
+    // read refused it as not read yet, naming SACM23-XMI-019 for `xmi:idref`
+    // and SACM23-XMI-029 for `href`. A proxy of a root moves the root into
+    // place (`same_file_proxies.rs`).
     let sibling = typed("Technique", "t1", "T1");
     for (context, wrap, _) in contexts() {
-        for (form, child, row) in [
+        for (form, child) in [
             (
                 "an untyped xmi:idref",
                 format!("{MARK}<artifactElement xmi:idref=\"t1\"/>"),
-                "SACM23-XMI-019",
             ),
             (
                 "an untyped href=\"#t1\"",
                 format!("{MARK}<artifactElement href=\"#t1\"/>"),
-                "SACM23-XMI-029",
             ),
             (
                 "a typed xmi:idref",
-                format!("<artifactElement xmi:type=\"sacm:Technique\" {MARK}xmi:idref=\"t1\"/>"),
-                "SACM23-XMI-019",
+                format!("{MARK}<artifactElement xmi:type=\"sacm:Technique\" xmi:idref=\"t1\"/>"),
             ),
             (
                 "a typed href=\"#t1\"",
-                format!("<artifactElement xmi:type=\"sacm:Technique\" {MARK}href=\"#t1\"/>"),
-                "SACM23-XMI-029",
+                format!("{MARK}<artifactElement xmi:type=\"sacm:Technique\" href=\"#t1\"/>"),
             ),
         ] {
             let what = format!("{form} artifactElement in {context}");
-            assert_unsupported_with(
-                &what,
-                &wrap("", &format!("{sibling}{child}")),
-                &interim(row),
+            let template = wrap("", &format!("{sibling}{child}"));
+            let doc = assert_preserved_at(&what, &template, "a");
+            assert_eq!(
+                doc.get("t1")
+                    .and_then(SacmElement::parent)
+                    .map(|parent| parent.id().as_str().to_owned()),
+                Some("a".to_owned()),
+                "{ROW}: {what}: t1 moved"
             );
+            let (input, _) = one_mark(&what, &template);
+            match read(Mode::Tolerant, &input) {
+                Ok(output) => assert!(
+                    output
+                        .diagnostics()
+                        .iter()
+                        .all(|found| found.template() == "SACM-XMI-003/proxy-of-no-root"),
+                    "{ROW}: {what}: not kept as a proxy of no root: {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+            }
         }
     }
 }

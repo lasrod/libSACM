@@ -78,9 +78,14 @@
 //!   conforming content not read yet, it keeps as preserved content with a
 //!   Warning, never dropped (see [Modes](xmi#modes)). An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
-//!   `write` saves; see [Ids](xmi::read#ids).
-//! - [`xmi::write`] writes a document deterministically, preserved content
-//!   included. A strict save, the default, refuses output that would not be
+//!   `write` saves; see [Ids](xmi::read#ids). XMI metadata, such as
+//!   `xmi:uuid` ([`uuid`](model::SacmElement::uuid)) or an
+//!   `xmi:Extension`, is read in both modes and kept as written (see
+//!   [XMI metadata](xmi::read#xmi-metadata)), and a root that a same-file
+//!   proxy names moves into the proxy's place (see
+//!   [Same-file proxies](xmi::read#same-file-proxies)).
+//! - [`xmi::write`] writes a document deterministically, XMI metadata and
+//!   preserved content included. A strict save, the default, refuses output that would not be
 //!   schema-valid, and one that holds preserved content; it never validates,
 //!   so call [`validation::validate`] for model checks.
 //! - [`validation::validate`] reports each element that has no name, each

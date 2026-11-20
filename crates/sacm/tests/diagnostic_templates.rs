@@ -2,8 +2,10 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
-//! that a tolerant or a strict read gives (slice 0072 adds the three of a
+//! `## Message templates` table, 108 in all: 38 that `validate` gives and 70
+//! that a tolerant or a strict read, or a strict write, gives (slice 0073a
+//! removes the eight kept forms of SACM-XMI-014 and adds seven of XMI
+//! metadata and same-file proxies, ADR 0042; slice 0072 adds the three of a
 //! root in another SACM namespace, LIB-COMPAT-004; slice 0068 adds the eight of the
 //! package interface and binding rules; slice 0067 removes the four kept
 //! forms of unread kinds and ends: `SACM-XMI-014/interface-element-kept`,
@@ -21,7 +23,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 109 templates,
+//!   pattern names it, and then last; and the inputs are the 108 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -52,11 +54,13 @@ const NS: &str = concat!(
 );
 
 /// The number of diagnostic templates (acceptance 1): 38 from validation and
-/// 71 from the reader, once slice 0067 removes the four kept forms of unread
-/// kinds and ends (ADR 0035 amendment 1), slice 0068 adds eight to
-/// validation (SACM23-VAL-013, -014, -015, -023) and slice 0072 adds three
-/// to the reader (LIB-COMPAT-004).
-const DIAGNOSTIC_TEMPLATES: usize = 109;
+/// 70 from the reader and the writer, once slice 0067 removes the four kept
+/// forms of unread kinds and ends (ADR 0035 amendment 1), slice 0068 adds
+/// eight to validation (SACM23-VAL-013, -014, -015, -023), slice 0072 adds
+/// three to the reader (LIB-COMPAT-004), and slice 0073a removes the eight
+/// kept forms of SACM-XMI-014 and adds seven (SACM23-XMI-019,
+/// SACM23-XMI-030; ADR 0042).
+const DIAGNOSTIC_TEMPLATES: usize = 108;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -992,7 +996,8 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 68 templates a read gives, in the design's order.
+/// The 70 templates a read, or a strict write's check of XMI metadata, gives,
+/// in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
     cases.extend(preserved_cases());
@@ -1000,7 +1005,125 @@ fn reader_cases() -> Vec<Case> {
     cases.extend(spelling_cases());
     cases.extend(kept_cases());
     cases.extend(namespace_cases());
+    cases.extend(metadata_cases());
     cases
+}
+
+/// The `xmi:XMI` wrapper holding the AssuranceCasePackage `case`, which holds
+/// `body`, then the ArgumentPackage `args` and the ArtifactPackage `arts`:
+/// roots a same-file proxy names (SACM23-XMI-030).
+fn proxied(body: &str) -> String {
+    format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+         <sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>{body}</sacm:AssuranceCasePackage>\
+         <sacm:ArgumentPackage xmi:id=\"args\"><name content=\"args\"/></sacm:ArgumentPackage>\
+         <sacm:ArtifactPackage xmi:id=\"arts\"><name content=\"arts\"/></sacm:ArtifactPackage></xmi:XMI>"
+    )
+}
+
+/// The seven templates of slice 0073a (SACM23-XMI-019, SACM23-XMI-030; ADR
+/// 0042): an XMI-namespace element XMI does not define under `xmi:XMI`, the
+/// four kept forms of a same-file proxy, and the two checks a strict write
+/// makes of XMI metadata.
+fn metadata_cases() -> Vec<Case> {
+    vec![
+        case(
+            "SACM-XMI-003/wrapper-element-kept",
+            tolerant(wrapper("", "<xmi:foo/>")),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[("element", t("xmi:foo")), ("container", t("xmi:XMI"))],
+            concat!(
+                "the element {element:?} in {container:?} is in the XMI namespace, but XMI 2.5.1 defines no such element there",
+                kd!()
+            ),
+            "the element \"xmi:foo\" in \"xmi:XMI\" is in the XMI namespace, but XMI 2.5.1 defines no such element there, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/proxy-of-no-root",
+            tolerant(proxied("<argumentPackage xmi:idref=\"nope\"/>")),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("argumentPackage")),
+                ("target", t("nope")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of {target:?}, which is no root of the document, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of \"nope\", which is no root of the document, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/proxy-wrong-kind",
+            tolerant(proxied("<argumentPackage xmi:idref=\"arts\"/>")),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("argumentPackage")),
+                ("target", t("arts")),
+                ("target_class", t("ArtifactPackage")),
+                ("class", t("ArgumentPackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of the root {target:?}, a {target_class}, which is not a {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of the root \"arts\", a ArtifactPackage, which is not a ArgumentPackage, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // Two proxies of `args`, one in `case` and one in `two`: each is
+        // `proxy-shared`, and only the message of the first names `case`.
+        case(
+            "SACM-XMI-003/proxy-shared",
+            tolerant(proxied("<argumentPackage xmi:idref=\"args\"/>").replace(
+                "<sacm:ArgumentPackage xmi:id=\"args\">",
+                "<sacm:AssuranceCasePackage xmi:id=\"two\"><name content=\"two\"/>\
+                 <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>\
+                 <sacm:ArgumentPackage xmi:id=\"args\">",
+            )),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("argumentPackage")),
+                ("target", t("args")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of the root {target:?}, which another proxy names too, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of the root \"args\", which another proxy names too, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/proxy-cycle",
+            tolerant(proxied("<assuranceCasePackage xmi:idref=\"case\"/>")),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("assuranceCasePackage")),
+                ("target", t("case")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of the root {target:?}, which holds this proxy itself, directly or through other proxies, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"assuranceCasePackage\" is a proxy of the root \"case\", which holds this proxy itself, directly or through other proxies, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // The checks a strict write makes of XMI metadata.
+        case(
+            "SACM-REF-001/metadata-dangling",
+            write(wrapper("", "<xmi:Difference target=\"p nope\"/>")),
+            (ERROR, "SACM23-XMI-019", None),
+            &[
+                ("attribute", t("target")),
+                ("element", t("xmi:Difference")),
+                ("target", t("nope")),
+            ],
+            "the attribute {attribute:?} of the element {element:?}, kept as XMI metadata, names {target:?}, which is no xmi:id of the document (XMI.xsd types it xsd:IDREF or xsd:IDREFS)",
+            "the attribute \"target\" of the element \"xmi:Difference\", kept as XMI metadata, names \"nope\", which is no xmi:id of the document (XMI.xsd types it xsd:IDREF or xsd:IDREFS)",
+        ),
+        case(
+            "SACM-ID-002/metadata-id-not-an-ncname",
+            write(package("<xmi:Extension xmi:id=\"1x\"/>")),
+            (ERROR, "SACM23-XMI-019", Some("7.6.1")),
+            &[("element", t("xmi:Extension")), ("xmi_id", t("1x"))],
+            concat!(
+                "the element {element:?}, kept as XMI metadata, has the xmi:id {xmi_id:?}",
+                not_ncname!()
+            ),
+            "the element \"xmi:Extension\", kept as XMI metadata, has the xmi:id \"1x\", which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+        ),
+    ]
 }
 
 /// The three Warnings of a root a tolerant read reads in another SACM
@@ -1314,15 +1437,18 @@ fn plain_reader_cases() -> Vec<Case> {
         ),
         case(
             "SACM-ID-002/empty-id-of-kept-element-by-document",
-            tolerant(wrapper("", "<xmi:Documentation xmi:id=\"\"/>")),
+            // An element XMI does not define, kept as the document's content
+            // (an `xmi:Documentation` until slice 0073a read it as XMI
+            // metadata, SACM23-XMI-019).
+            tolerant(wrapper("", "<xmi:foo xmi:id=\"\"/>")),
             (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
-            &[("element", t("xmi:Documentation"))],
+            &[("element", t("xmi:foo"))],
             concat!(
                 "the xmi:id of the element {element:?} kept in the document",
                 empty!(),
                 "it is kept as written, outside the id space"
             ),
-            "the xmi:id of the element \"xmi:Documentation\" kept in the document is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space",
+            "the xmi:id of the element \"xmi:foo\" kept in the document is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space",
         ),
     ]
 }
@@ -1752,163 +1878,17 @@ fn spelling_cases() -> Vec<Case> {
     ]
 }
 
-/// The 22 forms of content a tolerant read keeps where a strict read
-/// refuses it, but the three of SACM-XMI-003 above: 12 of SACM-XMI-014, 4 of
-/// SACM-XMI-007, and the kept forms of SACM-XMI-005, SACM-ENUM-001 and
-/// SACM-MULT-001.
+/// The 10 forms of content a tolerant read keeps where a strict read
+/// refuses it, but the three of SACM-XMI-003 above: 4 of SACM-XMI-007, and
+/// the kept forms of SACM-XMI-005, SACM-ENUM-001 and SACM-MULT-001. Slice
+/// 0073a removes the eight of SACM-XMI-014, whose code no input gives any
+/// more (SACM23-XMI-019, ADR 0042).
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per template, reads best whole"
 )]
 fn kept_cases() -> Vec<Case> {
     vec![
-        // --- SACM-XMI-014 --------------------------------------------------------------
-        case(
-            "SACM-XMI-014/unread-attribute-kept",
-            tolerant(package(&claim("c1", " xmi:uuid=\"u1\"", ""))),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("attribute", t("xmi:uuid")),
-                ("element", t("argumentElement")),
-                ("holder_class", t("Claim")),
-                ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the attribute {attribute:?} of the element {element:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the attribute \"xmi:uuid\" of the element \"argumentElement\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/unread-attribute-kept-by-document",
-            tolerant(wrapper(" xmi:uuid=\"u1\"", "")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("attribute", t("xmi:uuid")),
-                ("element", t("xmi:XMI")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the attribute {attribute:?} of the element {element:?} is not read in this release",
-                kd!(),
-                reads!()
-            ),
-            "the attribute \"xmi:uuid\" of the element \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/nested-xmi-element-kept",
-            tolerant(package(&bare_claim(
-                "c1",
-                "",
-                "<name content=\"c1\"><xmi:Extension extender=\"v\"/></name>",
-            ))),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("xmi:Extension")),
-                ("container", t("name")),
-                ("holder_class", t("Claim")),
-                ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the XMI element {element:?} in {container:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the XMI element \"xmi:Extension\" in \"name\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/nested-xmi-element-kept-by-document",
-            tolerant(wrapper("", "<xmi:Documentation/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("xmi:Documentation")),
-                ("container", t("xmi:XMI")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the XMI element {element:?} in {container:?} is not read in this release",
-                kd!(),
-                reads!()
-            ),
-            "the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/xmi-child-kept",
-            tolerant(package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>"))),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("xmi:Extension")),
-                ("container", t("argumentElement")),
-                ("holder_class", t("Claim")),
-                ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the XMI element {element:?} in the element {container:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/xmi-child-of-root-kept",
-            tolerant(package("<xmi:Extension extender=\"v\"/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("xmi:Extension")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("p")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the XMI element {element:?} in the root element {container:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the XMI element \"xmi:Extension\" in the root element \"sacm:ArgumentPackage\" is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/proxy-child-kept",
-            tolerant(nested("<argumentElement xmi:idref=\"ap\"/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("argumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("ap")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/proxy-child-of-root-kept",
-            tolerant(package("<argumentElement xmi:idref=\"p\"/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("p")),
-                ("row", t("SACM23-XMI-019")),
-            ],
-            concat!(
-                "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
         // --- SACM-XMI-007 --------------------------------------------------------------
         case(
             "SACM-XMI-007/unread-attribute-kept",
@@ -2114,7 +2094,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 109.
+/// as a case of the table is, but not counted among the 108.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2504,7 +2484,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 109 templates, once each.
+    // The inputs are the 108 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();

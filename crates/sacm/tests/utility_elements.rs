@@ -47,8 +47,6 @@ use sacm::xmi::{
     self, Mode, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
 };
 
-mod common;
-
 const ROW: &str = "SACM23-BASE-004";
 const VAL_020: &str = "SACM23-VAL-020";
 const XMI_004: &str = "SACM23-XMI-004";
@@ -384,28 +382,6 @@ fn assert_preserved_at_mark(row: &str, what: &str, template: &str) -> Document {
         panic!("{row}: setup: {what} has no xmi:id before its mark");
     };
     assert_preserved_at(row, what, &input, marks[0], holder)
-}
-
-/// Reads `template` without its marks in strict mode and asserts that it is
-/// refused as `Unsupported`, with no code, at its one mark. Returns the
-/// reason.
-fn assert_unsupported_at_mark(row: &str, what: &str, template: &str) -> String {
-    let (input, marks) = marked(row, template);
-    assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-    let error = refused(row, what, &input);
-    let ReadError::Unsupported { reason, .. } = &error else {
-        panic!("{row}: {what}: not Unsupported: {error:?} ({error})");
-    };
-    assert!(
-        error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-        "{row}: {what}: an Unsupported refusal does not have the code of its label: {error:?}"
-    );
-    assert_eq!(
-        error.location(),
-        Some(marks[0]),
-        "{row}: {what}: not refused at the mark: {error}"
-    );
-    reason.clone()
 }
 
 /// Reads `template` without its marks in strict mode and asserts that it is
@@ -1109,16 +1085,18 @@ fn sacm23_base_004_a_type_naming_another_class_is_preserved_and_an_expression_la
             && value.content() == Some("x")),
         "{ROW}: sacm:ExpressionLangString on value is not read as one: {values:?}"
     );
-    // What is conforming and not read yet on a value is XMI metadata
-    // (SACM23-XMI-019), refused at the attribute.
-    let reason = assert_unsupported_at_mark(
+    // `xmi:uuid` on a value is XMI metadata, read since slice 0073a in both
+    // modes with no diagnostic and written back (SACM23-XMI-019, ADR 0042);
+    // until then it was refused at the attribute.
+    let doc = read_ok(
         ROW,
         "xmi:uuid on value",
-        &description_with(&format!("<value {MARK}xmi:uuid=\"u\" content=\"x\"/>")),
+        &description_with("<value xmi:uuid=\"u\" content=\"x\"/>"),
     );
+    let text = write_in(ROW, "xmi:uuid on value", Mode::Strict, &doc);
     assert!(
-        reason.ends_with("(a limit of this version; SACM23-XMI-019 reads it)"),
-        "{ROW}: xmi:uuid on value is not refused naming SACM23-XMI-019: {reason}"
+        text.contains("<value content=\"x\" xmi:uuid=\"u\" />"),
+        "{ROW}: xmi:uuid on value is not written back after the value's attributes:\n{text}"
     );
 }
 

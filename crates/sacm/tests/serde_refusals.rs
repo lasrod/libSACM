@@ -3,8 +3,9 @@
 //!
 //! - `tests/data/golden/serde/read-errors.json` and `write-errors.json` hold
 //!   one value per variant, and `Unsupported` once per code an input
-//!   reaches: SACM-XMI-014, -007, -003, -002, -008 (slice 0072), -015 and
-//!   SACM-XML-002 (SACM-SEC-002 has no input of a test's size here;
+//!   reaches: SACM-XMI-007, -003, -002, -008 (slice 0072), -015 and
+//!   SACM-XML-002 (SACM-SEC-002 has no input of a test's size here, and
+//!   SACM-XMI-014 none since slice 0073a, which retires it;
 //!   LIB-SEC-003 reaches `/namespaces`), and `LimitExceeded` last (LIB-SEC-003,
 //!   acceptance 14). The samples are real
 //!   refusals of `xmi::read` and `xmi::write`, because the variants are
@@ -136,13 +137,10 @@ fn read_samples() -> Vec<ReadError> {
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>\n</sacm:ArgumentPackage>"
         ),
-        // Unsupported: SACM-XMI-014, -007, -003, -002, -008, -015, SACM-XML-002.
-        // A TerminologyPackageInterface in the case until slice 0067 read it
-        // (SACM23-TERM-007).
-        format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
-             <xmi:Extension/>\n</sacm:AssuranceCasePackage>"
-        ),
+        // Unsupported: SACM-XMI-007, -003, -002, -008, -015, SACM-XML-002.
+        // The SACM-XMI-014 sample is gone since slice 0073a read XMI metadata
+        // (SACM23-XMI-019, ADR 0042 D9); until slice 0067 a
+        // TerminologyPackageInterface in the case was refused.
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n    \
@@ -286,7 +284,6 @@ fn lib_api_017_read_errors_json_holds_one_value_per_variant_and_reads_back() {
             ("NoPackage", "SACM-XMI-001"),
             ("DuplicateId", "SACM-ID-001"),
             ("InvalidId", "SACM-ID-002"),
-            ("Unsupported", "SACM-XMI-014"),
             ("Unsupported", "SACM-XMI-007"),
             ("Unsupported", "SACM-XMI-003"),
             ("Unsupported", "SACM-XMI-002"),
@@ -334,9 +331,12 @@ const NO_PACKAGE: &str = r#"{"type":"NoPackage","code":"SACM-XMI-001","template"
 
 const DUPLICATE_ID: &str = r#"{"type":"DuplicateId","code":"SACM-ID-001","template":"SACM-ID-001/duplicate-id","arguments":{"id":"c1","count":2},"id":"c1","locations":[{"line":2,"column":3},{"line":3,"column":3}]}"#;
 
-/// An `xmi:Extension` document element (a `TerminologyPackageInterface` root
-/// until slice 0067 read it, SACM23-TERM-007).
-const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/xmi-root","arguments":{"element":"xmi:Extension","row":"SACM23-XMI-019"},"location":{"line":1,"column":1},"reason":"the XMI element \"xmi:Extension\" is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)"}"#;
+/// An `xmi:XMI` element outside the XMI 2.5.1 namespace, the SACM-XMI-015
+/// value of `read-errors.json` (an `xmi:Extension` document element, refused
+/// with SACM-XMI-014, until slice 0073a made it `InvalidRoot`,
+/// SACM23-XMI-019; a `TerminologyPackageInterface` root until slice 0067
+/// read it, SACM23-TERM-007).
+const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-015","template":"SACM-XMI-015/not-xmi-namespace","arguments":{"element":"xmi:XMI","row":"LIB-COMPAT-002"},"location":{"line":1,"column":1},"reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)"}"#;
 
 const NO_ROOT: &str = r#"{"type":"NoRoot","code":"SACM-XMI-001","template":"SACM-XMI-001/no-root-to-write","arguments":{}}"#;
 
@@ -413,7 +413,7 @@ fn lib_api_017_a_refusal_whose_code_is_not_its_variant_s_and_its_template_s_is_r
     assert_refused::<ReadError>(
         "a code of the variant that is not the template's",
         UNSUPPORTED,
-        r#""code":"SACM-XMI-014""#,
+        r#""code":"SACM-XMI-015""#,
         r#""code":"SACM-XMI-007""#,
     );
     assert_refused::<WriteError>(
@@ -534,7 +534,7 @@ fn lib_api_017_arguments_missing_extra_or_of_the_wrong_kind_are_refused() {
     assert_refused::<ReadError>(
         "an Unsupported template without its row",
         UNSUPPORTED,
-        r#","row":"SACM23-XMI-019""#,
+        r#","row":"LIB-COMPAT-002""#,
         "",
     );
     assert_refused::<WriteError>(
@@ -607,8 +607,9 @@ fn lib_api_017_a_record_s_display_renders_its_template_not_its_reason() {
         (
             "Unsupported",
             UNSUPPORTED,
-            r#""reason":"the XMI element \"xmi:Extension\" is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)""#,
-            "is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)",
+            r#""reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)""#,
+            "so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to \
+             read it in tolerant mode)",
         ),
     ] {
         let other = valid.replacen(reason, r#""reason":"other""#, 1);

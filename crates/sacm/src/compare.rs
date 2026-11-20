@@ -24,9 +24,10 @@
 //! like), an `Artifact`'s `version`, the `date` of an `Artifact` or an
 //! `Event`, a `Resource`'s `location` with its ids, an `Activity`'s
 //! `startTime` and `endTime` (§12.7, §12.9, §12.10, §12.11), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
-//! (SACM 2.3 §11.10), the relative order of its children, and its preserved
-//! content (LIB-COMPAT-003, ADR 0033), exactly and in order; it also checks
-//! the relative order of the roots. Values are compared exactly: a missing
+//! (SACM 2.3 §11.10), the relative order of its children, its XMI metadata
+//! (SACM23-XMI-019, ADR 0042) and its preserved content (LIB-COMPAT-003,
+//! ADR 0033), exactly and in order; it also checks the relative order of the
+//! roots, and the metadata and preserved content outside every element. Values are compared exactly: a missing
 //! name differs from an empty one, and a missing `content` from an empty
 //! one.
 //!
@@ -822,6 +823,16 @@ pub enum Difference {
         /// The common children, in the right document's order.
         right: Vec<ElementId>,
     },
+    /// The XMI metadata of the element, or of its name, texts or values,
+    /// differs, or one side holds none (SACM23-XMI-019, ADR 0042); compared
+    /// exactly and in order, as [`PreservedContent`](Self::PreservedContent)
+    /// is: `xmi:uuid`, `xmi:label`, the XSI schema locations and the
+    /// `xmi:Extension`s, with where each stands among the element's
+    /// children.
+    Metadata {
+        /// The element's id.
+        id: ElementId,
+    },
     /// The element's preserved content, what [`xmi::read`](crate::xmi::read)
     /// kept as written instead of read, because it is not SACM 2.3 where it
     /// stands or, in tolerant mode, because a strict read refuses it, differs
@@ -836,10 +847,17 @@ pub enum Difference {
         /// The element's id.
         id: ElementId,
     },
+    /// The XMI metadata outside every element differs on each side, or one
+    /// side holds none (SACM23-XMI-019, ADR 0042): the metadata attributes of
+    /// the `xmi:XMI` element, such as its `xmi:uuid`, and the XMI elements
+    /// under it, such as an `xmi:Documentation`, with where each stands
+    /// among the roots. Compared as [`Metadata`](Self::Metadata) is.
+    /// [`element_id`](Difference::element_id) is `None`: no element holds it.
+    DocumentMetadata,
     /// The preserved content outside every element differs on each side, or
     /// one side holds none (ADR 0035 D3): what [`xmi::read`](crate::xmi::read)
-    /// kept of the `xmi:XMI` element besides its roots, such as its
-    /// attributes or an `xmi:Documentation`.
+    /// kept of the `xmi:XMI` element besides its roots and its XMI metadata,
+    /// such as a vendor attribute on it.
     ///
     /// It is compared as [`PreservedContent`](Self::PreservedContent) is,
     /// with where each child stands among the roots.
@@ -865,7 +883,9 @@ impl Difference {
     #[must_use]
     pub fn element_id(&self) -> Option<&ElementId> {
         match self {
-            Self::RootOrder { .. } | Self::DocumentPreservedContent => None,
+            Self::RootOrder { .. } | Self::DocumentMetadata | Self::DocumentPreservedContent => {
+                None
+            }
             Self::LeftOnly { id, .. }
             | Self::RightOnly { id, .. }
             | Self::Kind { id, .. }
@@ -913,6 +933,7 @@ impl Difference {
             | Self::ExternalReference { id, .. }
             | Self::AssertionDeclaration { id, .. }
             | Self::ChildOrder { id, .. }
+            | Self::Metadata { id }
             | Self::PreservedContent { id } => Some(id),
         }
     }
@@ -1163,11 +1184,17 @@ impl fmt::Display for Difference {
                 Ids(left),
                 Ids(right)
             ),
+            Self::Metadata { id } => {
+                write!(f, "element {:?} differs in its XMI metadata", id.as_str())
+            }
             Self::PreservedContent { id } => write!(
                 f,
                 "element {:?} differs in its preserved content",
                 id.as_str()
             ),
+            Self::DocumentMetadata => {
+                f.write_str("the documents differ in their XMI metadata outside every element")
+            }
             Self::DocumentPreservedContent => {
                 f.write_str("the documents differ in their preserved content outside every element")
             }
@@ -1403,8 +1430,8 @@ impl fmt::Display for Declaration {
 /// ```
 ///
 /// The order of the result:
-/// 1. [`Difference::RootOrder`], then
-///    [`Difference::DocumentPreservedContent`];
+/// 1. [`Difference::RootOrder`], then [`Difference::DocumentMetadata`],
+///    then [`Difference::DocumentPreservedContent`];
 /// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
 ///    [`Gid`](Difference::Gid), [`IsCitation`](Difference::IsCitation),
@@ -1442,7 +1469,8 @@ impl fmt::Display for Declaration {
 ///    [`Value`](Difference::Value),
 ///    [`ExternalReference`](Difference::ExternalReference),
 ///    [`AssertionDeclaration`](Difference::AssertionDeclaration),
-///    [`ChildOrder`](Difference::ChildOrder) and
+///    [`ChildOrder`](Difference::ChildOrder),
+///    [`Metadata`](Difference::Metadata) and
 ///    [`PreservedContent`](Difference::PreservedContent), in that order;
 /// 3. [`Difference::RightOnly`] for each element only `right` holds, in
 ///    `right`'s pre-order.
@@ -1490,6 +1518,8 @@ pub fn semantic_compare(left: &Document, right: &Document) -> Vec<Difference> {
 enum Found<'a> {
     /// The common roots are in a different relative order.
     RootOrder,
+    /// The XMI metadata outside every element differs.
+    DocumentMetadata,
     /// The preserved content outside every element differs.
     DocumentPreservedContent,
     /// Only the left document holds this element.
@@ -1523,6 +1553,8 @@ enum Found<'a> {
     /// The element's common children are in a different relative order; the
     /// element in the left and in the right document.
     ChildOrder(SacmElement<'a>, SacmElement<'a>),
+    /// The element's XMI metadata, or that of a part of it, differs.
+    Metadata(Compared<'a>),
     /// The element's preserved content differs.
     PreservedContent(Compared<'a>),
     /// Only the right document holds this element.
@@ -1531,12 +1563,17 @@ enum Found<'a> {
 
 impl Found<'_> {
     /// The owned [`Difference`], for the documents the walk compared.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm per kind of difference, in the order of the enum"
+    )]
     fn into_difference(self, left: &Document, right: &Document) -> Difference {
         match self {
             Self::RootOrder => Difference::RootOrder {
                 left: common_roots(left, right).cloned().collect(),
                 right: common_roots(right, left).cloned().collect(),
             },
+            Self::DocumentMetadata => Difference::DocumentMetadata,
             Self::DocumentPreservedContent => Difference::DocumentPreservedContent,
             Self::LeftOnly(ours) => Difference::LeftOnly {
                 id: ours.id.clone(),
@@ -1623,6 +1660,9 @@ impl Found<'_> {
                 id: ours.id().clone(),
                 left: common_children(ours, right).cloned().collect(),
                 right: common_children(theirs, left).cloned().collect(),
+            },
+            Self::Metadata(ours) => Difference::Metadata {
+                id: ours.id.clone(),
             },
             Self::PreservedContent(ours) => Difference::PreservedContent {
                 id: ours.id.clone(),
@@ -1758,6 +1798,9 @@ fn walk<'a>(
     if common_roots(left, right).ne(common_roots(right, left)) {
         sink(Found::RootOrder)?;
     }
+    if left.document_metadata() != right.document_metadata() {
+        sink(Found::DocumentMetadata)?;
+    }
     if left.document_preserved() != right.document_preserved() {
         sink(Found::DocumentPreservedContent)?;
     }
@@ -1859,6 +1902,9 @@ fn compare_element<'a>(
     }
     if common_children(element, right).ne(common_children(other, left)) {
         sink(Found::ChildOrder(element, other))?;
+    }
+    if ours.metadata_differs(&theirs) {
+        sink(Found::Metadata(ours))?;
     }
     if ours.preserved != theirs.preserved {
         sink(Found::PreservedContent(ours))?;

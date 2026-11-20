@@ -563,14 +563,22 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
             "an xmi:Extension document element",
             "<xmi:Extension xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>".to_owned(),
         ),
+        // XMI metadata, read in both modes since slice 0073a
+        // (SACM23-XMI-019); an `xmi:Extension` document element is
+        // InvalidRoot there.
         (
-            "an unread attribute",
+            "an XMI metadata attribute",
             format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:uuid=\"u\"/>"),
         ),
-        // A tolerant read keeps the unread attribute above (ADR 0035); an
-        // xmi:Extension document element stays Unsupported in both modes,
-        // and a root in a SACM 2.2 namespace is read tolerantly since slice
-        // 0072 (LIB-COMPAT-004): either way, as in UTF-8.
+        // Unsupported in both modes (LIB-COMPAT-018).
+        (
+            "a root in the SACM 2.4 namespace",
+            "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.4\" \
+             xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
+                .to_owned(),
+        ),
+        // A root in a SACM 2.2 namespace is read tolerantly since slice 0072
+        // (LIB-COMPAT-004): either way, as in UTF-8.
         (
             "a root in a SACM 2.2 namespace",
             "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \

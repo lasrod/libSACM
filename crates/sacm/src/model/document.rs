@@ -166,10 +166,16 @@ pub struct Document {
     /// a new document and after every successful edit, copied by `Clone`.
     revision: Revision,
     /// The preserved content outside every element (ADR 0035 D3): the
-    /// attributes of the `xmi:XMI` element, and its children that are no
-    /// root, such as `xmi:Documentation`, placed among the roots. `None` when
-    /// it holds none.
+    /// attributes of the `xmi:XMI` element besides its XMI metadata, and its
+    /// children that are neither a root nor XMI metadata, such as an
+    /// `xmi:foo` XMI does not define, placed among the roots. `None` when it
+    /// holds none.
     preserved: Option<Box<Preserved>>,
+    /// The XMI metadata outside every element (SACM23-XMI-019, ADR 0042):
+    /// the metadata attributes of the `xmi:XMI` element, such as `xmi:uuid`,
+    /// and its XMI elements, such as `xmi:Documentation`, placed among the
+    /// roots. `None` when it holds none.
+    metadata: Option<Box<Preserved>>,
 }
 
 impl Default for Document {
@@ -184,6 +190,7 @@ impl Default for Document {
             id_counters: BTreeMap::new(),
             revision: Revision::fresh(),
             preserved: None,
+            metadata: None,
         }
     }
 }
@@ -195,11 +202,13 @@ struct IdUse {
     /// carries the id as its `xmi:id`, or whose preserved content does, if
     /// one does.
     owner: Option<usize>,
-    /// Whether the owner holds the id in its preserved content (ADR 0033),
-    /// rather than on a `name`, `content`, `key`, `location` or `value`.
+    /// Whether the owner holds the id in its preserved content (ADR 0033) or
+    /// its XMI metadata (ADR 0042 D5), rather than on a `name`, `content`,
+    /// `key`, `location` or `value`.
     preserved: bool,
-    /// Whether the document's own preserved content, outside every element,
-    /// holds the id (ADR 0035 D3); `owner` is then `None`.
+    /// Whether the document's own preserved content or XMI metadata, outside
+    /// every element, holds the id (ADR 0035 D3, ADR 0042 D5); `owner` is
+    /// then `None`.
     document: bool,
     /// How many references, of every element and end, hold the id: the
     /// typed ones and those preserved content may hold.
@@ -283,6 +292,14 @@ struct Node {
     /// 0035); `None` when it holds none. Boxed, so an
     /// element without it costs one word.
     preserved: Option<Box<Preserved>>,
+    /// The element's XMI metadata (SACM23-XMI-019, ADR 0042): `xmi:uuid`,
+    /// `xmi:label` and the XSI schema locations on its start tag, and its
+    /// `xmi:extension` and `xmi:Extension` children, placed among its typed
+    /// children; `None` when it holds none.
+    metadata: Option<Box<Preserved>>,
+    /// The XMI metadata of the element's `name`, its children all placed at
+    /// index 0; `None` when it holds none, and whenever `name` is `None`.
+    name_metadata: Option<Box<Preserved>>,
 }
 
 impl Document {
@@ -731,6 +748,8 @@ impl Document {
             role,
             children: Vec::new(),
             preserved: None,
+            metadata: None,
+            name_metadata: None,
         });
         self.refresh_expressions(node);
         Ok(node)
@@ -881,6 +900,90 @@ impl Document {
         }
         self.nodes[node].preserved = Some(Box::new(preserved));
         Ok(())
+    }
+
+    /// Gives the element `owner` the XMI metadata `metadata` (SACM23-XMI-019,
+    /// ADR 0042), on its start tag and among its children when `of_name` is
+    /// `false`, on and in its `name` when `true`; on an error the document is
+    /// unchanged.
+    ///
+    /// The XMI reader keeps metadata through it. Its ids join the document's
+    /// id space, owned by the element, as preserved content's do (ADR 0042
+    /// D5), and each id it may name counts as a reference. It refuses, with
+    /// the reason, an unknown owner, an owner that holds such metadata
+    /// already, a name's metadata without a name, an empty id, an id given
+    /// twice and an id already in use. Empty metadata changes nothing.
+    pub(crate) fn set_metadata(
+        &mut self,
+        owner: &ElementId,
+        of_name: bool,
+        metadata: Preserved,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        let held = if of_name {
+            if self.nodes[node].name.is_none() {
+                return Err(format!("the element {:?} has no name", owner.as_str()));
+            }
+            &self.nodes[node].name_metadata
+        } else {
+            &self.nodes[node].metadata
+        };
+        if held.is_some() {
+            return Err(format!(
+                "the element {:?} holds such XMI metadata already",
+                owner.as_str()
+            ));
+        }
+        if metadata.is_empty() {
+            return Ok(());
+        }
+        check_preserved_ids(self, &metadata)?;
+        self.hold_metadata(Some(node), &metadata);
+        let metadata = Some(Box::new(metadata));
+        if of_name {
+            self.nodes[node].name_metadata = metadata;
+        } else {
+            self.nodes[node].metadata = metadata;
+        }
+        Ok(())
+    }
+
+    /// Records the ids of `metadata` in the id space, owned by the element
+    /// `owner`, or by the document for `None`, and counts each id it may name
+    /// as a reference (ADR 0042 D5). The caller has checked its ids.
+    fn hold_metadata(&mut self, owner: Option<usize>, metadata: &Preserved) {
+        for id in &metadata.ids {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            match owner {
+                Some(node) => {
+                    used.owner = Some(node);
+                    used.preserved = true;
+                }
+                None => used.document = true,
+            }
+        }
+        for id in &metadata.references {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            used.references = used.references.saturating_add(1);
+        }
+    }
+
+    /// Frees the ids of `metadata`, which an element held, and the references
+    /// it counted (ADR 0042 D6).
+    fn release_metadata(&mut self, metadata: &Preserved) {
+        for id in &metadata.ids {
+            self.release(id, |used| {
+                used.owner = None;
+                used.preserved = false;
+            });
+        }
+        for id in &metadata.references {
+            self.release(id, |used| {
+                used.references = used.references.saturating_sub(1);
+            });
+        }
     }
 
     /// Sets the `gid` of the element `id` (SACM 2.3 §8.2) to `gid`, exactly:
@@ -1101,10 +1204,19 @@ impl Document {
         // quadratic in the number of values.
         let old: BTreeSet<ElementId> = self.nodes[node]
             .text(role)
-            .map(|held| held.ids().cloned().collect())
+            .map(|held| {
+                held.ids()
+                    .chain(held.metadata().flat_map(|metadata| &metadata.ids))
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default();
         let mut seen = BTreeSet::new();
-        for id in text.ids() {
+        // Its own ids, then those of its XMI metadata (ADR 0042 D5).
+        for id in text
+            .ids()
+            .chain(text.metadata().flat_map(|metadata| &metadata.ids))
+        {
             if id.as_str().is_empty() {
                 return Err(format!("an id of the {} is empty", role.name()));
             }
@@ -1113,11 +1225,14 @@ impl Document {
                 return Err(format!("the id {:?} is already in use", id.as_str()));
             }
         }
-        for id in &old {
-            self.release(id, |used| used.owner = None);
+        if let Some(held) = self.nodes[node].text_mut(role).take() {
+            self.release_text(&held);
         }
         for id in text.ids() {
             self.other_ids.entry(id.clone()).or_default().owner = Some(node);
+        }
+        for metadata in text.metadata() {
+            self.hold_metadata(Some(node), metadata);
         }
         *self.nodes[node].text_mut(role) = Some(text);
         self.refresh_expressions(node);
@@ -1131,11 +1246,21 @@ impl Document {
             return;
         };
         if let Some(old) = self.nodes[node].text_mut(role).take() {
-            for id in old.ids() {
-                self.release(id, |used| used.owner = None);
-            }
+            self.release_text(&old);
         }
         self.refresh_expressions(node);
+    }
+
+    /// Frees the ids of `text`, which an element held, and those of its XMI
+    /// metadata, with the references the metadata counted (ADR 0029, ADR 0042
+    /// D6).
+    fn release_text(&mut self, text: &Text) {
+        for id in text.ids() {
+            self.release(id, |used| used.owner = None);
+        }
+        for metadata in text.metadata() {
+            self.release_metadata(metadata);
+        }
     }
 
     /// Replaces the name of the element `id` with `name`, keeping the name's
@@ -1277,13 +1402,24 @@ impl Document {
     fn release_node(&mut self, node: usize) {
         let references = std::mem::take(&mut self.nodes[node].references);
         let preserved = self.nodes[node].preserved.take();
+        // The references its XMI metadata may hold go with it too; the ids of
+        // the metadata it owns are freed by `compact`, as its parts' are
+        // (ADR 0042 D6).
+        let metadata: Vec<ElementId> = self.nodes[node]
+            .metadata_parts()
+            .flat_map(|metadata| metadata.references.iter().cloned())
+            .collect();
         for target in references.iter().flat_map(|(_, targets)| targets) {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
                 release_holder(&mut used.holders, node);
             });
         }
-        for target in preserved.iter().flat_map(|held| &held.references) {
+        for target in preserved
+            .iter()
+            .flat_map(|held| held.references.iter())
+            .chain(&metadata)
+        {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
             });
@@ -1319,15 +1455,20 @@ impl Document {
                     "the deleted elements are closed under containment"
                 );
                 node.parent = node.parent.and_then(new);
-                // A preserved child keeps its place among the typed children
-                // that survive (ADR 0033).
-                if let Some(preserved) = node.preserved.as_mut() {
+                // A preserved child, and an XMI metadata child, keeps its place
+                // among the typed children that survive (ADR 0033, ADR 0042).
+                if node.preserved.is_some() || node.metadata.is_some() {
                     let kept: Vec<bool> = node
                         .children
                         .iter()
                         .map(|&child| new(child).is_some())
                         .collect();
-                    preserved.shift(&kept);
+                    for placed in [node.preserved.as_mut(), node.metadata.as_mut()]
+                        .into_iter()
+                        .flatten()
+                    {
+                        placed.shift(&kept);
+                    }
                 }
                 node.children = node
                     .children
@@ -1337,11 +1478,16 @@ impl Document {
                 node
             })
             .collect();
-        // Content outside every element keeps its place among the roots that
-        // survive (ADR 0035 D3).
-        if let Some(preserved) = self.preserved.as_mut() {
+        // Content and XMI metadata outside every element keep their place
+        // among the roots that survive (ADR 0035 D3, ADR 0042).
+        if self.preserved.is_some() || self.metadata.is_some() {
             let kept: Vec<bool> = self.roots.iter().map(|&root| new(root).is_some()).collect();
-            preserved.shift(&kept);
+            for placed in [self.preserved.as_mut(), self.metadata.as_mut()]
+                .into_iter()
+                .flatten()
+            {
+                placed.shift(&kept);
+            }
         }
         self.roots = self.roots.iter().filter_map(|&root| new(root)).collect();
         for node in self.index.values_mut() {
@@ -1437,8 +1583,10 @@ impl Document {
 
     /// Whether the document holds preserved content anywhere: in an element
     /// ([`SacmElement::has_preserved_content`]), or outside every element,
-    /// on or under the `xmi:XMI` element, such as `xsi:schemaLocation` or an
-    /// `xmi:Documentation` (ADR 0035 D3). A strict [`xmi::write`](crate::xmi::write)
+    /// on or under the `xmi:XMI` element, such as a vendor attribute or an
+    /// XMI-namespace element XMI does not define there (ADR 0035 D3). XMI
+    /// metadata, such as `xmi:uuid` or `xmi:Documentation`, is none
+    /// (SACM23-XMI-019). A strict [`xmi::write`](crate::xmi::write)
     /// refuses a document that holds some
     /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
     ///
@@ -1447,7 +1595,7 @@ impl Document {
     ///
     /// let input = br#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
     ///     xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
-    ///   <xmi:Documentation exporter="tool"/>
+    ///   <xmi:foo exporter="tool"/>
     ///   <sacm:ArgumentPackage xmi:id="p"><name content="P"/></sacm:ArgumentPackage>
     /// </xmi:XMI>"#;
     /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
@@ -1494,6 +1642,34 @@ impl Document {
             used.references = used.references.saturating_add(1);
         }
         self.preserved = Some(Box::new(preserved));
+        Ok(())
+    }
+
+    /// The XMI metadata outside every element, if the document holds any
+    /// (SACM23-XMI-019, ADR 0042).
+    pub(crate) fn document_metadata(&self) -> Option<&Preserved> {
+        self.metadata.as_deref()
+    }
+
+    /// Gives the document the XMI metadata `metadata` outside every element
+    /// (ADR 0042), which it did not hold; on an error the document is
+    /// unchanged.
+    ///
+    /// The XMI reader keeps the metadata on and under `xmi:XMI` through it.
+    /// Its ids join the document's id space, and each id it may name counts
+    /// as a reference. It refuses, with the reason, a document that holds
+    /// such metadata already, an empty id, an id given twice and an id
+    /// already in use. Empty metadata changes nothing.
+    pub(crate) fn set_document_metadata(&mut self, metadata: Preserved) -> Result<(), String> {
+        if self.metadata.is_some() {
+            return Err("the document holds XMI metadata already".to_owned());
+        }
+        if metadata.is_empty() {
+            return Ok(());
+        }
+        check_preserved_ids(self, &metadata)?;
+        self.hold_metadata(None, &metadata);
+        self.metadata = Some(Box::new(metadata));
         Ok(())
     }
 
@@ -1567,6 +1743,9 @@ impl Document {
             // Compared through `document_preserved`, as
             // `Difference::DocumentPreservedContent` (ADR 0035 D3).
             preserved: _,
+            // Compared through `document_metadata`, as
+            // `Difference::DocumentMetadata` (ADR 0042).
+            metadata: _,
         } = self;
         roots.iter().map(|&node| self.view(node))
     }
@@ -1707,10 +1886,11 @@ impl Document {
         }
         let shifts = |holder: Option<usize>, index: usize| {
             holder.filter(|&holder| {
-                self.nodes[holder]
-                    .preserved
-                    .as_deref()
-                    .is_some_and(|preserved| preserved.places_after(index))
+                let node = &self.nodes[holder];
+                [node.preserved.as_deref(), node.metadata.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|placed| placed.places_after(index))
             })
         };
         let old = shifts(old_parent, old_index);
@@ -1806,12 +1986,8 @@ impl Document {
         };
         let kept: Vec<bool> = siblings.iter().map(|&sibling| sibling != moved).collect();
         siblings.remove(old_index);
-        let preserved = match old_parent {
-            Some(parent) => self.nodes[parent].preserved.as_deref_mut(),
-            None => self.preserved.as_deref_mut(),
-        };
-        if let Some(preserved) = preserved {
-            preserved.shift(&kept);
+        for placed in self.placed_mut(old_parent).into_iter().flatten() {
+            placed.shift(&kept);
         }
         self.renumber_children(old_parent, old_index);
 
@@ -1821,17 +1997,26 @@ impl Document {
         };
         let at = position.min(siblings.len());
         siblings.insert(at, moved);
-        let preserved = match new_parent {
-            Some(parent) => self.nodes[parent].preserved.as_deref_mut(),
-            None => self.preserved.as_deref_mut(),
-        };
-        if let Some(preserved) = preserved {
-            preserved.make_room(at);
+        for placed in self.placed_mut(new_parent).into_iter().flatten() {
+            placed.make_room(at);
         }
         let kind = self.nodes[moved].kind;
         self.nodes[moved].role = new_parent.and_then(|parent| role(self.nodes[parent].kind, kind));
         self.nodes[moved].parent = new_parent;
         self.renumber_children(new_parent, at);
+    }
+
+    /// What `parent`, or the document for `None`, places among its typed
+    /// children: its preserved content and its XMI metadata (ADR 0033, ADR
+    /// 0042).
+    fn placed_mut(&mut self, parent: Option<usize>) -> [Option<&mut Preserved>; 2] {
+        match parent {
+            Some(parent) => {
+                let node = &mut self.nodes[parent];
+                [node.preserved.as_deref_mut(), node.metadata.as_deref_mut()]
+            }
+            None => [self.preserved.as_deref_mut(), self.metadata.as_deref_mut()],
+        }
     }
 }
 
@@ -1911,6 +2096,8 @@ impl Document {
             // Captured as the elements that follow, in pre-order.
             children: _,
             preserved,
+            metadata,
+            name_metadata,
         } = &self.nodes[node];
         Captured {
             id: id.clone(),
@@ -1929,6 +2116,8 @@ impl Document {
             references: references.clone(),
             hrefs: hrefs.clone(),
             preserved: preserved.clone(),
+            metadata: metadata.clone(),
+            name_metadata: name_metadata.clone(),
             parent,
         }
     }
@@ -1975,6 +2164,10 @@ impl Document {
     /// each top, `ids` and the kept part ids and preserved ids are free and
     /// distinct, and every reference resolves. Changes nothing when the
     /// document has no element `parent`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one node built field by field, as `capture` takes it apart"
+    )]
     pub(crate) fn insert_copy(
         &mut self,
         parent: Option<&ElementId>,
@@ -1996,13 +2189,7 @@ impl Document {
         let remap = |value: &LangString| {
             value.map_expression(|expression| mapped.get(expression).map(|&copy| copy.clone()))
         };
-        let keep_text = |text: &Option<Text>| {
-            text.as_ref().map(|text| Text {
-                value: text.value.values().iter().map(remap).collect(),
-                id: keep(&text.id),
-                value_ids: text.value_ids.iter().map(keep).collect(),
-            })
-        };
+        let keep_text = |text: &Option<Text>| text.as_ref().map(|text| text.copied(remap, keep));
         let mut handles: Vec<usize> = Vec::with_capacity(snapshot.elements.len());
         for (captured, id) in snapshot.elements.iter().zip(ids) {
             let holder = match captured.parent {
@@ -2042,6 +2229,17 @@ impl Document {
                 role,
                 children: Vec::new(),
                 preserved: None,
+                // A copy is a new object: its XMI metadata is kept, but not
+                // the `xmi:uuid`s, which identify the original (XMI 2.5.1
+                // §7.13, ADR 0042 D6).
+                metadata: captured
+                    .metadata
+                    .as_deref()
+                    .and_then(Preserved::without_uuid),
+                name_metadata: captured
+                    .name_metadata
+                    .as_deref()
+                    .and_then(Preserved::without_uuid),
             });
             let parts: Vec<ElementId> = {
                 let added = &self.nodes[node];
@@ -2059,6 +2257,10 @@ impl Document {
             };
             for part in parts {
                 self.other_ids.entry(part).or_default().owner = Some(node);
+            }
+            let metadata: Vec<Preserved> = self.nodes[node].metadata_parts().cloned().collect();
+            for metadata in &metadata {
+                self.hold_metadata(Some(node), metadata);
             }
             for (end, targets) in &captured.references {
                 let targets = targets
@@ -2121,6 +2323,8 @@ struct Captured {
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
     preserved: Option<Box<Preserved>>,
+    metadata: Option<Box<Preserved>>,
+    name_metadata: Option<Box<Preserved>>,
     /// The index of the captured element that contains it; `None` for a
     /// top.
     parent: Option<usize>,
@@ -2213,6 +2417,35 @@ impl<'s> CapturedElement<'s> {
             .preserved
             .as_deref()
             .map_or(&[], |preserved| &preserved.references)
+    }
+
+    /// Every XMI metadata it holds, which a copy keeps but for the
+    /// `xmi:uuid`s (ADR 0042 D6): its own, its name's, then that of its texts
+    /// and their values.
+    fn metadata(self) -> impl Iterator<Item = &'s Preserved> {
+        let captured = self.captured;
+        captured
+            .metadata
+            .as_deref()
+            .into_iter()
+            .chain(captured.name_metadata.as_deref())
+            .chain(
+                [&captured.content, &captured.key, &captured.location]
+                    .into_iter()
+                    .flatten()
+                    .flat_map(Text::metadata),
+            )
+    }
+
+    /// The `xmi:id`s of its XMI metadata, which the copy keeps (ADR 0042 D5).
+    pub(crate) fn metadata_ids(self) -> impl Iterator<Item = &'s ElementId> {
+        self.metadata().flat_map(|metadata| metadata.ids.iter())
+    }
+
+    /// The ids its XMI metadata may name.
+    pub(crate) fn metadata_references(self) -> impl Iterator<Item = &'s ElementId> {
+        self.metadata()
+            .flat_map(|metadata| metadata.references.iter())
     }
 }
 
@@ -3723,6 +3956,11 @@ impl<'a> SacmElement<'a> {
             children: _,
             // Compared exactly and in order (ADR 0033).
             preserved,
+            // Compared exactly and in order, with the name's and the texts'
+            // (ADR 0042).
+            metadata,
+            // Compared, with the element's.
+            name_metadata,
         } = self.node();
         Compared {
             id,
@@ -3742,6 +3980,8 @@ impl<'a> SacmElement<'a> {
             references,
             hrefs,
             preserved: preserved.as_deref(),
+            metadata: metadata.as_deref(),
+            name_metadata: name_metadata.as_deref(),
         }
     }
 
@@ -3802,6 +4042,61 @@ impl<'a> SacmElement<'a> {
         self.node().preserved.as_deref()
     }
 
+    /// The element's `xmi:uuid` (XMI 2.5.1 §7.6.1), exactly as read, or
+    /// `None`: XMI metadata, which both saves write back and a copy drops
+    /// (SACM23-XMI-019, ADR 0042).
+    ///
+    /// Only [`xmi::read`](crate::xmi::read) gives one; an element built with
+    /// [`edit::apply`](crate::edit::apply) has none.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+    ///     xmi:id="p" xmi:uuid="urn:uuid:7f3c" xmi:label="Arguments">
+    ///   <name content="P"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let p = document.get("p").expect("the root was read");
+    /// assert_eq!(p.uuid(), Some("urn:uuid:7f3c"));
+    /// assert_eq!(p.label(), Some("Arguments"));
+    /// // Metadata is no preserved content: a strict save writes it back.
+    /// assert!(!p.has_preserved_content());
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn uuid(self) -> Option<&'a str> {
+        self.metadata()
+            .and_then(|metadata| metadata.xmi_attribute("uuid"))
+    }
+
+    /// The element's `xmi:label`, exactly as read, or `None`. "The value of
+    /// the label attribute is ignored on import" (XMI 2.5.1 §7.6.1): the
+    /// library never uses it, and both saves write it back (SACM23-XMI-019,
+    /// ADR 0042).
+    #[must_use]
+    pub fn label(self) -> Option<&'a str> {
+        self.metadata()
+            .and_then(|metadata| metadata.xmi_attribute("label"))
+    }
+
+    /// The element's own XMI metadata, if it holds any (ADR 0042).
+    pub(crate) fn metadata(self) -> Option<&'a Preserved> {
+        self.node().metadata.as_deref()
+    }
+
+    /// The XMI metadata of the element's name, if it holds any (ADR 0042).
+    pub(crate) fn name_metadata(self) -> Option<&'a Preserved> {
+        self.node().name_metadata.as_deref()
+    }
+
+    /// Every XMI metadata the element holds: its own, its name's, then that
+    /// of its texts and their values (ADR 0042).
+    pub(crate) fn metadata_parts(self) -> impl Iterator<Item = &'a Preserved> {
+        self.node().metadata_parts()
+    }
+
     /// The element's node in the arena.
     fn node(self) -> &'a Node {
         // Views are only made from handles the document handed out, and
@@ -3849,9 +4144,34 @@ pub(crate) struct Compared<'a> {
     hrefs: &'a [(ReferenceEnd, Vec<Href>)],
     /// The element's preserved content; `None` when it holds none.
     pub(crate) preserved: Option<&'a Preserved>,
+    /// The element's XMI metadata; `None` when it holds none.
+    metadata: Option<&'a Preserved>,
+    /// The XMI metadata of the element's name; `None` when it holds none.
+    name_metadata: Option<&'a Preserved>,
 }
 
 impl<'a> Compared<'a> {
+    /// Whether its XMI metadata differs from that of `other`: the element's,
+    /// its name's, or that of a `content`, `key` or `location` or a value of
+    /// one, exactly and in order; a part one side lacks holds none there
+    /// (ADR 0042).
+    pub(crate) fn metadata_differs(&self, other: &Compared<'_>) -> bool {
+        let none: &[Option<Box<Preserved>>] = &[];
+        let ours = [self.content, self.key, self.location];
+        let theirs = [other.content, other.key, other.location];
+        self.metadata != other.metadata
+            || self.name_metadata != other.name_metadata
+            || ours.into_iter().zip(theirs).any(|(ours, theirs)| {
+                let ours_values = ours.map_or(none, Text::value_metadata);
+                let theirs_values = theirs.map_or(none, Text::value_metadata);
+                ours.and_then(Text::role_metadata) != theirs.and_then(Text::role_metadata)
+                    || (0..ours_values.len().max(theirs_values.len())).any(|position| {
+                        ours_values.get(position).and_then(Option::as_deref)
+                            != theirs_values.get(position).and_then(Option::as_deref)
+                    })
+            })
+    }
+
     /// The value of the flag `flag`.
     pub(crate) fn flag(&self, flag: Flag) -> bool {
         match flag {
@@ -4010,22 +4330,34 @@ pub(crate) struct Text {
     id: Option<ElementId>,
     /// The `xmi:id` of each value, in order: as many as `value` has values.
     value_ids: Vec<Option<ElementId>>,
+    /// The XMI metadata of the role element (SACM23-XMI-019, ADR 0042), its
+    /// children placed by value index; `None` when it holds none.
+    metadata: Option<Box<Preserved>>,
+    /// The XMI metadata of each value's element, in order: as many as
+    /// `value` has values.
+    value_metadata: Vec<Option<Box<Preserved>>>,
 }
 
 impl Text {
-    /// `value`, with no ids.
+    /// `value`, with no ids and no metadata.
     pub(crate) fn new(value: MultiLangString) -> Self {
         let value_ids = vec![None; value.len()];
+        let value_metadata = vec![None; value.len()];
         Self {
             value,
             id: None,
             value_ids,
+            metadata: None,
+            value_metadata,
         }
     }
 
-    /// `value`, with the ids of `held` kept by position (ADR 0029): the role
-    /// element's id, and the id of each value of `held` at a position
-    /// `value` also has. With no `held`, it has no ids.
+    /// `value`, with the ids and the XMI metadata of `held` kept by position
+    /// (ADR 0029, ADR 0042 D6): the role element's, and those of each value
+    /// of `held` at a position `value` also has. With no `held`, it has
+    /// none. A metadata child of the role element keeps its place before
+    /// the value at its index, or goes after the last value if that value is
+    /// gone.
     pub(crate) fn keeping_ids(value: MultiLangString, held: Option<&Text>) -> Self {
         let mut text = Self::new(value);
         if let Some(held) = held {
@@ -4033,6 +4365,16 @@ impl Text {
             for (kept, old) in text.value_ids.iter_mut().zip(&held.value_ids) {
                 kept.clone_from(old);
             }
+            for (kept, old) in text.value_metadata.iter_mut().zip(&held.value_metadata) {
+                kept.clone_from(old);
+            }
+            text.metadata = held.metadata.clone().map(|mut metadata| {
+                let kept: Vec<bool> = (0..held.value.len())
+                    .map(|position| position < text.value.len())
+                    .collect();
+                metadata.shift(&kept);
+                metadata
+            });
         }
         text
     }
@@ -4042,10 +4384,58 @@ impl Text {
         self.id = id;
     }
 
-    /// Adds `value`, with the `xmi:id` of its element, at the end.
-    pub(crate) fn push(&mut self, value: LangString, id: Option<ElementId>) {
+    /// Sets the XMI metadata of the role element; empty is none.
+    pub(crate) fn set_metadata(&mut self, metadata: Preserved) {
+        self.metadata = (!metadata.is_empty()).then(|| Box::new(metadata));
+    }
+
+    /// Adds `value`, with the `xmi:id` and the XMI metadata of its element,
+    /// at the end; empty metadata is none.
+    pub(crate) fn push(&mut self, value: LangString, id: Option<ElementId>, metadata: Preserved) {
         self.value.push(value);
         self.value_ids.push(id);
+        self.value_metadata
+            .push((!metadata.is_empty()).then(|| Box::new(metadata)));
+    }
+
+    /// The XMI metadata of the role element, if it holds any.
+    pub(crate) fn role_metadata(&self) -> Option<&Preserved> {
+        self.metadata.as_deref()
+    }
+
+    /// The XMI metadata of each value's element, by position.
+    pub(crate) fn value_metadata(&self) -> &[Option<Box<Preserved>>] {
+        &self.value_metadata
+    }
+
+    /// Every XMI metadata it holds: the role element's, then the values', in
+    /// order.
+    pub(crate) fn metadata(&self) -> impl Iterator<Item = &Preserved> {
+        self.metadata
+            .as_deref()
+            .into_iter()
+            .chain(self.value_metadata.iter().filter_map(Option::as_deref))
+    }
+
+    /// A copy for a [`CopyElements`](crate::edit::CopyElements): its values
+    /// mapped by `value`, each id kept as `keep` says, and its metadata
+    /// without the `xmi:uuid`s (XMI 2.5.1 §7.13, ADR 0042 D6).
+    pub(crate) fn copied(
+        &self,
+        value: impl Fn(&LangString) -> LangString,
+        keep: impl Fn(&Option<ElementId>) -> Option<ElementId>,
+    ) -> Self {
+        Self {
+            value: self.value.values().iter().map(value).collect(),
+            id: keep(&self.id),
+            value_ids: self.value_ids.iter().map(&keep).collect(),
+            metadata: self.metadata.as_deref().and_then(Preserved::without_uuid),
+            value_metadata: self
+                .value_metadata
+                .iter()
+                .map(|metadata| metadata.as_deref().and_then(Preserved::without_uuid))
+                .collect(),
+        }
     }
 
     /// The `MultiLangString`.
@@ -4086,6 +4476,21 @@ impl Node {
             Flag::IsAbstract => &mut self.is_abstract,
             Flag::IsCounter => &mut self.is_counter,
         }
+    }
+
+    /// Every XMI metadata the node holds (ADR 0042): its own, its name's,
+    /// then that of its `content`, `key` and `location` and their values.
+    fn metadata_parts(&self) -> impl Iterator<Item = &Preserved> {
+        self.metadata
+            .as_deref()
+            .into_iter()
+            .chain(self.name_metadata.as_deref())
+            .chain(
+                TextRole::ALL
+                    .iter()
+                    .filter_map(|&role| self.text(role))
+                    .flat_map(Text::metadata),
+            )
     }
 
     /// The text the node holds in `role`.
@@ -4422,7 +4827,11 @@ mod tests {
         let mut held = Text::default();
         held.set_id(id.map(ElementId::new));
         for value_id in value_ids {
-            held.push(LangString::new("x"), value_id.map(ElementId::new));
+            held.push(
+                LangString::new("x"),
+                value_id.map(ElementId::new),
+                super::Preserved::default(),
+            );
         }
         held
     }

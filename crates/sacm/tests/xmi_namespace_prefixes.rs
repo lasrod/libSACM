@@ -1076,12 +1076,17 @@ fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothin
         read_without.document().get("a").is_none() && read_without.document().element_count() == 1,
         "{ROW}: a root with no XMI id under a default XMI is not read with a generated id"
     );
-    // The root element itself in the default namespace XMI.
+    // The root element itself in the default namespace XMI: an
+    // XMI-namespace document element other than xmi:XMI, InvalidRoot since
+    // slice 0073a (SACM23-XMI-019, ADR 0042 D4; `Unsupported` until then).
     let root_in_xmi = format!("<ArgumentPackage xmlns=\"{XMI_NS}\" id=\"a\"/>");
-    assert_unsupported_at(
-        "a root in the default namespace XMI",
-        &root_in_xmi,
-        loc(1, 1),
+    let error = refusal(root_in_xmi.as_bytes());
+    assert!(
+        matches!(&error, ReadError::InvalidRoot { element_name, .. } if element_name == "ArgumentPackage")
+            && error.template() == "SACM-XMI-001/xmi-namespace-root"
+            && error.location() == Some(loc(1, 1)),
+        "{ROW}: a root in the default namespace XMI is not InvalidRoot (xmi-namespace-root) at \
+         line 1, column 1: {error:?}"
     );
 }
 
@@ -1311,65 +1316,60 @@ type Template = fn(&str, &str) -> String;
 /// template, and where it is refused. Each is at line 1, column 1, or on a
 /// later line after a fixed indent, so its location does not depend on the
 /// prefix length.
-const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
-    // Conforming content this version does not read yet: an XMI element as
-    // the document element, and XMI metadata on a root (SACM23-XMI-019).
-    // Until slice 0067 the first two samples were a TerminologyPackageInterface
-    // and an AssuranceCasePackageInterface root (an ArgumentPackageInterface
-    // until slice 0066), which are read now (SACM23-TERM-007, SACM23-AC-002).
-    // Content that does not conform is preserved (ADR 0033), so it is no
-    // sample here.
+const REFUSALS: [(&str, Template, (u32, u32)); 3] = [
+    // Until slice 0073a read XMI metadata (SACM23-XMI-019, ADR 0042) these
+    // were XMI metadata on and in a root and beside it, and an XMI element
+    // as the document element; until slice 0067 the first two samples were
+    // a TerminologyPackageInterface and an AssuranceCasePackageInterface
+    // root (an ArgumentPackageInterface until slice 0066), which are read
+    // now (SACM23-TERM-007, SACM23-AC-002). Content that does not conform
+    // where an element can keep it is preserved (ADR 0033), so it is no
+    // sample here. Since slice 0073a: defects on and under `xmi:XMI`, and a
+    // cross-document link not read yet (SACM23-XMI-029).
     (
-        "an xmi:Extension as the document element",
-        |s, x| format!("<{x}:Extension xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>"),
-        (1, 1),
-    ),
-    (
-        "an xmi:Documentation as the document element",
-        |s, x| format!("<{x}:Documentation xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>"),
-        (1, 1),
-    ),
-    (
-        "an xmi:uuid on a root",
-        |s, x| {
-            format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\"\n  {x}:uuid=\"u\"/>"
-            )
-        },
-        (2, 3),
-    ),
-    (
-        "an xmi:label on a root",
-        |s, x| {
-            format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\"\n  {x}:label=\"l\"/>"
-            )
-        },
-        (2, 3),
-    ),
-    (
-        "an xmi:Extension in a root",
-        |s, x| {
-            format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\">\n  <{x}:Extension/></{s}:ArgumentPackage>"
-            )
-        },
-        (2, 3),
-    ),
-    (
-        "an XMI element beside a root",
+        "an XMI-namespace element XMI does not define beside a root",
         |s, x| {
             format!(
                 "<{x}:XMI xmlns:{x}=\"{XMI_NS}\" xmlns:{s}=\"{SACM_NS}\">\n  \
                      <{s}:ArgumentPackage {x}:id=\"a\"/>\n  \
-                     <{x}:documentation/>\n</{x}:XMI>"
+                     <{x}:foo/>\n</{x}:XMI>"
             )
         },
         (3, 3),
     ),
+    (
+        "an attribute on the XMI element",
+        |s, x| {
+            format!(
+                "<{x}:XMI xmlns:{x}=\"{XMI_NS}\" xmlns:{s}=\"{SACM_NS}\"\n  note=\"x\">\n  \
+                     <{s}:ArgumentPackage {x}:id=\"a\"/>\n</{x}:XMI>"
+            )
+        },
+        (2, 3),
+    ),
+    (
+        "an XPointer href on a reference element",
+        |s, x| {
+            format!(
+                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"a\">\n  \
+                     <argumentElement {x}:type=\"{s}:Claim\" {x}:id=\"c1\">\n    \
+                     <metaClaim href=\"o.xmi#xpointer(id('c'))\"/></argumentElement></{s}:ArgumentPackage>"
+            )
+        },
+        (3, 16),
+    ),
+];
+
+/// The XMI-namespace document elements other than `xmi:XMI`: `InvalidRoot`
+/// at line 1, column 1, under any prefix (SACM23-XMI-019, ADR 0042 D4;
+/// `Unsupported` until slice 0073a).
+const ROOT_REFUSALS: [(&str, Template); 2] = [
+    ("an xmi:Extension as the document element", |s, x| {
+        format!("<{x}:Extension xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>")
+    }),
+    ("an xmi:Documentation as the document element", |s, x| {
+        format!("<{x}:Documentation xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>")
+    }),
 ];
 
 #[test]
@@ -1441,6 +1441,26 @@ fn sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_unde
                 error.location(),
                 expected.location(),
                 "{ROW}: {what}: with {s:?} and {x:?}, the refusal is elsewhere: {error}"
+            );
+        }
+    }
+    for (what, template) in ROOT_REFUSALS {
+        for (s, x) in [
+            ("sacm", "xmi"),
+            ("s", "x"),
+            ("ü", "ns0"),
+            ("SACM", "XMI"),
+            ("xmi", "sacm"),
+        ] {
+            let input = template(s, x);
+            let error = refusal(input.as_bytes());
+            assert!(
+                matches!(error, ReadError::InvalidRoot { .. })
+                    && error.template() == "SACM-XMI-001/xmi-namespace-root"
+                    && error.location() == Some(loc(1, 1)),
+                "{ROW}: {what}: with {s:?} and {x:?}, {} is not InvalidRoot \
+                 (xmi-namespace-root) at line 1, column 1: {error:?}",
+                preview(input.as_bytes())
             );
         }
     }

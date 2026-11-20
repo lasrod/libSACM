@@ -1118,13 +1118,16 @@ fn lib_api_011_interim_check_gates_every_row_by_cp_001_and_cp_003_and_by_its_own
     // Interim, and slice 0066 verifies them; SACM23-AC-002 and SACM23-TERM-007
     // were the last AC and TERM rows, and slice 0067 verifies them: the test
     // sets them `planned` in its own copy of the matrix, as the SACM23-ART-008
-    // test does, so that only their place in the closures counts.
+    // test does, so that only their place in the closures counts. So it does
+    // SACM23-XMI-019, the sample row of no package, which slice 0073a reads
+    // and verifies (no entry names it since).
     let mut open = matrix();
     for row in [
         "SACM23-AC-002",
         "SACM23-ARG-014",
         "SACM23-ART-012",
         "SACM23-TERM-007",
+        "SACM23-XMI-019",
     ] {
         open = with_row_value(&open, row, "status", toml::Value::String("planned".into()));
     }

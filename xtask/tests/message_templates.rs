@@ -67,8 +67,12 @@ const HEADING: &str = "## Message templates";
 /// (SACM23-BASE-009), and the four of unread kinds and ends, which slice
 /// 0067 removes (ADR 0035 amendment 1); and the eleven slice 0072 adds, less
 /// `SACM-XMI-002/no-namespace`, which it removes (LIB-SEC-003,
-/// LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041): Read 75, Unread 27, Write 7.
-const REFUSAL_TEMPLATES: usize = 109;
+/// LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041): Read 75, Unread 27, Write 7;
+/// and slice 0073a removes the seven Unread templates of SACM-XMI-014 and
+/// adds `SACM-XMI-001/xmi-namespace-root` (Read) and
+/// `SACM-XMI-003/wrapper-element` (Unread) (SACM23-XMI-019, ADR 0042): Read
+/// 76, Unread 21, Write 7.
+const REFUSAL_TEMPLATES: usize = 104;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
@@ -78,8 +82,12 @@ const ROW_018: &str = "LIB-API-018";
 /// of unread kinds and ends; slice 0068 adds eight to validation,
 /// SACM23-VAL-013, -014, -015 and -023; slice 0072 adds three to the
 /// reader, `SACM-XMI-008/other-revision`, `/occurence` and
-/// `SACM-XMI-002/sacm-like`, LIB-COMPAT-004).
-const DIAGNOSTIC_TEMPLATES: usize = 109;
+/// `SACM-XMI-002/sacm-like`, LIB-COMPAT-004); slice 0073a removes the eight
+/// kept forms of SACM-XMI-014 and adds seven: `SACM-XMI-003/wrapper-element-kept`,
+/// the four `SACM-XMI-003/proxy-*` forms, `SACM-REF-001/metadata-dangling`
+/// and `SACM-ID-002/metadata-id-not-an-ncname` (SACM23-XMI-019,
+/// SACM23-XMI-030; ADR 0042).
+const DIAGNOSTIC_TEMPLATES: usize = 108;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -899,7 +907,7 @@ fn lib_api_017_every_template_const_is_named_in_another_file_of_the_crate() {
 }
 
 #[test]
-fn lib_api_017_template_rs_declares_the_108_refusal_templates() {
+fn lib_api_017_template_rs_declares_the_104_refusal_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW}: {SACM_SRC}/{TEMPLATES} does not exist");
@@ -919,7 +927,7 @@ fn lib_api_017_template_rs_declares_the_108_refusal_templates() {
 }
 
 #[test]
-fn lib_api_018_template_rs_declares_the_109_diagnostic_templates() {
+fn lib_api_018_template_rs_declares_the_108_diagnostic_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");

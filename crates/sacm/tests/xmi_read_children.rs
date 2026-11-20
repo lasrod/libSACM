@@ -1117,15 +1117,17 @@ fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_p
     // Not conforming: kept whole as preserved content of the parent
     // (ADR 0033).
     assert_all_preserved_at_mark("role", &cases);
-    // An XMI-namespace element is XMI metadata not read yet
-    // (SACM23-XMI-019): still refused.
-    let refusals = [refused(
+    // An XMI-namespace element other than `xmi:extension` and
+    // `xmi:Extension` is no XMI metadata: XMI 2.5.1 defines no such element,
+    // so it is kept whole with SACM-XMI-003 (SACM23-XMI-019, ADR 0042 D4;
+    // refused as not read yet until slice 0073a).
+    let xmi_role = [preserved(
         "a role element in an XMI-namespace",
         in_ap(&format!(
             "{MARK}<xmi:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
         )),
     )];
-    assert_all_unsupported_at_mark("role", &refusals);
+    assert_all_preserved_at_mark("role in the XMI namespace", &xmi_role);
     assert_role_spellings_are_read();
 }
 
@@ -1340,7 +1342,11 @@ fn sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child() {
 }
 
 #[test]
-fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_or_preserved_at_its_name() {
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_metadata_or_preserved_at_its_name() {
     let mut cases = Vec::new();
     let children = [
         (
@@ -1359,11 +1365,12 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_or_preserved_at_
     // `gid` is read (SACM23-BASE-006), and `isCitation`, `isAbstract`,
     // `citedElement` and `abstractForm` in no namespace (SACM23-BASE-007/008),
     // so they are not among these; in the SACM namespace they are not read.
-    // `xmi:uuid` and `xmi:label` are XMI metadata not read yet
-    // (SACM23-XMI-019): refused. The others do not conform where they stand
-    // (`xmi:version` belongs on a root or the wrapper only): kept as
-    // preserved content of the child (ADR 0033).
-    let unread = ["xmi:uuid=\"u\"", "xmi:label=\"l\""];
+    // `xmi:uuid` and `xmi:label` are XMI metadata, read since slice 0073a
+    // with no diagnostic, and `uuid()` and `label()` give them
+    // (SACM23-XMI-019, ADR 0042; refused until then). The others do not
+    // conform where they stand (`xmi:version` belongs on a root or the
+    // wrapper only): kept as preserved content of the child (ADR 0033).
+    let metadata = [("xmi:uuid=\"u\"", "u"), ("xmi:label=\"l\"", "l")];
     let attributes = [
         "sacm:isCitation=\"false\"",
         "sacm:isCitation=\"true\"",
@@ -1375,12 +1382,22 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_or_preserved_at_
         // SACM namespace it is not read.
         "sacm:name=\"N\"",
     ];
-    let mut refusals = Vec::new();
+    let mut read_cases = Vec::new();
     for (what, wrap, start) in children {
-        for attribute in unread {
-            refusals.push(refused(
+        // An `xsi:type` gives its SACM-XMI-010 (SACM23-XMI-026); the metadata
+        // gives nothing more.
+        let expected: &[&str] = if start.contains("xsi:type") {
+            &["SACM-XMI-010"]
+        } else {
+            &[]
+        };
+        for (attribute, value) in metadata {
+            read_cases.push((
                 format!("{attribute} on {what}"),
-                wrap(&format!("<{start} xmi:id=\"x\"\n      {MARK}{attribute}/>")),
+                wrap(&format!("<{start} xmi:id=\"x\"\n      {attribute}/>")),
+                attribute,
+                value,
+                expected,
             ));
         }
         for attribute in attributes {
@@ -1412,7 +1429,42 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_or_preserved_at_
         "x",
     ));
     assert_all_preserved_at_mark("attribute", &cases);
-    assert_all_unsupported_at_mark("unread XMI attribute", &refusals);
+    for (what, input, attribute, value, expected) in &read_cases {
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            let output = match read_with(input.as_bytes(), ReadOptions::default().with_mode(mode)) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refused it: {error:?}"),
+            };
+            let codes: Vec<&str> = output
+                .diagnostics()
+                .iter()
+                .map(|found| found.code().as_str())
+                .collect();
+            assert_eq!(
+                codes, *expected,
+                "{ROW}: {what}: a {mode:?} read gives diagnostics besides the type's"
+            );
+            let Some(x) = output.document().get("x") else {
+                panic!("{ROW}: {what}: x is not read ({mode:?})");
+            };
+            assert!(
+                !x.has_preserved_content(),
+                "{ROW}: {what}: x keeps it as preserved content ({mode:?})"
+            );
+            {
+                let found = if attribute.starts_with("xmi:uuid") {
+                    x.uuid()
+                } else {
+                    x.label()
+                };
+                assert_eq!(
+                    found,
+                    Some(*value),
+                    "{ROW}: {what}: uuid() or label() ({mode:?})"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -1459,12 +1511,28 @@ fn sacm23_xmi_016_text_or_an_unreadable_name_in_a_child_is_preserved_where_it_st
     // defect inside a name are kept as preserved content of the child
     // (ADR 0033).
     assert_all_preserved_at_mark("content", &cases);
-    // `xmi:uuid` on a name is XMI metadata not read yet (SACM23-XMI-019).
-    let refusals = [refused(
-        "an attribute of a name",
-        claim(&format!("<name {MARK}xmi:uuid=\"n\" content=\"A\"/>")),
-    )];
-    assert_all_unsupported_at_mark("content", &refusals);
+    // `xmi:uuid` on a name is the name's XMI metadata, read since slice
+    // 0073a with no diagnostic (SACM23-XMI-019, ADR 0042; refused until
+    // then).
+    let input = claim("<name xmi:uuid=\"n\" content=\"A\"/>");
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        let output = match read_with(input.as_bytes(), ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => {
+                panic!("{ROW}: xmi:uuid on a name: a {mode:?} read refused it: {error:?}")
+            }
+        };
+        assert_eq!(
+            output.diagnostics(),
+            [],
+            "{ROW}: xmi:uuid on a name: a {mode:?} read gives diagnostics"
+        );
+        assert_eq!(
+            output.document().get("x").and_then(SacmElement::name),
+            Some(&LangString::new("A")),
+            "{ROW}: xmi:uuid on a name: the name is not read ({mode:?})"
+        );
+    }
 }
 
 #[test]

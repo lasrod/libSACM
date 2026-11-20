@@ -36,8 +36,6 @@ use sacm::compare::Difference;
 use sacm::edit::{AddReference, CreateTerminologyGroup, RemoveReference};
 use sacm::model::LangString;
 
-mod common;
-
 const ROW: &str = "SACM23-TERM-006";
 
 /// Both modes, strict first.
@@ -587,47 +585,44 @@ fn sacm23_term_006_an_empty_or_qualified_attribute_is_preserved_by_the_group() {
 }
 
 #[test]
-fn sacm23_term_006_a_nested_element_under_a_group_is_unsupported_or_preserved_at_that_construct() {
-    let label = "(a limit of this version; SACM23-XMI-019 reads it)";
+fn sacm23_term_006_a_nested_element_under_a_group_is_preserved_at_that_construct() {
+    // With an `xmi:id` or a type attribute, a nested element is kept whole
+    // with SACM-XMI-003 at its start tag (production 2c, rule 4e; ADR 0042
+    // D4): `Unsupported` at the attribute naming SACM23-XMI-019 until slice
+    // 0073a.
     for (what, nested) in [
         (
             "a typed Term",
             format!(
-                "<terminologyElement {MARK}xmi:type=\"sacm:Term\" xmi:id=\"t9\" value=\"t9\">\
+                "{MARK}<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t9\" value=\"t9\">\
                  <name content=\"T9\"/></terminologyElement>"
             ),
         ),
         (
             "a typed Category with no content",
-            format!("<terminologyElement {MARK}xmi:type=\"sacm:Category\" xmi:id=\"k9\"/>"),
+            format!("{MARK}<terminologyElement xmi:type=\"sacm:Category\" xmi:id=\"k9\"/>"),
         ),
         (
             "an element by xsi:type",
-            format!("<terminologyElement {MARK}xsi:type=\"sacm:Term\" xmi:id=\"t9\"/>"),
+            format!("{MARK}<terminologyElement xsi:type=\"sacm:Term\" xmi:id=\"t9\"/>"),
         ),
         (
             "an untyped element with an id",
-            format!("<terminologyElement {MARK}xmi:id=\"t9\"/>"),
+            format!("{MARK}<terminologyElement xmi:id=\"t9\"/>"),
         ),
         (
             "a typed Term after a member element",
             format!(
                 "<terminologyElement xmi:idref=\"t1\"/>\
-                 <terminologyElement {MARK}xmi:type=\"sacm:Term\" xmi:id=\"t9\"/>"
+                 {MARK}<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t9\"/>"
             ),
         ),
     ] {
         let what = format!("{what} inside a TerminologyGroup");
-        let (input, marks) = marked(&g_in("", &nested));
-        let error = refused(&what, &input);
+        let doc = assert_preserved_at(&what, &g_in("", &nested), "g");
         assert!(
-            matches!(
-                &error,
-                ReadError::Unsupported { location, reason, .. }
-                    if *location == Some(marks[0]) && reason.ends_with(label)
-            ) && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-            "{ROW}: {what}: not Unsupported at {} naming SACM23-XMI-019: {error:?}",
-            marks[0]
+            !doc.contains("t9") && !doc.contains("k9"),
+            "{ROW}: {what}: read as an element"
         );
     }
     let what = "an element with only a name inside a TerminologyGroup";

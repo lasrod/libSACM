@@ -209,12 +209,14 @@ impl CopyElements {
                 dropped.insert(part);
             }
         }
-        // 3. Preserved content is copied verbatim: its ids must be free, and
-        //    it may not name an id the copy changes or drops.
+        // 3. Preserved content and XMI metadata are copied verbatim: their
+        //    ids must be free, and they may not name an id the copy changes
+        //    or drops (ADR 0042 D5, D6).
         for element in snapshot.elements() {
             if let Some(id) = element
                 .preserved_ids()
                 .iter()
+                .chain(element.metadata_ids())
                 .find(|id| !document.is_free(id.as_str()))
             {
                 return Err(EditError::DuplicateId { id: id.clone() });
@@ -222,6 +224,7 @@ impl CopyElements {
             if let Some(id) = element
                 .preserved_references()
                 .iter()
+                .chain(element.metadata_references())
                 .find(|id| changes(id) || dropped.contains(id))
             {
                 return Err(EditError::DuplicateId { id: id.clone() });
@@ -302,6 +305,8 @@ impl CopyElements {
             }
             avoid.extend(element.preserved_ids().iter().cloned());
             avoid.extend(element.preserved_references().iter().cloned());
+            avoid.extend(element.metadata_ids().cloned());
+            avoid.extend(element.metadata_references().cloned());
             for &end in ReferenceEnd::ALL {
                 avoid.extend(element.references(end).iter().cloned());
             }

@@ -477,6 +477,35 @@ fn assert_preserved_at(row: &str, input: &[u8], location: SourceLocation, holder
     );
 }
 
+/// Asserts that `input` reads in both modes with no diagnostic and no
+/// preserved content: XMI metadata (SACM23-XMI-019, ADR 0042 D2).
+fn assert_reads_cleanly(row: &str, input: &[u8]) {
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        let output = match read_with(row, input, ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: a {mode:?} read of {} refused it: {error:?} ({error})",
+                preview(input)
+            ),
+        };
+        assert_eq!(
+            output.diagnostics(),
+            [],
+            "{row}: a {mode:?} read of {} gives diagnostics",
+            preview(input)
+        );
+        assert!(
+            !output.document().has_preserved_content()
+                && !output
+                    .document()
+                    .elements()
+                    .any(SacmElement::has_preserved_content),
+            "{row}: a {mode:?} read of {} keeps preserved content",
+            preview(input)
+        );
+    }
+}
+
 /// Asserts that `input` is refused as `Unsupported`, with no code, at
 /// `location`.
 fn assert_unsupported_at(row: &str, input: &[u8], location: SourceLocation) -> ReadError {
@@ -1002,18 +1031,20 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
     // line 3.
     // Until slice 0067 the first case was a package kind not read yet; every
     // package kind is read since (SACM23-AC-002, SACM23-TERM-007).
+    // Since slice 0073a XMI metadata is read (SACM23-XMI-019), so the
+    // samples that were `xmi:documentation`, an `xmi:Extension` in a root,
+    // an `xmi:uuid` on a root and an `href` on a root are now an
+    // XMI-namespace element XMI does not define, a cross-document proxy and
+    // a root in the SACM 2.4 namespace.
     let before_claim = [
-        // An XMI-namespace child.
-        "<xmi:documentation/>",
-        // A readable root with content it cannot read yet (XMI metadata,
-        // SACM23-XMI-019; content that does not conform is preserved
-        // instead, ADR 0033).
-        "<sacm:ArgumentPackage xmi:id=\"a\"><xmi:Extension/></sacm:ArgumentPackage>",
-        // A readable root with an attribute it cannot read yet.
-        "<sacm:ArgumentPackage xmi:id=\"a\" xmi:uuid=\"u\"/>",
-        // A root with a cross-document `href`, which this version does not
-        // read yet.
-        "<sacm:ArgumentPackage href=\"o.xmi#a\"/>",
+        // An XMI-namespace child XMI does not define there (a defect).
+        "<xmi:foo/>",
+        // A readable root with content it cannot read yet (a proxy of an
+        // element of another document, SACM23-XMI-029; content that does not
+        // conform is preserved instead, ADR 0033).
+        "<sacm:ArgumentPackage xmi:id=\"a\"><argumentElement href=\"o.xmi#c\"/></sacm:ArgumentPackage>",
+        // A root this version does not read (LIB-COMPAT-018).
+        "<s:ArgumentPackage xmlns:s=\"http://www.omg.org/spec/SACM/20260504\" xmi:id=\"a\"/>",
     ];
     for first in before_claim {
         let input = wrapped(&format!("\n  {first}\n  <sacm:Claim xmi:id=\"c\"/>\n"));
@@ -1198,20 +1229,59 @@ fn sacm23_xmi_001_an_xmi_element_outside_the_xmi_namespace_is_unsupported_at_the
 }
 
 #[test]
-fn sacm23_xmi_001_an_xmi_namespace_element_as_root_or_wrapper_child_is_unsupported_there() {
+fn sacm23_xmi_001_an_xmi_namespace_root_is_invalid_and_an_undefined_wrapper_child_is_unsupported() {
     let row = "SACM23-XMI-001";
-    let extension_root = format!("<xmi:Extension xmlns:xmi=\"{XMI_NS}\"/>");
-    assert_unsupported_at(row, extension_root.as_bytes(), loc(row, 1, 1));
+    // Since slice 0073a (SACM23-XMI-019, ADR 0042 D4): an XMI-namespace
+    // document element other than xmi:XMI is InvalidRoot, the XMI metadata
+    // elements under xmi:XMI are read with no diagnostic, and a wrapper
+    // child XMI does not define there is `Unsupported` in strict mode with
+    // SACM-XMI-003. Until then the first two were `Unsupported` too.
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        let extension_root = format!("<xmi:Extension xmlns:xmi=\"{XMI_NS}\"/>");
+        let error = match read_with(
+            row,
+            extension_root.as_bytes(),
+            ReadOptions::default().with_mode(mode),
+        ) {
+            Ok(output) => panic!(
+                "{row}: an xmi:Extension document element is read in {mode:?} mode: {:?}",
+                output.diagnostics()
+            ),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(&error, ReadError::InvalidRoot { element_name, .. }
+                if element_name == "xmi:Extension")
+                && error.template() == "SACM-XMI-001/xmi-namespace-root"
+                && error.location() == Some(loc(row, 1, 1)),
+            "{row}: an xmi:Extension document element is not InvalidRoot \
+             (xmi-namespace-root) at line 1, column 1 in {mode:?} mode: {error:?}"
+        );
+    }
     for child in ["<xmi:documentation/>", "<xmi:extension/>"] {
         let before = wrapped(&format!(
             "\n  {child}\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n"
         ));
-        assert_unsupported_at(row, before.as_bytes(), loc(row, 2, 3));
+        assert_reads_cleanly(row, before.as_bytes());
         let after = wrapped(&format!(
             "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  {child}\n"
         ));
-        assert_unsupported_at(row, after.as_bytes(), loc(row, 3, 3));
+        assert_reads_cleanly(row, after.as_bytes());
     }
+    let child = "<xmi:foo/>";
+    let before = wrapped(&format!(
+        "\n  {child}\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n"
+    ));
+    let error = assert_unsupported_at(row, before.as_bytes(), loc(row, 2, 3));
+    assert_eq!(
+        (error.code(), error.template()),
+        (Code::XMI_UNKNOWN_CONTENT, "SACM-XMI-003/wrapper-element"),
+        "{row}: {child} before the root: code and template"
+    );
+    let after = wrapped(&format!(
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  {child}\n"
+    ));
+    assert_unsupported_at(row, after.as_bytes(), loc(row, 3, 3));
 }
 
 // --- SACM23-XMI-001 11. Unread content ---------------------------------------
@@ -1226,22 +1296,24 @@ fn root_start(kind: &str) -> String {
 }
 
 #[test]
-fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_the_attribute() {
+fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_metadata_or_preserved_at_the_attribute() {
     let row = "SACM23-XMI-001";
     // `gid` is read (SACM23-BASE-006), and so are `isCitation`, `isAbstract`,
     // `citedElement` and `abstractForm` in no namespace (SACM23-BASE-007/008,
     // SACM23-XMI-005), so they are not among these; in a namespace they are
-    // not read. XMI metadata and `xsi:schemaLocation` are conforming and not
-    // read yet (SACM23-XMI-019): refused. The rest do not conform: kept as
+    // not read. XMI metadata and `xsi:schemaLocation` are read with no
+    // diagnostic since slice 0073a (SACM23-XMI-019, ADR 0042; refused until
+    // then). `href` and `xmi:idref` are no metadata of a definition
+    // (production 2a; ADR 0042 D4), and the rest do not conform: kept as
     // preserved content of the root (ADR 0033).
-    let unread = [
+    let metadata = [
         "xmi:uuid=\"u\"",
         "xmi:label=\"l\"",
-        "href=\"x\"",
-        "xmi:idref=\"x\"",
         "xsi:schemaLocation=\"urn:x x.xsd\"",
     ];
     let preserved = [
+        "href=\"x\"",
+        "xmi:idref=\"x\"",
         "sacm:isCitation=\"true\"",
         "sacm:isAbstract=\"false\"",
         "ext:isCitation=\"false\"",
@@ -1254,9 +1326,9 @@ fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_t
     ];
     for kind in ["ArgumentPackage", "AssuranceCasePackage", "ArtifactPackage"] {
         // The attribute starts line 2, after two spaces.
-        for attribute in unread {
+        for attribute in metadata {
             let input = format!("{}\n  {attribute}/>", root_start(kind));
-            assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
+            assert_reads_cleanly(row, input.as_bytes());
         }
         for attribute in preserved {
             let input = format!("{}\n  {attribute}/>", root_start(kind));
@@ -1285,12 +1357,17 @@ fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_t
 #[test]
 fn sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attribute() {
     let row = "SACM23-XMI-001";
-    for attribute in ["foo=\"1\"", "xmi:id=\"w\"", "xmi:uuid=\"u\""] {
-        let input = format!(
+    let input = |attribute: &str| {
+        format!(
             "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"\n  {attribute}>\
              <sacm:ArgumentPackage xmi:id=\"a\"/></xmi:XMI>"
-        );
-        assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
+        )
+    };
+    assert_unsupported_at(row, input("foo=\"1\"").as_bytes(), loc(row, 2, 3));
+    // `xmi:id` and `xmi:uuid` are XMI metadata of the wrapper, read since
+    // slice 0073a (SACM23-XMI-019, ADR 0042; refused until then).
+    for attribute in ["xmi:id=\"w\"", "xmi:uuid=\"u\""] {
+        assert_reads_cleanly(row, input(attribute).as_bytes());
     }
 }
 
@@ -1320,14 +1397,20 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
         ("ArtifactPackage", none, interface),
     ] {
         // Conforming content this version does not read yet: refused at it.
-        for &child in conforming_unread.iter().chain(&["<xmi:Extension/>"]) {
+        for &child in conforming_unread {
             // The child starts line 2, after two spaces.
             let input = format!("{}>\n  {child}\n</sacm:{kind}>", root_start(kind));
             assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
         }
+        // An `xmi:Extension` is XMI metadata, read since slice 0073a
+        // (SACM23-XMI-019, ADR 0042; refused until then).
+        let extension = format!("{}>\n  <xmi:Extension/>\n</sacm:{kind}>", root_start(kind));
+        assert_reads_cleanly(row, extension.as_bytes());
         // Content that does not conform: kept as preserved content of the
-        // root, at it (ADR 0033).
+        // root, at it (ADR 0033); an XMI-namespace element XMI does not
+        // define is such content (ADR 0042 D4).
         for child in [
+            "<xmi:foo/>",
             "<foo/>",
             not_conforming,
             "<sacm:isCitation>true</sacm:isCitation>",

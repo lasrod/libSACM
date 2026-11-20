@@ -1,6 +1,6 @@
 # 0035. Tolerant read opens any file; strict save is schema only
 
-- Status: accepted (the maintainer, 2026-11-16)
+- Status: accepted (the maintainer, 2026-11-16); amended by [ADR 0042](0042-xmi-metadata-and-same-file-proxies.md) (XMI metadata is read, not preserved)
 - Date: 2026-11-16
 - Matrix rows: LIB-COMPAT-001, LIB-COMPAT-003, LIB-COMPAT-007, LIB-API-011, SACM23-VAL-006,
   SACM23-XMI-008, LIB-API-006. It amends ADRs 0015, 0021, 0022, 0030 and 0033.

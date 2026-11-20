@@ -256,15 +256,18 @@ fn sacm23_xmi_008_only_document_level_content_is_refused_with_no_elements() {
     };
     for (what, input) in [
         ("a vendor attribute on xmi:XMI", wrapper(" v:w=\"1\"", root)),
+        // An XMI-namespace element XMI does not define: an
+        // `xmi:Documentation` until slice 0073a read it as XMI metadata,
+        // which a strict save writes (SACM23-XMI-019, ADR 0042).
         (
-            "an xmi:Documentation beside the root",
-            wrapper("", &format!("<xmi:Documentation/>{root}")),
+            "an xmi:foo beside the root",
+            wrapper("", &format!("<xmi:foo/>{root}")),
         ),
         // After the root: a TerminologyPackageInterface root there until
         // slice 0067 read it (SACM23-TERM-007; ADR 0035 amendment 1).
         (
-            "an xmi:Documentation after the root",
-            wrapper("", &format!("{root}<xmi:Documentation/>")),
+            "an xmi:foo after the root",
+            wrapper("", &format!("{root}<xmi:foo/>")),
         ),
     ] {
         let doc = read_in(what, Mode::Tolerant, input.as_bytes());

@@ -21,7 +21,7 @@ use std::collections::HashMap;
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 pub(super) const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
 /// The XMI 2.5.1 namespace.
-pub(super) const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
+pub(super) const XMI_NS: &str = crate::model::XMI_NS;
 /// The prefix written for [`SACM_NS`].
 pub(super) const SACM_PREFIX: &str = "sacm";
 /// The prefix written for [`XMI_NS`].

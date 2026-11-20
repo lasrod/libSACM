@@ -1,6 +1,6 @@
 # 0033. Preserved content
 
-- Status: accepted (the maintainer, 2026-11-15)
+- Status: accepted (the maintainer, 2026-11-15); amended by [ADR 0042](0042-xmi-metadata-and-same-file-proxies.md) (XMI metadata is read, not preserved)
 - Date: 2026-11-15
 - Matrix rows: LIB-COMPAT-003, SACM23-XMI-008, LIB-API-011. It amends D-PRESERVE and
   D-ROOT-NAME and extends ADR 0015, ADR 0016, ADR 0017, ADR 0020, ADR 0021, ADR 0022 and

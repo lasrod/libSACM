@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-019: Golden M1 of slice 0073a (ADR 0042). XMI metadata on and under xmi:XMI (xmi:id, xmi:uuid, xmi:documentation, xmi:extension), on a root (xmi:uuid, xmi:label), on a name (xmi:uuid), in a root (xmi:Extension with an xmi:id and content) and on a child (xmi:uuid). Read in both modes with no diagnostic and written back where it stood. Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmi:id="doc" xmi:uuid="urn:uuid:doc">
+  <xmi:documentation xmi:id="d1"><xmi:exporter>Tool</xmi:exporter></xmi:documentation>
+  <sacm:ArgumentPackage xmi:id="p" xmi:uuid="urn:uuid:p" xmi:label="Arguments">
+    <name content="Arguments" xmi:uuid="urn:uuid:p-name"/>
+    <xmi:Extension extender="Tool" xmi:id="x1"><layout x="1"/></xmi:Extension>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" xmi:uuid="urn:uuid:c1">
+      <name content="C1"/>
+    </argumentElement>
+  </sacm:ArgumentPackage>
+  <xmi:extension extender="Tool"/>
+</xmi:XMI>

@@ -621,6 +621,85 @@ fn lib_sec_003_kept_namespace_text_counts_against_the_size_limit() {
         ),
         "SACM-SEC-003/kept-namespaces",
     );
+    // XMI metadata counts the same (SACM23-XMI-019, slice 0073a): the same
+    // ten `<v:x/>`, each held in an `<xmi:Extension>`, keep at least the
+    // same namespace text, and give no diagnostic. Under a limit of the
+    // input's size the count passes it at a kept element's `<`; under a
+    // large limit the input reads with no diagnostic.
+    let holders = format!(
+        "{}{}{ROOT_END}",
+        v_root_start(),
+        "<xmi:Extension><v:x/></xmi:Extension>".repeat(10)
+    );
+    let len = u64::try_from(holders.len()).unwrap_or(u64::MAX);
+    assert!(
+        10 * KEPT_PER_CHILD > holders.len(),
+        "{ROW}: setup: the ten extensions keep more than the input's size"
+    );
+    let error = assert_exceeded_somewhere(
+        "ten xmi:Extension holders under a limit of the input's size",
+        holders.as_bytes(),
+        Limits::default().with_max_input_bytes(len),
+        "SACM-SEC-003/kept-namespaces",
+    );
+    let sites: Vec<SourceLocation> = (0..10)
+        .flat_map(|n| {
+            [
+                nth_position_of(&holders, "<xmi:Extension", n),
+                nth_position_of(&holders, "<v:x", n),
+            ]
+        })
+        .collect();
+    assert!(
+        error.location().is_some_and(|at| sites.contains(&at)),
+        "{ROW}: ten xmi:Extension holders: the refusal is not at a kept element's `<`: {error:?}"
+    );
+    for mode in MODES {
+        let options = under(Limits::default().with_max_input_bytes(1 << 20), mode);
+        let output = read_ok(
+            "ten xmi:Extension holders under 1 MiB",
+            holders.as_bytes(),
+            &options,
+        );
+        assert_eq!(
+            output.diagnostics(),
+            [],
+            "{ROW}: ten xmi:Extension holders: a {mode:?} read gives diagnostics"
+        );
+    }
+}
+
+/// Asserts that `input`, read under `limits` in both modes alike, is
+/// `LimitExceeded` for the input's size, with `template`, at a location the
+/// caller checks, and returns the refusal.
+fn assert_exceeded_somewhere(
+    what: &str,
+    input: &[u8],
+    limits: Limits,
+    template: &str,
+) -> ReadError {
+    let strict = refusal(what, input, &under(limits, Mode::Strict));
+    let tolerant = refusal(what, input, &under(limits, Mode::Tolerant));
+    assert_eq!(
+        tolerant, strict,
+        "{ROW}: {what}: the modes refuse differently"
+    );
+    assert!(
+        matches!(
+            strict,
+            ReadError::LimitExceeded {
+                limit: Limit::InputBytes,
+                ..
+            }
+        ),
+        "{ROW}: {what}: not LimitExceeded for the input's size: {strict:?}"
+    );
+    assert_eq!(
+        (strict.code().as_str(), strict.template()),
+        ("SACM-SEC-003", template),
+        "{ROW}: {what}: code and template"
+    );
+    strict
 }
 
 #[test]
