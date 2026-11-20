@@ -5867,7 +5867,8 @@ acceptance = [
   "Only an Event's unqualified `occurence` is the older revisions' date: in an input of its own, an Artifact `a1` with `occurence=\"2021\"` has `date()` `None` and one SACM-XMI-003 at `occurence`, with no `occurence` Warning; an Event `e2` with `v:occurence=\"2021\"` (`xmlns:v=\"urn:v\"`) has `date()` `None` and a SACM-XMI-003 at `v:occurence`.",
   "`lib_compat_004_root_classification_is_linear` and `lib_compat_004_type_checks_are_linear`: each namespace value is classified, and each family membership decided, once per read, so a strict read of 20,000 roots under a 4 MB SACM-like URI, and a tolerant read of 60,000 typed children under a 4 MB one, each finish within 5 s on a worker thread; a unit test (`xmi::namespaces`) shows each namespace value is classified and compared once, independent of timing.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0072-reader-front-end.md"
 depends_on = [
   "LIB-COMPAT-001",
   "LIB-COMPAT-003",
@@ -5956,7 +5957,8 @@ acceptance = [
   "`lib_sec_003_kept_namespace_text_counts_preserved_attributes`: 10 Claims each with a preserved `v:a=\"1\"` under a 42-character URI: the exact kept total reads and one byte less is refused at the tenth Claim's `v:a`, in both modes.",
   "`lib_sec_003_a_breach_stops_the_read`: the first breach of the budget ends the read, with no diagnostic built after it; a tolerant read of 20,000 roots under a 4 MB SACM-like URI returns `LimitExceeded` `kept-text` within 5 s on a worker thread.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0072-reader-front-end.md"
 notes = "The maintainer lowered the defaults on 2026-11-19 from 128 MiB and 8M nodes to 32 MiB and 1M nodes, after the builder measured about 10 GiB peak for 8M preserved nodes."
 depends_on = [
   "LIB-SEC-002",
@@ -6880,7 +6882,8 @@ acceptance = [
   "`lib_compat_016_writes_utf_8_and_reads_back_equal`: Golden 3 output; reading it back gives `==`.",
   "Fixtures. `crates/sacm-cli/tests/data/latin-1.sacm.xmi` now reads. Its comment becomes `LIB-COMPAT-016: the file declares the encoding ISO-8859-1, which both modes read. Its bytes are ASCII. Hand-written.` A new `crates/sacm-cli/tests/data/iso-8859-2.sacm.xmi` is the same file with `encoding=\"ISO-8859-2\"` and the old comment, saying ISO-8859-2. The CLI \"unreadable\" tests use it.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0072-reader-front-end.md"
 depends_on = ["LIB-API-009", "SACM23-XMI-018", "LIB-COMPAT-015"]
 notes = "Found by the corpus (slice 0054). The IANA aliases (latin1, l1, ISO_8859-1, IBM819, CP819) are not read; they wait until a file needs one (M6 decision Q10). Both corpus files are refused next for their XMI 2.0 `xmi:XMI` element (SACM-XMI-015) until LIB-COMPAT-002."
 
@@ -7776,7 +7779,8 @@ acceptance = [
   "`lib_tool_021_artifacts_has_four_entries` is renamed `lib_tool_021_artifacts_has_at_least_four_entries` and asserts `>= 4`.",
   "The builder runs `cargo xtask fetch-spec` once and reports `fetched` for the new file.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0072-reader-front-end.md"
 depends_on = ["LIB-TOOL-021"]
 
 [[row]]

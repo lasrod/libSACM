@@ -1,8 +1,8 @@
 ---
 slice: 0072
 name: reader-front-end
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-SEC-003, LIB-COMPAT-004, LIB-COMPAT-016, LIB-TOOL-022]
 mode: pr
 base: main (424248c, the 0.3.0 release)
@@ -60,3 +60,4 @@ M6's first slice:
 
   LIB-COMPAT-016 and LIB-TOOL-022 PASS. Per the skill, the lead stopped and asked; the maintainer approved one more fix round (2026-11-20). The builder fixes N1–N3 and restores Golden 2, putting `a1` and `e2` in their own input. The lead added the acceptance for the three new controls and amended ADR 0041.
 - 2026-11-20 fix round 2: the read stops at the first breach (`push_at` and every reporting helper return `Result`). Each namespace value is classified, and each family membership decided, once per read, memoized by the parser's interned `&str`. The N3 figures are corrected to "up to six" and "about seven", because Debug escaping can turn 1 byte into 6. Golden 2 is restored, with `a1` and `e2` in their own input. The type-check control uses 60,000 children (1.4 s in debug). The memo mutants are killed deterministically by `each_namespace_value_is_classified_and_compared_once`, and the stop mutant by the deadline control.
+- 2026-11-20 verify round 3 (39446da): PASS for all four rows. Record: docs/verification/0072-reader-front-end.md.
