@@ -98,8 +98,12 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   at most one type attribute, nothing else) that names a root of a kind its role and type
   admit moves that root into its place, in both modes, with no diagnostic; chains are
   followed. Otherwise it is kept whole in its container with SACM-XMI-003
-  (`SACM-XMI-003/proxy-of-no-root`, `/proxy-wrong-kind`, `/proxy-shared`, `/proxy-cycle`,
-  checked in that order) [SACM23-XMI-030].
+  (`SACM-XMI-003/proxy-of-no-root`, `/proxy-wrong-kind`, `/proxy-of-linked-root`,
+  `/proxy-shared`, `/proxy-cycle`, checked in that order); a root that keeps an `href` or
+  an `xmi:idref` of its own is not moved. Depth is counted as resolved: a moved root takes
+  its proxy's depth and its tree shifts with it, and an element nested deeper than
+  `Limits::max_depth` refuses the read as `ReadError::LimitExceeded`
+  (`SACM-SEC-003/depth`) [SACM23-XMI-030].
 
 ### Changed
 

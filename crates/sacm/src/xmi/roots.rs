@@ -143,13 +143,13 @@ use std::collections::BTreeSet;
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
-use super::limits::Budget;
+use super::limits::{Budget, exceeded};
 use super::namespaces::{
     self, Classes, RootNamespace, SACM_NS, SACM_PREFIX, Types, XMI_NS, XMI_PREFIX,
 };
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
-use super::{Limits, Mode, ReadError};
+use super::{Limit, Limits, Mode, ReadError};
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
@@ -1000,7 +1000,7 @@ pub(super) fn read(
     // Once every root is read: the same-file proxies, then the elements
     // (SACM23-XMI-030). What the document holds outside every element keeps
     // its place among the roots that stay.
-    let stays = resolve(&mut found, tree, &mut roots)?;
+    let stays = resolve(&mut found, tree, &mut roots, limits.max_depth())?;
     hold(text, &mut document, roots.read)?;
     let mut outside = outside.into_preserved();
     let mut metadata = metadata.into_preserved();
@@ -1425,6 +1425,7 @@ impl Findings<'_, '_> {
                 arguments.push(Argument::text("class", class));
                 &template::XMI_003_PROXY_WRONG_KIND
             }
+            Unresolved::LinkedRoot => &template::XMI_003_PROXY_OF_LINKED_ROOT,
             Unresolved::Shared => &template::XMI_003_PROXY_SHARED,
             Unresolved::Cycle => &template::XMI_003_PROXY_CYCLE,
         };
@@ -2030,6 +2031,19 @@ impl<H: Holder> Kept<H> {
     /// Whether the construct at byte `offset` is preserved.
     fn holds(&self, offset: usize) -> bool {
         self.offsets.contains(&offset)
+    }
+
+    /// Whether a preserved attribute is a link: an unqualified `href` or an
+    /// `xmi:idref`, which do not conform on a definition (XMI 2.5.1
+    /// production 2a, SACM23-XMI-019).
+    fn keeps_link(&self) -> bool {
+        self.attributes.iter().any(|(_, attr)| {
+            let name = &attr.name;
+            match name.namespace.as_deref() {
+                None => name.local == "href",
+                Some(namespace) => namespace == XMI_NS && name.local == "idref",
+            }
+        })
     }
 
     /// Takes `attribute` of `node` as preserved content, with the bindings
@@ -3140,12 +3154,13 @@ impl Shorthand {
 }
 
 /// What pass 2 has read of the roots before any is held: every element of
-/// their trees, the place in document order of each root, and the same-file
-/// proxies (SACM23-XMI-030), each in reading order.
+/// their trees, the place in document order and the node of each root, and
+/// the same-file proxies (SACM23-XMI-030), each in reading order.
 #[derive(Default)]
 struct Roots {
     read: Vec<Pending>,
     orders: Vec<usize>,
+    nodes: Vec<roxmltree::NodeId>,
     proxies: Vec<Proxy>,
 }
 
@@ -3165,6 +3180,8 @@ struct Proxy {
     container_order: usize,
     /// The index among the roots of the root whose tree holds it.
     tree: usize,
+    /// How deep it is nested in that root: 1 for a child of the root.
+    depth: usize,
     /// Its index among the typed children of its container: the place the
     /// root it names takes.
     slot: usize,
@@ -3187,6 +3204,7 @@ fn read_root<'a>(
     let first = root_start(found, root)?;
     let tree = roots.orders.len();
     roots.orders.push(first.order);
+    roots.nodes.push(root.id());
     // The elements whose content is being read, innermost last, each with
     // its node and the rest of its content, and the elements read whole.
     // Content is, on a ModelElement, one `name` (SACM23-XMI-012) and on an
@@ -3201,7 +3219,12 @@ fn read_root<'a>(
     // (SACM23-XMI-016), same-file proxies (SACM23-XMI-030), XMI extensions
     // (SACM23-XMI-019), white space, comments and processing instructions.
     let mut open = vec![(first, root, root.children())];
-    while let Some((element, holder, content)) = open.last_mut() {
+    loop {
+        // How deep in the root the content of the innermost element is.
+        let depth = open.len();
+        let Some((element, holder, content)) = open.last_mut() else {
+            break;
+        };
         let Some(node) = content.next() else {
             if let Some((mut element, _, _)) = open.pop() {
                 element.finish(found)?;
@@ -3248,7 +3271,7 @@ fn read_root<'a>(
                 open.push((*child, node, node.children()));
             }
             Ok(Some(Child::Proxy(link))) => {
-                let proxy = read_proxy(found, node, link, element, tree)?;
+                let proxy = read_proxy(found, node, link, element, (tree, depth))?;
                 roots.proxies.push(proxy);
                 element.kept.typed = element.kept.typed.saturating_add(1);
             }
@@ -3268,8 +3291,9 @@ fn read_root<'a>(
 }
 
 /// The proxy `node`, which `link` describes, a child of `container` in the
-/// tree of the root `tree`, as read (SACM23-XMI-030): it takes the next typed
-/// slot of its container and the next place in document order. Its
+/// tree of the root `tree`, nested `depth` deep in it, as read
+/// (SACM23-XMI-030): it takes the next typed slot of its container and the
+/// next place in document order. Its
 /// `xsi:type` is reported as SACM-XMI-010 on the element it names, and a
 /// role or type spelling a tolerant read read as SACM-XMI-013, at its start
 /// tag, as a child's are.
@@ -3278,7 +3302,7 @@ fn read_proxy(
     node: Node<'_, '_>,
     mut link: ProxyLink,
     container: &Pending,
-    tree: usize,
+    (tree, depth): (usize, usize),
 ) -> Result<Proxy, ReadError> {
     let target = ElementId::new(link.target.as_str());
     if let Some(spelled) = link.spelled.take() {
@@ -3304,6 +3328,7 @@ fn read_proxy(
         container_kind: container.kind,
         container_order: container.order,
         tree,
+        depth,
         slot: container.kept.typed,
         order: found.next_order(),
     })
@@ -3467,8 +3492,9 @@ fn read_spelled_part<'a>(
 
 /// Why a same-file proxy is kept instead of resolved (SACM23-XMI-030), in
 /// the order of the checks: the id names no root; the root's kind is not of
-/// the role's declared type or of the proxy's type, which is `class`;
-/// another proxy names the root too; or the proxies form a cycle.
+/// the role's declared type or of the proxy's type, which is `class`; the
+/// root keeps an `href` or an `xmi:idref` of its own; another proxy names
+/// the root too; or the proxies form a cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Unresolved {
     NoRoot,
@@ -3476,6 +3502,7 @@ enum Unresolved {
         target_class: ElementKind,
         class: &'static str,
     },
+    LinkedRoot,
     Shared,
     Cycle,
 }
@@ -3486,18 +3513,28 @@ enum Unresolved {
 /// element"), and returns which roots stay roots, by index.
 ///
 /// A proxy whose id names a root of a kind its role and its type admit,
-/// that no other such proxy names, and that is in no cycle, moves the root
-/// into its place: the root gets the proxy's container as its parent and
-/// the proxy's place in document order. Chains are followed, since each
-/// moved root keeps its tree. Every other proxy is kept whole as preserved
-/// content of its container, at its place, with one SACM-XMI-003 at its
-/// `<` affecting the container: an Error in strict mode, a Warning in
-/// tolerant mode. Linear in the roots and the proxies, but for the sort of
-/// the root ids and the grouping by container.
+/// that keeps no `href` or `xmi:idref` of its own, that no other such proxy
+/// names, and that is in no cycle, moves the root into its place: the root
+/// gets the proxy's container as its parent and the proxy's place in
+/// document order. Chains are followed, since each moved root keeps its
+/// tree. Every other proxy is kept whole as preserved content of its
+/// container, at its place, with one SACM-XMI-003 at its `<` affecting the
+/// container: an Error in strict mode, a Warning in tolerant mode. A root
+/// that keeps a link attribute is not moved: written in a proxy's place, it
+/// would read back as a role element with a link and content, which is no
+/// element.
+///
+/// Depth is counted as resolved ([`check_depth`]): an element nested deeper
+/// than `max_depth` once the roots have moved refuses the read, in both
+/// modes, before any proxy is reported (LIB-SEC-003).
+///
+/// Linear in the roots, the proxies and the elements of the moved roots,
+/// but for the sort of the root ids and the grouping by container.
 fn resolve(
     found: &mut Findings<'_, '_>,
     tree: &roxmltree::Document<'_>,
     roots: &mut Roots,
+    max_depth: u64,
 ) -> Result<Vec<bool>, ReadError> {
     roots.read.sort_by_key(|element| element.order);
     let index_of = |read: &[Pending], order: usize| {
@@ -3511,6 +3548,7 @@ fn resolve(
     let mut outcomes = proxy_roots(roots);
     mark_shared(&mut outcomes, roots.orders.len());
     mark_cycles(&mut outcomes, &roots.proxies, roots.orders.len());
+    check_depth(found.text, tree, roots, &outcomes, max_depth)?;
     // Each resolved root moves; each kept proxy is reported, then kept in
     // its container, at its place, which is no typed slot any more.
     let mut kept: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
@@ -3562,20 +3600,23 @@ fn resolve(
 }
 
 /// Checks 1 and 2 of [`resolve`] for each proxy of `roots`, whose elements
-/// are sorted by place: the index of the root it names, or why it is kept,
-/// as no root is named, or one of a kind its role or its type does not
-/// admit.
+/// are sorted by place, and the check of the root's own link attributes: the
+/// index of the root it names, or why it is kept, as no root is named, or
+/// one of a kind its role or its type does not admit, or one that keeps an
+/// `href` or an `xmi:idref`.
 fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
     let index_of = |read: &[Pending], order: usize| {
         read.binary_search_by_key(&order, |element| element.order)
             .ok()
     };
-    // Each root by its id, with its kind.
+    // Each root by its id, with its kind and whether it keeps a link.
     let mut kinds = Vec::with_capacity(roots.orders.len());
+    let mut linked = Vec::with_capacity(roots.orders.len());
     let mut by_id = std::collections::BTreeMap::new();
     for (root, &order) in roots.orders.iter().enumerate() {
         let element = index_of(&roots.read, order).and_then(|index| roots.read.get(index));
         kinds.push(element.map(|element| element.kind));
+        linked.push(element.is_some_and(|element| element.kept.keeps_link()));
         if let Some(element) = element {
             by_id.insert(element.id.as_str().to_owned(), root);
         }
@@ -3595,16 +3636,144 @@ fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
             };
             let fits =
                 link.declared.admits(kind) && link.class.is_none_or(|class| kind.is_kind_of(class));
-            if fits {
-                Ok(root)
-            } else {
-                Err(Unresolved::WrongKind {
+            if !fits {
+                return Err(Unresolved::WrongKind {
                     target_class: kind,
                     class: link.class.map_or(link.declared.name(), ElementKind::name),
-                })
+                });
             }
+            if linked.get(root).copied().unwrap_or(false) {
+                return Err(Unresolved::LinkedRoot);
+            }
+            Ok(root)
         })
         .collect()
+}
+
+/// Refuses the read if an element is nested deeper than `max` once the
+/// proxies whose `outcomes` name a root are resolved (SACM23-XMI-030,
+/// LIB-SEC-003): `LimitExceeded` for the depth, at the first such element in
+/// document order.
+///
+/// Depth is counted as resolved. A root that stays keeps its input depth:
+/// 1 for the document element, 2 under `xmi:XMI`. A moved root takes its
+/// proxy's depth, and every element of its tree, its parts, its XMI metadata
+/// and its preserved content included, shifts with it. So what a write nests
+/// is bounded by the limit the document was read under, however long a
+/// chain of proxies is.
+///
+/// The scan before parsing has checked every element at its input depth, so
+/// only the trees of the moved roots are walked: once each, without
+/// recursion. The depth of each root is found once, along its chain, which
+/// holds no cycle ([`mark_cycles`]). So the check is linear in the roots,
+/// the proxies and the elements of the moved roots.
+fn check_depth(
+    text: &str,
+    tree: &roxmltree::Document<'_>,
+    roots: &Roots,
+    outcomes: &[Result<usize, Unresolved>],
+    max: u64,
+) -> Result<(), ReadError> {
+    let count = roots.nodes.len();
+    // The proxy that moves each root, if one does.
+    let mut moved_by: Vec<Option<&Proxy>> = vec![None; count];
+    for (proxy, outcome) in roots.proxies.iter().zip(outcomes) {
+        if let Some(slot) = outcome
+            .as_ref()
+            .ok()
+            .and_then(|&root| moved_by.get_mut(root))
+        {
+            *slot = Some(proxy);
+        }
+    }
+    // The depth of each root as resolved, found along its chain: up to a
+    // root that stays or whose depth is known, then back down.
+    let mut depths: Vec<Option<u64>> = vec![None; count];
+    let mut chain: Vec<(usize, usize)> = Vec::new();
+    for start in 0..count {
+        chain.clear();
+        let mut current = start;
+        let mut depth = loop {
+            if let Some(known) = depths.get(current).copied().flatten() {
+                break known;
+            }
+            // No chain is longer than the roots: the proxies left form no
+            // cycle.
+            match moved_by.get(current).copied().flatten() {
+                Some(proxy) if chain.len() < count => {
+                    chain.push((current, proxy.depth));
+                    current = proxy.tree;
+                }
+                _ => {
+                    let stays = roots
+                        .nodes
+                        .get(current)
+                        .and_then(|&id| tree.get_node(id))
+                        .map_or(1, input_depth);
+                    if let Some(slot) = depths.get_mut(current) {
+                        *slot = Some(stays);
+                    }
+                    break stays;
+                }
+            }
+        };
+        for &(root, below) in chain.iter().rev() {
+            depth = depth.saturating_add(u64::try_from(below).unwrap_or(u64::MAX));
+            if let Some(slot) = depths.get_mut(root) {
+                *slot = Some(depth);
+            }
+        }
+    }
+    // The elements of each moved root, in document order.
+    for (root, &id) in roots.nodes.iter().enumerate() {
+        if moved_by.get(root).copied().flatten().is_none() {
+            continue;
+        }
+        let (Some(node), Some(mut depth)) =
+            (tree.get_node(id), depths.get(root).copied().flatten())
+        else {
+            continue;
+        };
+        // `depth` is that of `current`: one more for a first child, the
+        // same for a sibling, one less for each parent climbed to.
+        let mut current = Some(node);
+        while let Some(at) = current {
+            if at.is_element() && depth > max {
+                return Err(exceeded(
+                    Limit::Depth,
+                    max,
+                    locate(text, at.range().start),
+                    &template::SEC_003_DEPTH,
+                    None,
+                ));
+            }
+            current = at.first_child();
+            if current.is_some() {
+                depth = depth.saturating_add(1);
+                continue;
+            }
+            // The next node of the root's tree in document order, if any.
+            let mut done = at;
+            while done != node {
+                if let Some(next) = done.next_sibling() {
+                    current = Some(next);
+                    break;
+                }
+                let Some(parent) = done.parent() else {
+                    break;
+                };
+                done = parent;
+                depth = depth.saturating_sub(1);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The depth of the element `node` in the input: 1 for the document
+/// element.
+fn input_depth(node: Node<'_, '_>) -> u64 {
+    u64::try_from(node.ancestors().filter(Node::is_element).count()).unwrap_or(u64::MAX)
 }
 
 /// Check 3 of [`resolve`]: each proxy that passed checks 1 and 2 and names a

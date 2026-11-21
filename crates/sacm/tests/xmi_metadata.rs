@@ -353,6 +353,10 @@ fn sacm23_xmi_019_uuid_and_label_are_read_only_accessors() {
 // --- 3. Both saves write it where it stood -----------------------------------------
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 fn sacm23_xmi_019_both_saves_write_metadata_where_it_stood() {
     for (what, path, golden_path) in [("Golden M1", M1, M1_GOLDEN), ("Golden M2", M2, M2_GOLDEN)] {
         let input = file(path);
@@ -428,6 +432,60 @@ fn sacm23_xmi_019_both_saves_write_metadata_where_it_stood() {
         written(what, &again, Mode::Tolerant),
         first,
         "{ROW}: {what}: the second write is not byte-stable"
+    );
+    // Extensions between and after typed children stand where they stood.
+    let input = package(&format!(
+        "{}<xmi:Extension extender=\"mid\"/>{}<xmi:Extension extender=\"last\"/>",
+        claim("c1", "", ""),
+        claim("c2", "", "")
+    ));
+    for mode in MODES {
+        let what = format!("c1, an extension, c2, an extension, read {mode:?}");
+        let doc = read_clean(&what, mode, &input);
+        let text = written(&what, &doc, Mode::Strict);
+        let c1 = line_index(&what, &text, |line| line.contains("xmi:id=\"c1\""), "of c1");
+        let mid = line_index(
+            &what,
+            &text,
+            |line| line == "<xmi:Extension extender=\"mid\" />",
+            "of the extension mid",
+        );
+        let c2 = line_index(&what, &text, |line| line.contains("xmi:id=\"c2\""), "of c2");
+        let last = line_index(
+            &what,
+            &text,
+            |line| line == "<xmi:Extension extender=\"last\" />",
+            "of the extension last",
+        );
+        assert!(
+            c1 < mid && mid < c2 && c2 < last,
+            "{ROW}: {what}: not written in the order c1, mid, c2, last:\n{text}"
+        );
+        let back = read_clean("the output", Mode::Strict, &text);
+        assert!(
+            back == doc,
+            "{ROW}: {what}: the output read back is not ==: {:?}",
+            semantic_compare(&doc, &back)
+        );
+    }
+    // On a start tag, metadata attributes are written before preserved
+    // ones. `foo` is preserved: SACM-XMI-003 tolerant.
+    let what = "foo=\"1\" before xmi:uuid=\"u\" on c1";
+    let doc = read_ok(
+        what,
+        Mode::Tolerant,
+        &package(&claim("c1", " foo=\"1\" xmi:uuid=\"u\"", "")),
+    )
+    .into_document();
+    let text = written(what, &doc, Mode::Tolerant);
+    let lines = trimmed(&text);
+    let start = lines[line_index(what, &text, |line| line.contains("xmi:id=\"c1\""), "of c1")];
+    let (Some(uuid), Some(foo)) = (start.find("xmi:uuid=\"u\""), start.find("foo=\"1\"")) else {
+        panic!("{ROW}: {what}: the start tag of c1 does not hold both attributes:\n{text}");
+    };
+    assert!(
+        uuid < foo,
+        "{ROW}: {what}: xmi:uuid is not written before foo:\n{text}"
     );
 }
 
@@ -598,6 +656,55 @@ fn sacm23_xmi_019_parts_keep_their_metadata() {
         !text.contains("urn:uuid:n1-content") && !text.contains("xmi:label=\"second\""),
         "{ROW}: SetContent::remove n1: the content's metadata is still written\n{text}"
     );
+    // Extensions among the values: one placed after a value that is gone
+    // stands after the last value; one before a value that stays keeps its
+    // place.
+    let among = package(
+        "<note xmi:id=\"n1\"><content><value content=\"a\"/><xmi:Extension extender=\"mid\"/>\
+         <value content=\"b\"/><value content=\"c\"/><xmi:Extension extender=\"end\"/>\
+         </content></note>",
+    );
+    for (what, values, lines) in [
+        (
+            "SetContent with one value over a, mid, b, c, end",
+            vec!["x"],
+            vec![
+                "<content>",
+                "<value content=\"x\" />",
+                "<xmi:Extension extender=\"mid\" />",
+                "<xmi:Extension extender=\"end\" />",
+                "</content>",
+            ],
+        ),
+        (
+            "SetContent with two values over a, mid, b, c, end",
+            vec!["x", "y"],
+            vec![
+                "<content>",
+                "<value content=\"x\" />",
+                "<xmi:Extension extender=\"mid\" />",
+                "<value content=\"y\" />",
+                "<xmi:Extension extender=\"end\" />",
+                "</content>",
+            ],
+        ),
+    ] {
+        let mut doc = read_clean("extensions among the values", Mode::Strict, &among);
+        let content: MultiLangString = values.into_iter().map(LangString::new).collect();
+        apply(what, &mut doc, SetContent::new("n1", content));
+        let text = written(what, &doc, Mode::Strict);
+        assert_eq!(
+            block(what, &text, "<content>", lines.len()),
+            lines,
+            "{ROW}: {what}: the extensions are not written in place\n{text}"
+        );
+        let back = read_clean("the output", Mode::Strict, &text);
+        assert!(
+            back == doc,
+            "{ROW}: {what}: the edited document is not == its output read back: {:?}",
+            semantic_compare(&doc, &back)
+        );
+    }
 }
 
 // --- 5. XMI elements XMI does not define -------------------------------------------
@@ -1242,6 +1349,81 @@ fn sacm23_xmi_019_a_strict_save_checks_metadata_ids_and_idrefs() {
         ],
         "{ROW}: {what}: the arguments"
     );
+    // The wrapper's own xmi:id is checked. It affects no element, so the
+    // refusal names the id.
+    let what = "xmi:id=\"1x\" on xmi:XMI";
+    let doc = read_clean(what, Mode::Strict, &wrapper(" xmi:id=\"1x\"", "", ""));
+    let found = invalid_diagnostics(what, &doc);
+    assert_eq!(
+        found.iter().map(summary).collect::<Vec<_>>(),
+        [(
+            "SACM-ID-002",
+            Severity::Error,
+            "SACM-ID-002/metadata-id-not-an-ncname",
+            None,
+            Vec::new()
+        )],
+        "{ROW}: {what}: not one SACM-ID-002/metadata-id-not-an-ncname affecting no element"
+    );
+    assert_eq!(
+        arguments(&found[0]),
+        [
+            ("element", "xmi:XMI".to_owned()),
+            ("xmi_id", "1x".to_owned()),
+        ],
+        "{ROW}: {what}: the arguments"
+    );
+    match write(&doc, Mode::Strict) {
+        Err(error) => assert_eq!(
+            error.to_string(),
+            "the document cannot be written in strict mode: 1 schema error, SACM-ID-002 on \"1x\"",
+            "{ROW}: {what}: the Display of the refusal"
+        ),
+        Ok(text) => panic!("{ROW}: {what}: the strict write writes it:\n{text}"),
+    }
+    // The metadata of an element's parts is checked: of its name, and of a
+    // value of its content, each after metadata of the element itself, and
+    // the value's after its content's.
+    for (what, input, owner) in [
+        (
+            "<xmi:Extension xmi:id=\"1y\"/> in a name",
+            package(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:label=\"l\">\
+                 <name content=\"C\"><xmi:Extension xmi:id=\"1y\"/></name></argumentElement>",
+            ),
+            "c1",
+        ),
+        (
+            "<xmi:Extension xmi:id=\"1y\"/> in a value",
+            package(
+                "<note xmi:id=\"n1\" xmi:label=\"l\"><content xmi:label=\"l\">\
+                 <value content=\"a\"><xmi:Extension xmi:id=\"1y\"/></value></content></note>",
+            ),
+            "n1",
+        ),
+    ] {
+        let doc = read_clean(what, Mode::Strict, &input);
+        let found = invalid_diagnostics(what, &doc);
+        assert_eq!(
+            found.iter().map(summary).collect::<Vec<_>>(),
+            [(
+                "SACM-ID-002",
+                Severity::Error,
+                "SACM-ID-002/metadata-id-not-an-ncname",
+                None,
+                vec![owner.to_owned()]
+            )],
+            "{ROW}: {what}: not one SACM-ID-002/metadata-id-not-an-ncname affecting {owner}"
+        );
+        assert_eq!(
+            arguments(&found[0]),
+            [
+                ("element", "xmi:Extension".to_owned()),
+                ("xmi_id", "1y".to_owned()),
+            ],
+            "{ROW}: {what}: the arguments"
+        );
+    }
 }
 
 // --- 10. Copy, delete and move ------------------------------------------------------
@@ -1272,6 +1454,10 @@ fn element_lines<'t>(what: &str, text: &'t str, id: &str) -> Vec<&'t str> {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 fn sacm23_xmi_019_a_copy_drops_the_uuid_a_delete_removes_and_a_move_keeps() {
     // A copy drops the uuid of the element and of its parts, and keeps its
     // label and extensions.
@@ -1369,11 +1555,144 @@ fn sacm23_xmi_019_a_copy_drops_the_uuid_a_delete_removes_and_a_move_keeps() {
         doc == source,
         "{ROW}: the refused copy changed the document"
     );
+    // A copy drops the uuid of a `content` and of a `value`, and keeps their
+    // labels.
+    let source = read_clean(
+        "c1 with a Note whose content and value have a uuid",
+        Mode::Strict,
+        &package(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"C1\"/>\
+             <note xmi:id=\"n1\"><content xmi:uuid=\"urn:uuid:content\" xmi:label=\"CL\">\
+             <value content=\"a\" xmi:uuid=\"urn:uuid:value\" xmi:label=\"VL\"/></content></note>\
+             </argumentElement>",
+        ),
+    );
+    let mut doc = source.clone();
+    let copy = match CopyElements::new(&source, ["c1"], "p") {
+        Ok(copy) => copy,
+        Err(error) => panic!("{ROW}: CopyElements::new refused c1: {error}"),
+    };
+    let mutation = apply("CopyElements c1 with a Note", &mut doc, copy);
+    let Some(copied) = mutation.created_ids().first().cloned() else {
+        panic!("{ROW}: CopyElements c1 with a Note created nothing");
+    };
+    let text = written("the copy of a Note", &doc, Mode::Strict);
+    let lines = element_lines("the copy of a Note", &text, copied.as_str());
+    assert!(
+        lines.iter().all(|line| !line.contains("xmi:uuid")),
+        "{ROW}: the copy's content or value keeps a uuid:\n{text}"
+    );
+    assert!(
+        lines.iter().any(|line| line.contains("xmi:label=\"CL\""))
+            && lines.iter().any(|line| line.contains("xmi:label=\"VL\"")),
+        "{ROW}: the copy's content and value do not keep their labels:\n{text}"
+    );
+    assert!(
+        element_lines("the original Note", &text, "c1")
+            .iter()
+            .filter(|line| line.contains("xmi:uuid"))
+            .count()
+            == 2,
+        "{ROW}: the original's content and value lost their uuids:\n{text}"
+    );
+    // A delete releases the ids its metadata held.
+    let mut doc = read_clean(
+        "c1 with an extension x9",
+        Mode::Strict,
+        &with_marked_claim("<xmi:Extension xmi:id=\"x9\"/>"),
+    );
+    apply("DeleteElement c1", &mut doc, DeleteElement::new("c1"));
+    let answer = edit::apply(
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")).with_id("x9"),
+    );
+    assert!(
+        answer.is_ok(),
+        "{ROW}: after DeleteElement c1, CreateClaim::with_id(\"x9\") is refused: {answer:?}"
+    );
+    // So does removing a `content`: the id its metadata held is free again.
+    let mut doc = read_clean(
+        "n1 whose content holds an extension x9",
+        Mode::Strict,
+        &package(
+            "<note xmi:id=\"n1\"><content><xmi:Extension xmi:id=\"x9\" xmi:idref=\"p\"/>\
+             <value content=\"a\"/></content></note>",
+        ),
+    );
+    let answer = edit::apply(
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")).with_id("x9"),
+    );
+    assert!(
+        matches!(&answer, Err(EditError::DuplicateId { id, .. }) if id.as_str() == "x9"),
+        "{ROW}: while the content's extension holds x9, CreateClaim::with_id(\"x9\") is not \
+         DuplicateId: {answer:?}"
+    );
+    apply("SetContent::remove n1", &mut doc, SetContent::remove("n1"));
+    // Nothing of the removed metadata is left: the document is the one its
+    // output reads back as.
+    let text = written("SetContent::remove n1", &doc, Mode::Strict);
+    let back = read_clean("the output", Mode::Strict, &text);
+    assert!(
+        back == doc,
+        "{ROW}: after SetContent::remove n1, the document is not == its output read back: {:?}",
+        semantic_compare(&doc, &back)
+    );
+    let answer = edit::apply(
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")).with_id("x9"),
+    );
+    assert!(
+        answer.is_ok(),
+        "{ROW}: after SetContent::remove n1, CreateClaim::with_id(\"x9\") is refused: {answer:?}"
+    );
+    // A copy whose extension names an id of the target: the id it names
+    // would be another element's there.
+    let source = read_clean(
+        "c1 with an extension naming c1",
+        Mode::Strict,
+        &with_marked_claim("<xmi:Extension xmi:idref=\"c1\"/>"),
+    );
+    let mut doc = source.clone();
+    let copy = match CopyElements::new(&source, ["c1"], "p") {
+        Ok(copy) => copy,
+        Err(error) => panic!("{ROW}: CopyElements::new refused c1: {error}"),
+    };
+    let answer = edit::apply(&mut doc, copy);
+    assert!(
+        matches!(&answer, Err(EditError::DuplicateId { id, .. }) if id.as_str() == "c1"),
+        "{ROW}: a copy whose extension names c1, into its own document, is not DuplicateId c1: \
+         {answer:?}"
+    );
+    assert!(
+        doc == source,
+        "{ROW}: the refused copy changed the document"
+    );
+    // A delete that moves its parent's metadata changes the parent.
+    let mut doc = read_clean(
+        "c1 then an extension in p",
+        Mode::Strict,
+        &package(&format!("{}<xmi:Extension/>", claim("c1", "", ""))),
+    );
+    let mutation = apply(
+        "DeleteElement c1 before an extension",
+        &mut doc,
+        DeleteElement::new("c1"),
+    );
+    assert!(
+        mutation.changed_ids().iter().any(|id| id.as_str() == "p"),
+        "{ROW}: DeleteElement c1 before an extension of p: p is not in changed_ids(): {:?}",
+        mutation.changed_ids()
+    );
 }
 
 // --- 11. Compared --------------------------------------------------------------------
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 fn sacm23_xmi_019_metadata_differences_are_compared() {
     let m1 = read_clean("Golden M1", Mode::Strict, &file(M1));
     let other = read_clean(
@@ -1467,6 +1786,53 @@ fn sacm23_xmi_019_metadata_differences_are_compared() {
                 !shown.is_empty() && !shown.contains('\n'),
                 "{ROW}: the Display of {difference:?} is not one line: {shown:?}"
             );
+        }
+        // The metadata of an element's parts is the element's: of its name,
+        // of its content, and of a value, held or not.
+        let named = |name: &str| {
+            package(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">{name}</argumentElement>"
+            ))
+        };
+        let note = |content: &str| package(&format!("<note xmi:id=\"n1\">{content}</note>"));
+        for (what, left, right, owner) in [
+            (
+                "a name's xmi:label",
+                named("<name content=\"C\" xmi:label=\"one\"/>"),
+                named("<name content=\"C\" xmi:label=\"two\"/>"),
+                "c1",
+            ),
+            (
+                "a content's xmi:label",
+                note("<content xmi:label=\"one\"><value content=\"a\"/></content>"),
+                note("<content xmi:label=\"two\"><value content=\"a\"/></content>"),
+                "n1",
+            ),
+            (
+                "a value's xmi:label",
+                note("<content><value content=\"a\" xmi:label=\"one\"/></content>"),
+                note("<content><value content=\"a\" xmi:label=\"two\"/></content>"),
+                "n1",
+            ),
+            (
+                "a value's xmi:label on one side only",
+                note("<content><value content=\"a\" xmi:label=\"one\"/></content>"),
+                note("<content><value content=\"a\"/></content>"),
+                "n1",
+            ),
+        ] {
+            let left = read_clean(what, Mode::Strict, &left);
+            let right = read_clean(what, Mode::Strict, &right);
+            assert!(left != right, "{ROW}: documents differing in {what} are ==");
+            for (one, other) in [(&left, &right), (&right, &left)] {
+                assert_eq!(
+                    semantic_compare(one, other),
+                    [Difference::Metadata {
+                        id: ElementId::from(owner)
+                    }],
+                    "{ROW}: documents differing in {what}"
+                );
+            }
         }
     }
 }

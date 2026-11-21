@@ -47,4 +47,18 @@ The other half, slice 0073b, holds SACM23-XMI-029 and LIB-EDIT-020.
     - the third cycle case follows the stated check order (`b`, named twice, gives `proxy-shared`; the roots are `[a, b]`), so the test and its acceptance are corrected;
     - the changed expectations for the group, reference-element, location and UTF-16 tests are accepted, following ADR 0042 D4 (production 2c, rule 4e);
     - the 16 renamed tests are cited.
+  - `sacm23_xmi_016_an_unread_attribute_of_a_child_is_metadata_or_preserved_at_its_name` now allows SACM-XMI-010 for its `xsi:type` case (a step-1 test changed in step 2; logged after verification round 1, N8).
   - The design's [A] list of verified rows is reworded, and each affected row carries a slice 0073a note. D-PRESERVE and D-STRICT are updated, and ADRs 0033 and 0035 are marked amended by ADR 0042.
+- 2026-11-21 verification round 1: FAIL for both rows (B1 to B5, N1 to N8). The fix round is with the builder.
+  - The lead's rulings:
+    - B1: depth is counted as resolved; an element deeper than `max_depth` is `LimitExceeded` in both modes (requirement and ADR 0042 D8 updated);
+    - B2: a root holding a kept `href` or `xmi:idref` is not moved; its proxies are `SACM-XMI-003/proxy-of-linked-root`, checked after wrong-kind and before shared;
+    - B3.4: a proxy typed with a class its role cannot hold stays `element-kept`;
+    - N7: ADR 0042 D1 records that XMI.xsd declares no global `Documentation`.
+- 2026-11-21 fix round 1: the builder fixed B1 to B5 and N3 to N6; 32 of its 33 hand mutants are killed. New template `SACM-XMI-003/proxy-of-linked-root`: 109 diagnostic templates, 213 in all.
+  - The lead's rulings:
+    - B3.2: the output order is Extension, proxy, `in`, not the verifier's proxy, Extension, `in`. At one place metadata is written before preserved content (ADR 0042 D2, pinned by `sacm23_xmi_019_both_saves_write_metadata_where_it_stood`), and a kept proxy is preserved content. The test still kills the named mutant.
+    - B3.5: the `link.spelled` path is reachable; new test `sacm23_xmi_030_a_spelled_proxy_is_reported_as_spelled_and_kept`.
+    - B4.3: a delete frees metadata ids in `compact`, not `release_metadata`; a `SetContent::remove` case kills the ids half. The references-loop mutant survives and is a follow-up.
+    - `lib_api_018_template_rs_declares_the_108_diagnostic_templates` is renamed to `…_the_109_…`.
+    - The dangling affected id of a spelled proxy of no root is a follow-up for slice 0073b.

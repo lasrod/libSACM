@@ -26,6 +26,8 @@ or a proxy", and says that "the definition of the proxy is replaced by the refer
   - On every object (a root, a child, a name, a content, key or location, a value): uuid,
     label and the schema locations.
   - Inside every object: extension and Extension.
+  - XMI.xsd declares no global `Documentation` (a spec defect; §7.5.3 names
+    `xmi:Documentation`); it is read and written as the `Documentation` type.
 - **D2. How it is kept.** It is held exactly and written back by both saves, with no read
   diagnostic. It is never preserved content, so `has_preserved_content()` ignores it.
   - Attributes follow the typed ones and precede preserved ones.
@@ -58,8 +60,14 @@ or a proxy", and says that "the definition of the proxy is replaced by the refer
   document is a proxy. It may carry one type attribute and holds no content.
   - **Resolved:** when the id names a root of a kind the role and the type admit, the root
     moves into the proxy's place. Chains are followed, and success gives no diagnostic.
-  - **Kept:** for a target that is no root, a wrong kind, two proxies naming one root, or a
-    cycle, every proxy involved stays with SACM-XMI-003 and nothing moves.
+  - **Kept:** for a target that is no root, a wrong kind, a root that itself carries a kept
+    `href` or `xmi:idref`, two proxies naming one root, or a cycle, every proxy involved
+    stays with SACM-XMI-003 and nothing moves. A root with a kept link would not read back
+    as a definition once nested.
+  - **Depth:** depth is counted as resolved. A moved root takes its proxy's depth and its
+    tree shifts with it; an element deeper than `max_depth` refuses the read as
+    `LimitExceeded` (SACM-SEC-003), in both modes. Otherwise a chain of flat roots would
+    write a file the reader refuses.
   - D-RT holds: a write writes the nested form.
 - **D9. Bookkeeping.** `Unread::XmiMetadata` and the SACM-XMI-014 templates are removed. The
   code constant stays.

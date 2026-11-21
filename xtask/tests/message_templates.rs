@@ -83,11 +83,11 @@ const ROW_018: &str = "LIB-API-018";
 /// SACM23-VAL-013, -014, -015 and -023; slice 0072 adds three to the
 /// reader, `SACM-XMI-008/other-revision`, `/occurence` and
 /// `SACM-XMI-002/sacm-like`, LIB-COMPAT-004); slice 0073a removes the eight
-/// kept forms of SACM-XMI-014 and adds seven: `SACM-XMI-003/wrapper-element-kept`,
-/// the four `SACM-XMI-003/proxy-*` forms, `SACM-REF-001/metadata-dangling`
+/// kept forms of SACM-XMI-014 and adds eight: `SACM-XMI-003/wrapper-element-kept`,
+/// the five `SACM-XMI-003/proxy-*` forms, `SACM-REF-001/metadata-dangling`
 /// and `SACM-ID-002/metadata-id-not-an-ncname` (SACM23-XMI-019,
 /// SACM23-XMI-030; ADR 0042).
-const DIAGNOSTIC_TEMPLATES: usize = 108;
+const DIAGNOSTIC_TEMPLATES: usize = 109;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -927,7 +927,7 @@ fn lib_api_017_template_rs_declares_the_104_refusal_templates() {
 }
 
 #[test]
-fn lib_api_018_template_rs_declares_the_108_diagnostic_templates() {
+fn lib_api_018_template_rs_declares_the_109_diagnostic_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");

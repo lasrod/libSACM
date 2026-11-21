@@ -620,7 +620,10 @@ templates! {
         "the element {element:?} is a proxy of {target:?}, which is no root of the document, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
     XMI_003_PROXY_WRONG_KIND = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/proxy-wrong-kind",
         [Text("element"), Text("target"), Text("target_class"), Text("class"), Text("holder_class"), Text("holder_id")],
-        "the element {element:?} is a proxy of the root {target:?}, a {target_class}, which is not a {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+        "the element {element:?} is a proxy of the root {target:?}, of the class {target_class}, which is not of the class {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_003_PROXY_OF_LINKED_ROOT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/proxy-of-linked-root",
+        [Text("element"), Text("target"), Text("holder_class"), Text("holder_id")],
+        "the element {element:?} is a proxy of the root {target:?}, which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
     XMI_003_PROXY_SHARED = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/proxy-shared",
         [Text("element"), Text("target"), Text("holder_class"), Text("holder_id")],
         "the element {element:?} is a proxy of the root {target:?}, which another proxy names too, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
@@ -876,13 +879,14 @@ mod tests {
         // SACM-XMI-002/no-namespace (LIB-SEC-003, LIB-COMPAT-004,
         // LIB-COMPAT-016); slice 0073a removed the seven refusals and eight
         // kept forms of SACM-XMI-014 and added two refusal and seven
-        // diagnostic templates (SACM23-XMI-019, SACM23-XMI-030; ADR 0042).
-        assert_eq!(count, 212, "LIB-API-017: the number of templates");
+        // diagnostic templates (SACM23-XMI-019, SACM23-XMI-030; ADR 0042),
+        // and, in its fix round, SACM-XMI-003/proxy-of-linked-root.
+        assert_eq!(count, 213, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 108, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 109, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

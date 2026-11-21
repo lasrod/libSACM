@@ -63,8 +63,9 @@ use super::{
 /// **Preserved content** is what [`xmi::read`](crate::xmi::read) kept, as
 /// written, because it is not SACM 2.3 where it stands, such as a vendor
 /// attribute or child element (ADR 0033), or, in tolerant mode, because a
-/// strict read refuses it, such as a value that is no literal or XMI
-/// metadata not read yet, such as `xmi:uuid` (ADR 0035): each element that holds some says so
+/// strict read refuses it, such as a value that is no literal (ADR 0035);
+/// XMI metadata, such as `xmi:uuid`, is not preserved content (ADR 0042).
+/// Each element that holds some says so
 /// ([`SacmElement::has_preserved_content`]), and the document holds what
 /// is on or under `xmi:XMI` outside its elements, placed among the roots
 /// ([`has_preserved_content`](Self::has_preserved_content) tells both). It
@@ -2231,7 +2232,8 @@ impl Document {
                 preserved: None,
                 // A copy is a new object: its XMI metadata is kept, but not
                 // the `xmi:uuid`s, which identify the original (XMI 2.5.1
-                // §7.13, ADR 0042 D6).
+                // §7.6.1: elements with one `xmi:uuid` "are all deemed to
+                // reference the same MOF element"; ADR 0042 D6).
                 metadata: captured
                     .metadata
                     .as_deref()
@@ -4007,8 +4009,9 @@ impl<'a> SacmElement<'a> {
     /// with from XMI and kept exactly as written instead of read, such as a
     /// vendor attribute or child element that is not SACM 2.3 where it stands
     /// (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a construct a strict
-    /// read refuses, such as a value that is no literal or XMI metadata not
-    /// read yet, such as `xmi:uuid` (ADR 0035).
+    /// read refuses, such as a value that is no literal (ADR 0035). XMI
+    /// metadata, such as `xmi:uuid`, is never preserved content
+    /// (SACM23-XMI-019, ADR 0042).
     ///
     /// [`xmi::read`](crate::xmi::read) keeps it, with one diagnostic per
     /// construct (SACM-XMI-003 for content that is not SACM 2.3 where it
@@ -4419,7 +4422,9 @@ impl Text {
 
     /// A copy for a [`CopyElements`](crate::edit::CopyElements): its values
     /// mapped by `value`, each id kept as `keep` says, and its metadata
-    /// without the `xmi:uuid`s (XMI 2.5.1 §7.13, ADR 0042 D6).
+    /// without the `xmi:uuid`s (XMI 2.5.1 §7.6.1: elements with one
+    /// `xmi:uuid` "are all deemed to reference the same MOF element"; ADR
+    /// 0042 D6).
     pub(crate) fn copied(
         &self,
         value: impl Fn(&LangString) -> LangString,

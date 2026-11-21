@@ -1267,11 +1267,49 @@ fn preserved_under_bindings() -> (String, usize) {
     (input, 1000 * per_child)
 }
 
+/// `count` flat root `AssuranceCasePackage`s under `xmi:XMI`, each but the
+/// last holding a same-file proxy of the next (SACM23-XMI-030): as resolved,
+/// root `n` (from 1) is at depth `n + 1` and its name at `n + 2`.
+fn flat_proxy_chain(count: usize) -> String {
+    let mut input = format!("<xmi:XMI{NS}>");
+    for n in 1..=count {
+        let _ = write!(
+            input,
+            "<sacm:AssuranceCasePackage xmi:id=\"a{n}\"><name content=\"a{n}\"/>"
+        );
+        if n < count {
+            let _ = write!(input, "<assuranceCasePackage xmi:idref=\"a{}\"/>", n + 1);
+        }
+        input.push_str("</sacm:AssuranceCasePackage>");
+    }
+    input.push_str("</xmi:XMI>");
+    input
+}
+
 #[test]
 fn lib_sec_003_write_stays_within_the_documented_bound() {
     const D: usize = 64;
     let (preserved, kept) = preserved_under_bindings();
+    // One root more than the depth admits is refused, so no flat chain is
+    // written nested deeper than D: the depth is counted as resolved.
+    let longer = flat_proxy_chain(D - 1);
+    assert_exceeded(
+        "a flat proxy chain of 63 roots under depth 64",
+        longer.as_bytes(),
+        Limits::default().with_max_depth(64),
+        (
+            Limit::Depth,
+            64,
+            Some(position_of(&longer, "<name content=\"a63\"/>")),
+        ),
+        "SACM-SEC-003/depth",
+    );
     let inputs = [
+        (
+            "the longest flat proxy chain depth 64 admits",
+            flat_proxy_chain(D - 2),
+            0,
+        ),
         (
             "a chain of AssuranceCasePackages 64 deep",
             package_chain(D),

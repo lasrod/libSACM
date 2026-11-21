@@ -173,8 +173,9 @@ impl Preserved {
     }
 
     /// A copy without its `xmi:uuid`, or `None` if nothing else is left: what
-    /// a copy of an element keeps of its XMI metadata (XMI 2.5.1 §7.13, ADR
-    /// 0042). A `uuid` holds no id and names none, so the derived fields stay
+    /// a copy of an element keeps of its XMI metadata (XMI 2.5.1 §7.6.1:
+    /// elements with one `xmi:uuid` "are all deemed to reference the same MOF
+    /// element"; ADR 0042). A `uuid` holds no id and names none, so the derived fields stay
     /// right.
     pub(crate) fn without_uuid(&self) -> Option<Box<Self>> {
         let mut copy = self.clone();

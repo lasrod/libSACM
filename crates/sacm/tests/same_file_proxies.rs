@@ -15,9 +15,14 @@
 //! nothing moves, and the proxy is kept whole as preserved content of its
 //! container, with one SACM-XMI-003 at its `<` (an Error strict, a Warning
 //! tolerant), in this order of checks: `proxy-of-no-root`,
-//! `proxy-wrong-kind`, `proxy-shared` (each of two or more proxies naming
-//! one root), `proxy-cycle` (each proxy of a cycle). A proxy with anything
-//! else on or in it is `element-kept`.
+//! `proxy-wrong-kind`, `proxy-of-linked-root` (the root keeps an `href` or
+//! an `xmi:idref` of its own), `proxy-shared` (each of two or more proxies
+//! naming one root), `proxy-cycle` (each proxy of a cycle). A proxy with
+//! anything else on or in it is `element-kept`.
+//!
+//! Depth is counted as resolved: a root that stays keeps its input depth, a
+//! moved root takes its proxy's, and its tree shifts with it. Anything
+//! deeper than `Limits::max_depth` refuses the read (SACM-SEC-003).
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
@@ -25,7 +30,7 @@
 use sacm::compare::semantic_compare;
 use sacm::diagnostic::{ArgumentValue, Code, Diagnostic, Severity};
 use sacm::model::{Document, SacmElement};
-use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Limit, Limits, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-030";
 
@@ -637,6 +642,42 @@ fn sacm23_xmi_030_a_proxy_of_the_wrong_kind_is_kept() {
             );
         }
     }
+    // A proxy of a type its role cannot hold is no proxy of the role: it is
+    // kept as any child of such a type is, with `element-kept`.
+    let (input, marks) = marked(&wrapped(&[
+        case(
+            "case",
+            &format!(
+                "{MARK}<argumentPackage xmi:type=\"sacm:ArtifactPackage\" xmi:idref=\"arts\"/>"
+            ),
+        ),
+        args(),
+        arts(),
+    ]));
+    for mode in MODES {
+        let what = format!("an argumentPackage proxy typed sacm:ArtifactPackage, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        assert_eq!(
+            diagnostics(&what, &output),
+            [kept(
+                mode,
+                "SACM-XMI-003/element-kept",
+                marks[0],
+                "case",
+                &[
+                    ("element", "argumentPackage"),
+                    ("holder_class", "AssuranceCasePackage"),
+                    ("holder_id", "case"),
+                ],
+            )],
+            "{ROW}: {what}: not one element-kept at the proxy"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["case", "args", "arts"],
+            "{ROW}: {what}: a root moved"
+        );
+    }
     // An untyped proxy under an abstract role resolves to a root whose kind
     // the role admits, with no SACM-XMI-005 (LIB-COMPAT-010).
     let input = wrapped(&[
@@ -688,11 +729,29 @@ fn sacm23_xmi_030_a_proxy_carries_only_its_link_and_type() {
             "xmi:idref with a name child",
             "<argumentPackage xmi:idref=\"args\"><name/></argumentPackage>",
         ),
+        (
+            "xmi:type and xsi:type both naming ArgumentPackage",
+            "<argumentPackage xmi:type=\"sacm:ArgumentPackage\" \
+             xsi:type=\"sacm:ArgumentPackage\" xmi:idref=\"args\"/>",
+        ),
+        (
+            "xmi:idref with text",
+            "<argumentPackage xmi:idref=\"args\">x</argumentPackage>",
+        ),
+        (
+            "xmi:idref holding two tokens",
+            "<argumentPackage xmi:idref=\"args arts\"/>",
+        ),
+        ("an empty xmi:idref", "<argumentPackage xmi:idref=\"\"/>"),
     ] {
-        let (input, marks) = marked(&wrapped(&[
-            case("case", &format!("{MARK}{element}")),
-            args(),
-        ]));
+        // `xsi` is declared on the wrapper, so no case adds a declaration.
+        let (input, marks) = marked(
+            &wrapped(&[case("case", &format!("{MARK}{element}")), args()]).replacen(
+                "<xmi:XMI ",
+                "<xmi:XMI xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ",
+                1,
+            ),
+        );
         for mode in MODES {
             let what = format!("{what}, {mode:?}");
             let output = read_ok(&what, mode, &input);
@@ -717,6 +776,24 @@ fn sacm23_xmi_030_a_proxy_carries_only_its_link_and_type() {
                 "{ROW}: {what}: args moved"
             );
         }
+    }
+    // White space, comments and processing instructions are no content.
+    let spaced = wrapped(&[
+        case(
+            "case",
+            "<argumentPackage xmi:idref=\"args\"> <!-- c --> <?pi x?> </argumentPackage>",
+        ),
+        args(),
+    ]);
+    for mode in MODES {
+        let what = format!("a proxy holding a comment and a processing instruction, {mode:?}");
+        let doc = read_clean(&what, mode, &spaced);
+        assert_eq!(root_ids(&doc), ["case"], "{ROW}: {what}: roots()");
+        assert_eq!(
+            parent_of(&what, &doc, "args").as_deref(),
+            Some("case"),
+            "{ROW}: {what}: args is not moved into case"
+        );
     }
     // A type attribute is allowed: xsi:type with its SACM-XMI-010, and
     // xmi:type with no diagnostic.
@@ -844,5 +921,529 @@ fn sacm23_xmi_030_document_content_keeps_its_place() {
             && foo < bar,
         "{ROW}: document content: not wrapped, with args in case, then <xmi:foo />, then \
          <xmi:bar />:\n{text}"
+    );
+    // `xmi:XMI` holds [args, <xmi:foo/>, case]: `args` moves into `case`, so
+    // `<xmi:foo/>` stands before the only root that stays.
+    let what = "[args, <xmi:foo/>, case]";
+    let input = format!(
+        "{WRAPPER}{}<xmi:foo/>{}</xmi:XMI>",
+        args(),
+        case("case", "<argumentPackage xmi:idref=\"args\"/>")
+    );
+    let output = read_ok(what, Mode::Tolerant, &input);
+    let templates: Vec<&str> = output
+        .diagnostics()
+        .iter()
+        .map(Diagnostic::template)
+        .collect();
+    assert_eq!(
+        templates,
+        ["SACM-XMI-003/wrapper-element-kept"],
+        "{ROW}: {what}: not one wrapper-element-kept"
+    );
+    let doc = output.document();
+    assert_eq!(root_ids(doc), ["case"], "{ROW}: {what}: roots()");
+    let text = written(what, doc, Mode::Tolerant);
+    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+    let index = |about: &str, matches: &dyn Fn(&str) -> bool| {
+        lines
+            .iter()
+            .position(|line| matches(line))
+            .unwrap_or_else(|| panic!("{ROW}: {what}: no line {about}:\n{text}"))
+    };
+    let foo = index("<xmi:foo />", &|line| line == "<xmi:foo />");
+    let case_start = index("of case", &|line| line.contains("xmi:id=\"case\""));
+    assert!(
+        foo < case_start,
+        "{ROW}: {what}: <xmi:foo /> is not written before case:\n{text}"
+    );
+    let back = read_ok("the output", Mode::Tolerant, &text).into_document();
+    assert!(
+        back == *doc,
+        "{ROW}: {what}: the output read back is not ==: {:?}",
+        semantic_compare(doc, &back)
+    );
+    assert_eq!(
+        written("the output read back", &back, Mode::Tolerant),
+        text,
+        "{ROW}: {what}: the second write is not byte-stable"
+    );
+}
+
+// --- 10. A kept proxy among metadata ---------------------------------------------------
+
+#[test]
+fn sacm23_xmi_030_a_kept_proxy_keeps_its_place_among_metadata() {
+    // `case` holds a proxy that is kept, an extension, then a package. The
+    // kept proxy is no typed child, so the extension and the proxy both
+    // stand before the package `in`, the first typed child; at one place,
+    // metadata is written before preserved content (SACM23-XMI-019).
+    let (input, marks) = marked(&wrapped(&[case(
+        "case",
+        &format!(
+            "{}<xmi:Extension extender=\"E\"/><argumentPackage xmi:id=\"in\"/>",
+            proxy("argumentPackage", "nope")
+        ),
+    )]));
+    for mode in MODES {
+        let what = format!("a kept proxy, an extension and a package, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        assert_eq!(
+            diagnostics(&what, &output),
+            [kept(
+                mode,
+                "SACM-XMI-003/proxy-of-no-root",
+                marks[0],
+                "case",
+                &proxy_arguments("argumentPackage", "nope", "AssuranceCasePackage", "case"),
+            )],
+            "{ROW}: {what}: not one proxy-of-no-root"
+        );
+        let doc = output.document();
+        let text = written(&what, doc, Mode::Tolerant);
+        let lines: Vec<&str> = text.lines().map(str::trim).collect();
+        let index = |about: &str, matches: &dyn Fn(&str) -> bool| {
+            lines
+                .iter()
+                .position(|line| matches(line))
+                .unwrap_or_else(|| panic!("{ROW}: {what}: no line {about}:\n{text}"))
+        };
+        let kept_proxy = index("of the proxy", &|line| {
+            line == "<argumentPackage xmi:idref=\"nope\" />"
+        });
+        let extension = index("of the extension", &|line| {
+            line == "<xmi:Extension extender=\"E\" />"
+        });
+        let inner = index("of in", &|line| line.contains("xmi:id=\"in\""));
+        assert!(
+            extension < kept_proxy && kept_proxy < inner,
+            "{ROW}: {what}: not written in the order xmi:Extension, proxy, in:\n{text}"
+        );
+        let back = read_ok("the output", Mode::Tolerant, &text).into_document();
+        assert!(
+            back == *doc,
+            "{ROW}: {what}: the output read back is not ==: {:?}",
+            semantic_compare(doc, &back)
+        );
+    }
+}
+
+// --- 11. A proxy whose role or type is a spelling --------------------------------------
+
+#[test]
+fn sacm23_xmi_030_a_spelled_proxy_is_reported_as_spelled_and_kept() {
+    // The model's spelling of ArtifactAssetRelationship as the proxy's type,
+    // and the text's spelling of the role `argumentElement`: a tolerant read
+    // reads each as the resolved name (SACM23-XMI-009), with its
+    // SACM-XMI-013, and then keeps the proxy, which names no root.
+    for (what, class, element, proxy_element, spelling) in [
+        (
+            "a proxy typed sacm:ArtifactAssertedRelationship",
+            "ArtifactPackage",
+            "artifactElement",
+            "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:idref=\"nope\"/>",
+            "SACM-XMI-013/model-type-in-root-read",
+        ),
+        (
+            "a proxy in the role argumentationElement",
+            "ArgumentPackage",
+            "argumentationElement",
+            "<argumentationElement xmi:idref=\"nope\"/>",
+            "SACM-XMI-013/package-role-in-root-read",
+        ),
+    ] {
+        let (input, marks) = marked(&wrapped(&[root(
+            class,
+            "holder",
+            &format!("{MARK}{proxy_element}"),
+        )]));
+        let what = format!("{what}, Tolerant");
+        let output = read_ok(&what, Mode::Tolerant, &input);
+        let found = diagnostics(&what, &output);
+        let summaries: Vec<_> = found
+            .iter()
+            .map(|(code, severity, template, location, _, _)| {
+                (*code, *severity, *template, *location)
+            })
+            .collect();
+        assert_eq!(
+            summaries,
+            [
+                (
+                    "SACM-XMI-003",
+                    Severity::Warning,
+                    "SACM-XMI-003/proxy-of-no-root",
+                    Some(marks[0])
+                ),
+                ("SACM-XMI-013", Severity::Warning, spelling, Some(marks[0])),
+            ],
+            "{ROW}: {what}: not the proxy's SACM-XMI-003 beside the spelling's SACM-XMI-013"
+        );
+        assert_eq!(
+            found[0],
+            kept(
+                Mode::Tolerant,
+                "SACM-XMI-003/proxy-of-no-root",
+                marks[0],
+                "holder",
+                &proxy_arguments(element, "nope", class, "holder"),
+            ),
+            "{ROW}: {what}: the proxy-of-no-root"
+        );
+        // A role spelling affects the holder, as a child's does.
+        if element == "argumentationElement" {
+            assert_eq!(
+                found[1].4,
+                ["holder"],
+                "{ROW}: {what}: the elements the SACM-XMI-013 affects"
+            );
+        }
+        assert!(
+            output
+                .document()
+                .get("holder")
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: the holder does not keep the proxy"
+        );
+    }
+}
+
+// --- 12. A root with a link attribute of its own ---------------------------------------
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn sacm23_xmi_030_a_root_with_a_link_attribute_is_not_moved() {
+    // A root that keeps an `href` or an `xmi:idref` (SACM-XMI-003,
+    // SACM23-XMI-019) written in a proxy's place would read back as a role
+    // element with a link and content: it is not moved.
+    for (about, link, attribute) in [
+        ("href", "href=\"o.xmi#x\"", "href"),
+        ("xmi:idref", "xmi:idref=\"args\"", "xmi:idref"),
+    ] {
+        let (input, marks) = marked(&wrapped(&[
+            case("case", &proxy("argumentPackage", "args")),
+            format!(
+                "<sacm:ArgumentPackage xmi:id=\"args\" {MARK}{link}><name content=\"args\"/>\
+                 </sacm:ArgumentPackage>"
+            ),
+        ]));
+        for mode in MODES {
+            let what = format!("a proxy of a root with {about}, {mode:?}");
+            let output = read_ok(&what, mode, &input);
+            assert_eq!(
+                diagnostics(&what, &output),
+                [
+                    kept(
+                        mode,
+                        "SACM-XMI-003/proxy-of-linked-root",
+                        marks[0],
+                        "case",
+                        &proxy_arguments("argumentPackage", "args", "AssuranceCasePackage", "case"),
+                    ),
+                    kept(
+                        mode,
+                        "SACM-XMI-003/attribute-kept",
+                        marks[1],
+                        "args",
+                        &[
+                            ("attribute", attribute),
+                            ("holder_class", "ArgumentPackage"),
+                            ("holder_id", "args"),
+                        ],
+                    ),
+                ],
+                "{ROW}: {what}: not proxy-of-linked-root, then the root's attribute-kept"
+            );
+            let doc = output.document();
+            assert_eq!(
+                root_ids(doc),
+                ["case", "args"],
+                "{ROW}: {what}: args does not stay a root"
+            );
+            assert_eq!(
+                parent_of(&what, doc, "args"),
+                None,
+                "{ROW}: {what}: args has a parent"
+            );
+            assert!(
+                doc.get("case")
+                    .is_some_and(SacmElement::has_preserved_content),
+                "{ROW}: {what}: case does not keep the proxy"
+            );
+            let text = written(&what, doc, Mode::Tolerant);
+            let back = read_ok("the output", Mode::Tolerant, &text).into_document();
+            assert_eq!(
+                root_ids(&back),
+                ["case", "args"],
+                "{ROW}: {what}: the roots of the output read back"
+            );
+            assert!(
+                back == *doc,
+                "{ROW}: {what}: the output read back is not ==: {:?}\n{text}",
+                semantic_compare(doc, &back)
+            );
+            assert_eq!(
+                written("the output read back", &back, Mode::Tolerant),
+                text,
+                "{ROW}: {what}: the second write is not byte-stable"
+            );
+        }
+    }
+    // The order of the checks: after the kind, so a proxy of the wrong kind
+    // is `proxy-wrong-kind`; before the count, so each of two proxies of a
+    // linked root is `proxy-of-linked-root`, not `proxy-shared`.
+    let linked = "<sacm:ArgumentPackage xmi:id=\"args\" href=\"o.xmi#x\">\
+                  <name content=\"args\"/></sacm:ArgumentPackage>";
+    let (input, marks) = marked(&wrapped(&[
+        case(
+            "case",
+            &format!(
+                "{}{}{}",
+                proxy("artifactPackage", "args"),
+                proxy("argumentPackage", "args"),
+                proxy("argumentPackage", "args")
+            ),
+        ),
+        linked.to_owned(),
+    ]));
+    for mode in MODES {
+        let what = format!("three proxies of a root with href, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        let found = diagnostics(&what, &output);
+        let linked_root = |at: (u32, u32)| {
+            kept(
+                mode,
+                "SACM-XMI-003/proxy-of-linked-root",
+                at,
+                "case",
+                &proxy_arguments("argumentPackage", "args", "AssuranceCasePackage", "case"),
+            )
+        };
+        assert_eq!(
+            found.get(..3),
+            Some(
+                [
+                    kept(
+                        mode,
+                        "SACM-XMI-003/proxy-wrong-kind",
+                        marks[0],
+                        "case",
+                        &[
+                            ("element", "artifactPackage"),
+                            ("target", "args"),
+                            ("target_class", "ArgumentPackage"),
+                            ("class", "ArtifactPackage"),
+                            ("holder_class", "AssuranceCasePackage"),
+                            ("holder_id", "case"),
+                        ],
+                    ),
+                    linked_root(marks[1]),
+                    linked_root(marks[2]),
+                ]
+                .as_slice()
+            ),
+            "{ROW}: {what}: not proxy-wrong-kind, then two proxy-of-linked-root"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["case", "args"],
+            "{ROW}: {what}: roots()"
+        );
+    }
+}
+
+// --- 13. Depth, as resolved ------------------------------------------------------------
+
+/// `count` flat root packages of the class `AssuranceCasePackage`, `p1` to
+/// `p<count>`, each but the
+/// last holding a proxy of the next, in that order or reversed. As resolved,
+/// `p<n>` is at depth `n + 1` under `xmi:XMI` and its name at `n + 2`. The
+/// name of `p<marked>` is marked.
+fn proxy_chain(count: usize, reversed: bool, marked: usize) -> String {
+    let mut roots: Vec<String> = (1..=count)
+        .map(|n| {
+            let mark = if n == marked {
+                MARK.to_string()
+            } else {
+                String::new()
+            };
+            let body = if n == count {
+                String::new()
+            } else {
+                format!("<assuranceCasePackage xmi:idref=\"p{}\"/>", n + 1)
+            };
+            format!(
+                "<sacm:AssuranceCasePackage xmi:id=\"p{n}\">{mark}<name content=\"p{n}\"/>{body}\
+                 </sacm:AssuranceCasePackage>"
+            )
+        })
+        .collect();
+    if reversed {
+        roots.reverse();
+    }
+    wrapped(&roots)
+}
+
+/// Asserts that `template`, with one mark, read under `limits` in both modes
+/// is `LimitExceeded` for the depth at the mark: the first element, in
+/// document order, nested deeper than the limit as resolved.
+fn assert_too_deep(what: &str, template: &str, limits: Limits) {
+    let (input, marks) = marked(template);
+    for mode in MODES {
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        let error = match xmi::read(input.as_bytes(), &options) {
+            Err(error) => error,
+            Ok(output) => panic!(
+                "{ROW}: {what}: a {mode:?} read returned a document nested deeper than the \
+                 depth limit as resolved, with {:?}",
+                output.diagnostics()
+            ),
+        };
+        assert!(
+            matches!(
+                error,
+                ReadError::LimitExceeded {
+                    limit: Limit::Depth,
+                    max,
+                    ..
+                } if max == limits.max_depth()
+            ),
+            "{ROW}: {what}, {mode:?}: not LimitExceeded for the depth: {error:?}"
+        );
+        assert_eq!(
+            (
+                error.code().as_str(),
+                error.template(),
+                error.location().map(|at| (at.line(), at.column()))
+            ),
+            ("SACM-SEC-003", "SACM-SEC-003/depth", Some(marks[0])),
+            "{ROW}: {what}, {mode:?}: code(), template() and location()"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn sacm23_xmi_030_a_chain_deeper_than_the_depth_limit_is_refused() {
+    let limits = Limits::default().with_max_depth(6);
+    // A chain of four: the name of the deepest is at depth 6.
+    for reversed in [false, true] {
+        let (input, _) = marked(&proxy_chain(4, reversed, 0));
+        for mode in MODES {
+            let what = format!("a chain of 4, reversed: {reversed}, {mode:?}");
+            let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+            let output = match xmi::read(input.as_bytes(), &options) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: refused under depth 6: {error:?} ({error})"),
+            };
+            assert_eq!(output.diagnostics(), [], "{ROW}: {what}: diagnostics");
+            let doc = output.document();
+            assert_eq!(root_ids(doc), ["p1"], "{ROW}: {what}: roots()");
+            assert_eq!(
+                parent_of(&what, doc, "p4").as_deref(),
+                Some("p3"),
+                "{ROW}: {what}: the parent of p4"
+            );
+            for write_mode in MODES {
+                let text = written(&what, doc, write_mode);
+                let options = ReadOptions::default()
+                    .with_mode(Mode::Strict)
+                    .with_limits(limits);
+                let back = match xmi::read(text.as_bytes(), &options) {
+                    Ok(back) => back.into_document(),
+                    Err(error) => panic!(
+                        "{ROW}: {what}: the {write_mode:?} output is refused under the limits \
+                         of its input: {error:?} ({error})\n{text}"
+                    ),
+                };
+                assert!(
+                    back == *doc,
+                    "{ROW}: {what}: the {write_mode:?} output read back is not ==: {:?}",
+                    semantic_compare(doc, &back)
+                );
+            }
+        }
+    }
+    // A chain of five: the name of the deepest would be at depth 7.
+    for reversed in [false, true] {
+        assert_too_deep(
+            &format!("a chain of 5, reversed: {reversed}"),
+            &proxy_chain(5, reversed, 5),
+            limits,
+        );
+    }
+    // `a` names `b`, whose own tree reaches depth 6 as written: b at 2, b2
+    // at 3, b3 at 4, b4 at 5 and its name at 6. Moved under `a`, it is one
+    // deeper.
+    let inline = |id: &str, body: &str| {
+        format!(
+            "<assuranceCasePackage xmi:id=\"{id}\"><name content=\"{id}\"/>{body}\
+             </assuranceCasePackage>"
+        )
+    };
+    let deepest = format!(
+        "<assuranceCasePackage xmi:id=\"b4\">{MARK}<name content=\"b4\"/></assuranceCasePackage>"
+    );
+    let b = case("b", &inline("b2", &inline("b3", &deepest)));
+    assert_too_deep(
+        "a naming b, whose tree is 5 deep",
+        &wrapped(&[
+            case("a", "<assuranceCasePackage xmi:idref=\"b\"/>"),
+            b.clone(),
+        ]),
+        limits,
+    );
+    // Not moved, it reads.
+    let (unmoved, _) = marked(&wrapped(&[case("a", ""), b]));
+    for mode in MODES {
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        if let Err(error) = xmi::read(unmoved.as_bytes(), &options) {
+            panic!("{ROW}: a beside b, {mode:?}: refused under depth 6: {error:?} ({error})");
+        }
+    }
+    // A moved root takes the depth of its proxy, wherever the proxy is
+    // nested: under `a`, `a2` and `a3`, the proxy is at depth 5. `c` with
+    // only a name reads, its name at 6; holding `c2`, the name of `c2` is at
+    // 7.
+    let nesting = case(
+        "a",
+        &inline(
+            "a2",
+            &inline("a3", "<assuranceCasePackage xmi:idref=\"c\"/>"),
+        ),
+    );
+    let (shallow, _) = marked(&wrapped(&[nesting.clone(), case("c", "")]));
+    for mode in MODES {
+        let what = format!("a proxy at depth 5 of a root with a name, {mode:?}");
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        match xmi::read(shallow.as_bytes(), &options) {
+            Ok(output) => assert_eq!(
+                parent_of(&what, output.document(), "c").as_deref(),
+                Some("a3"),
+                "{ROW}: {what}: the parent of c"
+            ),
+            Err(error) => panic!("{ROW}: {what}: refused under depth 6: {error:?} ({error})"),
+        }
+    }
+    let c2 = format!(
+        "<assuranceCasePackage xmi:id=\"c2\">{MARK}<name content=\"c2\"/></assuranceCasePackage>"
+    );
+    assert_too_deep(
+        "a proxy at depth 5 of a root holding a package",
+        &wrapped(&[nesting, case("c", &c2)]),
+        limits,
+    );
+    // The defaults: of 300 flat roots in a chain, the name of p255 is the
+    // first element nested deeper than 256.
+    assert_too_deep(
+        "a chain of 300 under the default limits",
+        &proxy_chain(300, false, 255),
+        Limits::default(),
     );
 }

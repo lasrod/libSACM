@@ -518,13 +518,15 @@ pub use limits::{Limit, Limits};
 ///   `value`: `xmi:uuid`, `xmi:label`, `xsi:schemaLocation` and
 ///   `xsi:noNamespaceSchemaLocation`;
 /// - in any of these: `xmi:extension` and `xmi:Extension` elements, kept
-///   whole, their content not checked.
+///   whole, their content not checked. Comments and processing instructions
+///   inside one are dropped, as everywhere in the reader.
 ///
 /// [`SacmElement::uuid`](crate::model::SacmElement::uuid) and
 /// [`SacmElement::label`](crate::model::SacmElement::label) give an
 /// element's own values. Metadata ids share the document's id space, as
 /// preserved ids do. A copy drops the `xmi:uuid` of each element and part
-/// it copies (XMI 2.5.1 §7.13), a delete removes the metadata with the
+/// it copies (XMI 2.5.1 §7.6.1: elements with one `xmi:uuid` "are all
+/// deemed to reference the same MOF element"), a delete removes the metadata with the
 /// element, and a move keeps it. Differences are kept, never applied.
 ///
 /// Any other XMI-namespace element where metadata may stand, an `href` or
@@ -560,12 +562,22 @@ pub use limits::{Limit, Limits};
 /// and its type admit moves that root into its place, in both modes, with
 /// no diagnostic: the root becomes a child of the proxy's container and
 /// stops being a root, and chains of proxies are followed. A proxy that
-/// names no root, names one of the wrong kind, names a root another proxy
-/// names too, or is part of a cycle, in that order of checks, is kept whole
-/// as preserved content of its container instead, with one SACM-XMI-003 at
-/// its `<`: an Error in strict mode, a Warning in tolerant mode. A proxy
-/// with anything else on or in it is kept with SACM-XMI-003 too. A write
-/// writes a moved root as a child.
+/// names no root, names one of the wrong kind, names a root that keeps an
+/// `href` or an `xmi:idref` of its own (which is not moved), names a root
+/// another proxy names too, or is part of a cycle, in that order of checks,
+/// is kept whole as preserved content of its container instead, with one
+/// SACM-XMI-003 at its `<`: an Error in strict mode, a Warning in tolerant
+/// mode. A proxy with anything else on or in it is kept with SACM-XMI-003
+/// too. A write writes a moved root as a child.
+///
+/// Depth is counted as resolved: a root that stays keeps its input depth, a
+/// moved root takes its proxy's depth, and every element of its tree, its
+/// parts included, shifts with it. An element nested deeper than
+/// [`Limits::max_depth`] as resolved refuses the read in both modes, as
+/// [`ReadError::LimitExceeded`] for [`Limit::Depth`] (SACM-SEC-003), at the
+/// first such element. So a chain of proxies between flat roots cannot nest
+/// a document deeper than its limit, and its output reads back under the
+/// same limits.
 ///
 /// # The C++ name and text shapes
 ///
@@ -602,10 +614,9 @@ pub use limits::{Limit, Limits};
 /// merge elements do not conform, and are preserved whole, such as a `name`
 /// holding two values, a `value` beside other fields in a `name`, or text
 /// beside the `value`s of a `content` (LIB-COMPAT-012 is to read them). An
-/// `xmi:id` on the `value` of a `name` is XMI metadata this release does not
-/// read (SACM23-XMI-019), refused by a strict read as
-/// [`ReadError::Unsupported`] and kept, with the whole `name`, by a tolerant
-/// one.
+/// `xmi:id` on the `value` of a `name` does not conform either: both modes
+/// keep the whole `name` as preserved content, with SACM-XMI-003 at its
+/// start tag (SACM23-XMI-019).
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -3050,9 +3061,19 @@ impl WriteError {
         );
         let first_id = Argument::text(
             "first_id",
+            // The element the first error affects, or, for one that affects
+            // none, the `xmi:id` of the document's metadata it is about.
             first
-                .and_then(|first| first.affected().first())
-                .map_or("", ElementId::as_str),
+                .and_then(|first| {
+                    first.affected().first().map(ElementId::as_str).or_else(|| {
+                        first
+                            .arguments()
+                            .iter()
+                            .find(|argument| argument.name() == "xmi_id")
+                            .and_then(|argument| argument.value().as_text())
+                    })
+                })
+                .unwrap_or(""),
         );
         let details = if diagnostics.len() == 1 {
             Details::new(&template::XMI_016_SCHEMA_ERROR, vec![first_code, first_id])

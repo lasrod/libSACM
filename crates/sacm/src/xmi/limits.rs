@@ -30,7 +30,7 @@ use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 /// | Limit | Default | Checked |
 /// |---|---|---|
 /// | [`max_input_bytes`](Self::max_input_bytes) | 33,554,432 (32 MiB) | on the input's bytes, first; and, in one budget, on what the read keeps besides the parsed tree: the namespace text preserved content keeps, as each element or attribute is kept, and the text of each diagnostic, where it is emitted |
-/// | [`max_depth`](Self::max_depth) | 256 | by a scan before parsing, at each start tag; the document element is depth 1 |
+/// | [`max_depth`](Self::max_depth) | 256 | by a scan before parsing, at each start tag; the document element is depth 1. And as resolved, once every root is read: a root that a same-file proxy moves takes the proxy's depth, and its tree shifts with it (SACM23-XMI-030) |
 /// | [`max_nodes`](Self::max_nodes) | 1,000,000 | by the parser, for its nodes; by the scan, for the bindings in scope at the elements that declare one |
 /// | [`max_namespace_bindings`](Self::max_namespace_bindings) | 256 | by the scan, at each start tag: one per prefix in scope, the default namespace counted, `xml` not |
 ///

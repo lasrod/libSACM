@@ -2,9 +2,9 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 108 in all: 38 that `validate` gives and 70
+//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
 //! that a tolerant or a strict read, or a strict write, gives (slice 0073a
-//! removes the eight kept forms of SACM-XMI-014 and adds seven of XMI
+//! removes the eight kept forms of SACM-XMI-014 and adds eight of XMI
 //! metadata and same-file proxies, ADR 0042; slice 0072 adds the three of a
 //! root in another SACM namespace, LIB-COMPAT-004; slice 0068 adds the eight of the
 //! package interface and binding rules; slice 0067 removes the four kept
@@ -23,7 +23,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 108 templates,
+//!   pattern names it, and then last; and the inputs are the 109 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -54,13 +54,13 @@ const NS: &str = concat!(
 );
 
 /// The number of diagnostic templates (acceptance 1): 38 from validation and
-/// 70 from the reader and the writer, once slice 0067 removes the four kept
+/// 71 from the reader and the writer, once slice 0067 removes the four kept
 /// forms of unread kinds and ends (ADR 0035 amendment 1), slice 0068 adds
 /// eight to validation (SACM23-VAL-013, -014, -015, -023), slice 0072 adds
 /// three to the reader (LIB-COMPAT-004), and slice 0073a removes the eight
-/// kept forms of SACM-XMI-014 and adds seven (SACM23-XMI-019,
+/// kept forms of SACM-XMI-014 and adds eight (SACM23-XMI-019,
 /// SACM23-XMI-030; ADR 0042).
-const DIAGNOSTIC_TEMPLATES: usize = 108;
+const DIAGNOSTIC_TEMPLATES: usize = 109;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -996,7 +996,7 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 70 templates a read, or a strict write's check of XMI metadata, gives,
+/// The 71 templates a read, or a strict write's check of XMI metadata, gives,
 /// in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
@@ -1021,10 +1021,14 @@ fn proxied(body: &str) -> String {
     )
 }
 
-/// The seven templates of slice 0073a (SACM23-XMI-019, SACM23-XMI-030; ADR
+/// The eight templates of slice 0073a (SACM23-XMI-019, SACM23-XMI-030; ADR
 /// 0042): an XMI-namespace element XMI does not define under `xmi:XMI`, the
-/// four kept forms of a same-file proxy, and the two checks a strict write
+/// five kept forms of a same-file proxy, and the two checks a strict write
 /// makes of XMI metadata.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
 fn metadata_cases() -> Vec<Case> {
     vec![
         case(
@@ -1063,8 +1067,26 @@ fn metadata_cases() -> Vec<Case> {
                 ("holder_class", t("AssuranceCasePackage")),
                 ("holder_id", t("case")),
             ],
-            "the element {element:?} is a proxy of the root {target:?}, a {target_class}, which is not a {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
-            "the element \"argumentPackage\" is a proxy of the root \"arts\", a ArtifactPackage, which is not a ArgumentPackage, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+            "the element {element:?} is a proxy of the root {target:?}, of the class {target_class}, which is not of the class {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of the root \"arts\", of the class ArtifactPackage, which is not of the class ArgumentPackage, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // The root `args` keeps an `href` of its own, with its own
+        // `attribute-kept`, whose message is another.
+        case(
+            "SACM-XMI-003/proxy-of-linked-root",
+            tolerant(proxied("<argumentPackage xmi:idref=\"args\"/>").replace(
+                "<sacm:ArgumentPackage xmi:id=\"args\">",
+                "<sacm:ArgumentPackage xmi:id=\"args\" href=\"o.xmi#x\">",
+            )),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("argumentPackage")),
+                ("target", t("args")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of the root {target:?}, which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of the root \"args\", which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
         ),
         // Two proxies of `args`, one in `case` and one in `two`: each is
         // `proxy-shared`, and only the message of the first names `case`.
@@ -2094,7 +2116,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 108.
+/// as a case of the table is, but not counted among the 109.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2484,7 +2506,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 108 templates, once each.
+    // The inputs are the 109 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();
