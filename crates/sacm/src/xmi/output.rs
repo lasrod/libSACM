@@ -17,8 +17,13 @@
 //! exactly as held, each declaring the namespace bindings it needs. The
 //! document's own preserved content, outside every element, is written on
 //! and in the `xmi:XMI` element, its children among the roots; a document
-//! that holds some is always wrapped (ADR 0035 D3). Neither pass recurses,
-//! so deep nesting is safe.
+//! that holds some is always wrapped (ADR 0035 D3). XMI metadata
+//! (SACM23-XMI-019, ADR 0042) is written back the same way in both modes:
+//! its attributes before the preserved ones, its children before the
+//! preserved children placed at the same index, a part's after its typed
+//! attributes and among its values; a document that holds some outside
+//! every element is wrapped too. Neither pass recurses, so deep nesting is
+//! safe.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
@@ -52,17 +57,17 @@ const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 ///   namespace declarations.
 pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteError> {
     let plan = plan(document, mode)?;
-    // The preserved content outside every element, how many of its children
-    // are written so far, and how many roots (ADR 0035 D3).
-    let outside = document.document_preserved();
-    let mut outside_placed = 0;
+    // The XMI metadata and the preserved content outside every element, with
+    // how many of their children are written so far, and how many roots
+    // (ADR 0035 D3, ADR 0042).
+    let mut outside = Placing::new(document.document_metadata(), document.document_preserved());
     let mut roots_written = 0_usize;
-    let wrapped = document.roots().nth(1).is_some() || outside.is_some();
+    let wrapped = document.roots().nth(1).is_some() || outside.holds_any();
     let mut out = String::new();
     out.push_str(DECLARATION);
     out.push('\n');
     let base = if wrapped {
-        push_wrapper_start(&mut out, outside);
+        push_wrapper_start(&mut out, &outside);
         1
     } else {
         0
@@ -83,27 +88,22 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             }
         }
         let depth = base + open.len();
-        // The parent's preserved children placed before this one (ADR 0033),
-        // or, before a root, the document's (ADR 0035 D3).
+        // The parent's metadata and preserved children placed before this one
+        // (ADR 0033, ADR 0042), or, before a root, the document's (ADR 0035
+        // D3).
         if let Some(top) = open.last_mut() {
-            top.push_placed(&mut out, depth, Some(top.written));
+            top.placing.push(&mut out, depth, Some(top.written));
             top.written = top.written.saturating_add(1);
-        } else if let Some(outside) = outside {
-            push_placed(
-                &mut out,
-                depth,
-                outside,
-                &mut outside_placed,
-                Some(roots_written),
-            );
+        } else {
+            outside.push(&mut out, depth, Some(roots_written));
             roots_written = roots_written.saturating_add(1);
         }
-        let preserved = planned.element.preserved();
+        let placing = Placing::new(planned.element.metadata(), planned.element.preserved());
         let as_elements = push_start_tag(&mut out, depth, planned);
         let name = planned.element.name();
         let texts = TextRole::ALL.map(|role| (role, planned.element.text(role)));
         let has_texts = texts.iter().any(|(_, text)| text.is_some());
-        let has_placed = preserved.is_some_and(|preserved| !preserved.children.is_empty());
+        let has_placed = placing.places_any();
         if name.is_some()
             || has_texts
             || has_placed
@@ -112,7 +112,11 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         {
             out.push_str(">\n");
             if let Some(name) = name {
-                push_lang_string(&mut out, depth + 1, "name", name, planned.element.name_id());
+                let part = Part {
+                    id: planned.element.name_id(),
+                    metadata: planned.element.name_metadata(),
+                };
+                push_lang_string(&mut out, depth + 1, "name", name, part);
             }
             // `content` before `key`, superclass first (XMI 2.5.1 Annex
             // B.5.2), and a Resource's `location` after its name (ADR 0034
@@ -126,7 +130,7 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             open.push(Open {
                 planned,
                 written: 0,
-                placed: 0,
+                placing,
             });
         } else {
             out.push_str(" />\n");
@@ -135,9 +139,7 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
     while let Some(top) = open.pop() {
         close(&mut out, base + open.len(), top);
     }
-    if let Some(outside) = outside {
-        push_placed(&mut out, base, outside, &mut outside_placed, None);
-    }
+    outside.push(&mut out, base, None);
 
     if wrapped {
         out.push_str("</");
@@ -194,9 +196,10 @@ fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<
             out.push('"');
         }
     }
-    // Then the preserved attributes, after the bindings they need, in input
-    // order (ADR 0033).
-    push_preserved_attributes(out, planned.element.preserved());
+    // Then the bindings of the metadata and the preserved attributes, then
+    // the metadata attributes and the preserved ones, each in input order
+    // (ADR 0033, ADR 0042).
+    push_kept_attributes(out, planned.element.metadata(), planned.element.preserved());
     as_elements
 }
 
@@ -220,17 +223,30 @@ fn ends_as_elements(element: SacmElement<'_>) -> Vec<ReferenceEnd> {
         .collect()
 }
 
-/// Writes the attributes of `preserved`, if any, each after a space: the
-/// namespace bindings they need, then the attributes, in input order (ADR
-/// 0033).
-fn push_preserved_attributes(out: &mut String, preserved: Option<&Preserved>) {
-    let Some(preserved) = preserved else {
-        return;
-    };
-    for (prefix, uri) in &preserved.namespaces {
+/// Writes the attributes of `metadata` and `preserved`, if any, each after a
+/// space: the namespace bindings they need, once per prefix and sorted by
+/// it, then the metadata attributes, then the preserved ones, each in input
+/// order (ADR 0033, ADR 0042).
+fn push_kept_attributes(
+    out: &mut String,
+    metadata: Option<&Preserved>,
+    preserved: Option<&Preserved>,
+) {
+    let mut bindings: Vec<&(String, String)> = metadata
+        .into_iter()
+        .chain(preserved)
+        .flat_map(|kept| &kept.namespaces)
+        .collect();
+    bindings.sort();
+    bindings.dedup_by(|later, earlier| later.0 == earlier.0);
+    for (prefix, uri) in bindings {
         push_namespace(out, Some(prefix), uri);
     }
-    for attr in &preserved.attributes {
+    for attr in metadata
+        .into_iter()
+        .chain(preserved)
+        .flat_map(|kept| &kept.attributes)
+    {
         push_attr(out, attr);
     }
 }
@@ -273,17 +289,56 @@ struct Open<'p, 'a> {
     planned: &'p Planned<'a>,
     /// The number of its typed children written so far.
     written: usize,
-    /// The number of its preserved children written so far.
-    placed: usize,
+    /// Its metadata and preserved children, and how many of each are
+    /// written so far.
+    placing: Placing<'a>,
 }
 
-impl Open<'_, '_> {
-    /// Writes, at `depth`, the element's preserved children not written yet
-    /// that are placed before its typed child at index `before`, or all of
-    /// them for `None` (ADR 0033).
-    fn push_placed(&mut self, out: &mut String, depth: usize, before: Option<usize>) {
-        if let Some(preserved) = self.planned.element.preserved() {
-            push_placed(out, depth, preserved, &mut self.placed, before);
+/// What a holder places among its typed children, an element's or the
+/// document's: its XMI metadata (ADR 0042) and its preserved content (ADR
+/// 0033), with how many children of each are written so far.
+struct Placing<'a> {
+    metadata: Option<&'a Preserved>,
+    preserved: Option<&'a Preserved>,
+    /// The number of metadata children written.
+    metadata_placed: usize,
+    /// The number of preserved children written.
+    preserved_placed: usize,
+}
+
+impl<'a> Placing<'a> {
+    /// Nothing written yet of `metadata` and `preserved`.
+    fn new(metadata: Option<&'a Preserved>, preserved: Option<&'a Preserved>) -> Self {
+        Self {
+            metadata,
+            preserved,
+            metadata_placed: 0,
+            preserved_placed: 0,
+        }
+    }
+
+    /// Whether it holds anything, attributes included.
+    fn holds_any(&self) -> bool {
+        self.metadata.is_some() || self.preserved.is_some()
+    }
+
+    /// Whether it places a child.
+    fn places_any(&self) -> bool {
+        self.metadata
+            .into_iter()
+            .chain(self.preserved)
+            .any(|kept| !kept.children.is_empty())
+    }
+
+    /// Writes, at `depth`, the children not written yet that are placed
+    /// before the typed child at index `before`, or all of them for `None`:
+    /// the metadata children first, then the preserved ones (ADR 0042).
+    fn push(&mut self, out: &mut String, depth: usize, before: Option<usize>) {
+        if let Some(metadata) = self.metadata {
+            push_placed(out, depth, metadata, &mut self.metadata_placed, before);
+        }
+        if let Some(preserved) = self.preserved {
+            push_placed(out, depth, preserved, &mut self.preserved_placed, before);
         }
     }
 }
@@ -316,7 +371,7 @@ fn push_placed(
 /// Writes the rest of the element `top`, whose start tag is at `depth`: its
 /// preserved children not written yet, then its end tag.
 fn close(out: &mut String, depth: usize, mut top: Open<'_, '_>) {
-    top.push_placed(out, depth + 1, None);
+    top.placing.push(out, depth + 1, None);
     push_end_tag(out, depth, &top.planned.tag);
 }
 
@@ -628,19 +683,23 @@ fn push_flags_and_references(
     }
 }
 
+/// The `xmi:id` and the XMI metadata of a part: a `name`, a `content`, `key`
+/// or `location`, or a `value` in one (ADR 0024, ADR 0025, ADR 0042).
+#[derive(Clone, Copy)]
+struct Part<'a> {
+    id: Option<&'a ElementId>,
+    metadata: Option<&'a Preserved>,
+}
+
 /// Writes `value` as a `tag` element on its own line at `depth`: for an
 /// `ExpressionLangString`, `xmi:type="sacm:ExpressionLangString"` first
-/// (SACM23-BASE-009, ADR 0038 D2); then its `id`, as `xmi:id`, then `lang`,
-/// then `content`, then an `ExpressionLangString`'s `expression`, each only if
-/// present (ADR 0017, ADR 0024): a `name`, or a `value` of a `content`,
-/// `key` or `location`.
-fn push_lang_string(
-    out: &mut String,
-    depth: usize,
-    tag: &str,
-    value: &LangString,
-    id: Option<&ElementId>,
-) {
+/// (SACM23-BASE-009, ADR 0038 D2); then the part's `id`, as `xmi:id`, then
+/// `lang`, then `content`, then an `ExpressionLangString`'s `expression`,
+/// each only if present (ADR 0017, ADR 0024), then the part's XMI metadata
+/// attributes, after the bindings they need (ADR 0042): a `name`, or a
+/// `value` of a `content`, `key` or `location`. Metadata children make it a
+/// start and an end tag, with each child on its own line between them.
+fn push_lang_string(out: &mut String, depth: usize, tag: &str, value: &LangString, part: Part<'_>) {
     indent(out, depth);
     out.push('<');
     out.push_str(tag);
@@ -649,7 +708,7 @@ fn push_lang_string(
         out.push_str(SACM_PREFIX);
         out.push_str(":ExpressionLangString\"");
     }
-    push_id(out, id);
+    push_id(out, part.id);
     let expression = value.expression().map(ElementId::as_str);
     for (attribute, value) in [
         ("lang", value.lang()),
@@ -664,29 +723,53 @@ fn push_lang_string(
             out.push('"');
         }
     }
-    out.push_str(" />\n");
+    push_kept_attributes(out, part.metadata, None);
+    let mut placing = Placing::new(part.metadata, None);
+    if !placing.places_any() {
+        out.push_str(" />\n");
+        return;
+    }
+    out.push_str(">\n");
+    placing.push(out, depth + 1, None);
+    push_end(out, depth, tag);
 }
 
 /// Writes `text` as its `role` element at `depth`, with its `xmi:id` first,
-/// and one `value` element per value under it, in order; with no values,
+/// then its XMI metadata attributes (ADR 0042), and one `value` element per
+/// value under it, in order, each metadata child of the role element before
+/// the value it was read before; with no values and no metadata children,
 /// one empty element (ADR 0025).
 fn push_text(out: &mut String, depth: usize, role: TextRole, text: &Text) {
     indent(out, depth);
     out.push('<');
     out.push_str(role.name());
     push_id(out, text.id());
+    push_kept_attributes(out, text.role_metadata(), None);
     let values = text.value().values();
-    if values.is_empty() {
+    let mut placing = Placing::new(text.role_metadata(), None);
+    if values.is_empty() && !placing.places_any() {
         out.push_str(" />\n");
         return;
     }
     out.push_str(">\n");
-    for (value, id) in values.iter().zip(text.value_ids()) {
-        push_lang_string(out, depth + 1, "value", value, id.as_ref());
+    let parts = text.value_ids().iter().zip(text.value_metadata());
+    for (index, (value, (id, metadata))) in values.iter().zip(parts).enumerate() {
+        placing.push(out, depth + 1, Some(index));
+        let part = Part {
+            id: id.as_ref(),
+            metadata: metadata.as_deref(),
+        };
+        push_lang_string(out, depth + 1, "value", value, part);
     }
+    placing.push(out, depth + 1, None);
+    push_end(out, depth, role.name());
+}
+
+/// Writes the end tag `</tag>` on its own line at `depth`.
+fn push_end(out: &mut String, depth: usize, tag: &str) {
     indent(out, depth);
     out.push_str("</");
-    out.push_str(role.name());
+    out.push_str(tag);
     out.push_str(">\n");
 }
 
@@ -720,13 +803,14 @@ fn push_end_tag(out: &mut String, depth: usize, tag: &Tag) {
 }
 
 /// Writes the start tag of `xmi:XMI` on its own line: its namespace
-/// declarations, then the attributes of `outside`, the document's preserved
-/// content, with the bindings they need (ADR 0035 D3).
-fn push_wrapper_start(out: &mut String, outside: Option<&Preserved>) {
+/// declarations, then the attributes of `outside`, the document's XMI
+/// metadata and preserved content, after the bindings they need (ADR 0035
+/// D3, ADR 0042).
+fn push_wrapper_start(out: &mut String, outside: &Placing<'_>) {
     out.push('<');
     push_wrapper_name(out);
     push_document_attributes(out);
-    push_preserved_attributes(out, outside);
+    push_kept_attributes(out, outside.metadata, outside.preserved);
     out.push_str(">\n");
 }
 

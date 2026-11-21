@@ -13,13 +13,13 @@
 //! another SACM namespace is not (D-NS-PIN).
 //!
 //! A tolerant read keeps most entries as preserved content, with one Warning
-//! ([`Unread::tolerant`], ADR 0035 D1, D2): conforming content not read yet
-//! with SACM-XMI-014 (SACM-XMI-007 for a cross-document link SACM23-XMI-029
-//! is to read), and the defects with SACM-XMI-003. It reads a root in an
-//! older SACM revision's namespace or a SACM-like one, with SACM-XMI-008 or
-//! SACM-XMI-002 (LIB-COMPAT-004, ADR 0041). It refuses only the limits, a
-//! SACM 2.4 root, an `XMI` element outside XMI 2.5.1, and an XMI-namespace
-//! document element.
+//! ([`Unread::tolerant`], ADR 0035 D1, D2): a cross-document link
+//! SACM23-XMI-029 is to read with SACM-XMI-007, and the defects with
+//! SACM-XMI-003. It reads a root in an older SACM revision's namespace or a
+//! SACM-like one, with SACM-XMI-008 or SACM-XMI-002 (LIB-COMPAT-004, ADR
+//! 0041). It refuses only the limits, a SACM 2.4 root and an `XMI` element
+//! outside XMI 2.5.1. XMI metadata is read since slice 0073a, so no input
+//! gives SACM-XMI-014 (SACM23-XMI-019, ADR 0042).
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
 //! no other file of the crate builds the refusal, every `Interim` row is
@@ -34,9 +34,7 @@ use crate::diagnostic::{Argument, Code, Details, SourceLocation};
 /// Why input is refused rather than read or preserved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Refusal {
-    /// Input this version does not read yet, and the row reads: conforming
-    /// input, and XMI-namespace elements that XMI.xsd does not define
-    /// (SACM23-XMI-019).
+    /// Conforming input this version does not read yet, and the row reads.
     Interim(&'static str),
     /// Input strict mode never reads, which the row is to read in tolerant
     /// mode. It need not be defective, such as an `XMI` element in another
@@ -94,12 +92,6 @@ pub(super) enum Tolerant {
 /// What a refusal does not read: one entry per kind of input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Unread {
-    /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
-    /// `xmi:label` and `xmi:idref` on an object (on a role element, its
-    /// reference form), `href` on a root or on a `name` or other text, the
-    /// identity attributes of a reference element or of
-    /// the `xmi:XMI` element, and `xsi:schemaLocation`.
-    XmiMetadata,
     /// A cross-document link SACM23-XMI-029 is to read (ADR 0040 D1): an
     /// `href` whose fragment holds `(` or `)` (an `XPointer`), an `href` with a
     /// document part as an `expression`, or `XLink` attributes on a reference
@@ -125,8 +117,9 @@ pub(super) enum Unread {
     /// An element the document could not hold, which checked input never
     /// gives.
     Unheld,
-    /// An attribute or text on the `xmi:XMI` element, which has no element
-    /// to keep it.
+    /// An attribute, text, or an XMI-namespace element XMI 2.5.1 does not
+    /// define, on or under the `xmi:XMI` element, which has no element to
+    /// keep it (ADR 0042 D4).
     WrapperContent,
     /// A preserved attribute whose prefix `sacm` or `xmi` is bound to
     /// another namespace, which the written start tag binds to SACM 2.3 or
@@ -138,7 +131,6 @@ impl Unread {
     /// Why it is refused, with the row that is to read it.
     pub(super) const fn refusal(self) -> Refusal {
         match self {
-            Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-029"),
             Self::OtherSacmNamespace | Self::OtherRevision => Refusal::Tolerated("LIB-COMPAT-004"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
@@ -148,17 +140,13 @@ impl Unread {
     }
 
     /// What a tolerant read does with it: the one table of ADR 0035 D1 and
-    /// D2. Conforming content a later row reads is kept with SACM-XMI-014, a
-    /// cross-document link not read yet with SACM-XMI-007, and a defect with
-    /// SACM-XMI-003; a root in an older SACM revision's or a SACM-like
-    /// namespace is read, with SACM-XMI-008 or SACM-XMI-002; a SACM 2.4 root,
-    /// an `XMI` element outside XMI 2.5.1, and the limits are refused. An
-    /// XMI-namespace document element,
-    /// [`XmiMetadata`](Self::XmiMetadata) though it is, leaves no SACM root,
-    /// so the reader refuses it without asking.
+    /// D2. A cross-document link not read yet is kept with SACM-XMI-007, and a
+    /// defect with SACM-XMI-003; a root in an older SACM revision's or a
+    /// SACM-like namespace is read, with SACM-XMI-008 or SACM-XMI-002; a SACM
+    /// 2.4 root, an `XMI` element outside XMI 2.5.1, and the limits are
+    /// refused.
     pub(super) const fn tolerant(self) -> Tolerant {
         match self {
-            Self::XmiMetadata => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
             Self::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
             Self::WrapperContent | Self::UnwritablePrefix => {
                 Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT)
@@ -178,10 +166,10 @@ impl Unread {
     /// for a SACM 2.4 root, SACM-XMI-015 for an `XMI`
     /// element outside XMI 2.5.1, SACM-XML-002 for an encoding and
     /// SACM-SEC-002 for a limit of the parser or the document (LIB-API-017,
-    /// ADR 0030 amendment 3).
+    /// ADR 0030 amendment 3). The tests check each entry against it.
+    #[cfg(test)]
     pub(super) const fn code(self) -> Code {
         match self {
-            Self::XmiMetadata => Code::XMI_UNREAD_CONTENT,
             Self::CrossDocumentHref => Code::XMI_EXTERNAL_HREF,
             Self::WrapperContent | Self::UnwritablePrefix => Code::XMI_UNKNOWN_CONTENT,
             Self::OtherSacmNamespace => Code::XMI_NAMESPACE_NOT_PINNED,
@@ -195,17 +183,16 @@ impl Unread {
 
 /// The label a reason of the refusal of `code` ends with, given the row the
 /// refusal names: `(a limit of this version; ROW reads it)` for
-/// SACM-XMI-014 and SACM-XMI-007, `(strict mode never reads it; ROW is to
+/// SACM-XMI-007, `(strict mode never reads it; ROW is to
 /// read it in tolerant mode)` for SACM-XMI-015, `(strict mode never reads
 /// it; ROW reads it in tolerant mode)` for SACM-XMI-002 and SACM-XMI-008
 /// (ADR 0041 D6), `(a defect in the input)` for SACM-XMI-003, and `(a limit
 /// of this version)` for every other, SACM-XMI-008 without a row (a SACM 2.4
 /// root) included (ADR 0030 amendment 3).
 pub(super) fn label(code: Code, row: Option<&str>) -> String {
-    let interim = [Code::XMI_UNREAD_CONTENT, Code::XMI_EXTERNAL_HREF];
     let tolerated = [Code::XMI_NAMESPACE_NOT_PINNED, Code::XMI_OTHER_REVISION];
     match row {
-        Some(row) if interim.contains(&code) => {
+        Some(row) if code == Code::XMI_EXTERNAL_HREF => {
             format!("(a limit of this version; {row} reads it)")
         }
         Some(row) if code == Code::XMI_WRAPPER_NAMESPACE => {
@@ -866,8 +853,7 @@ mod tests {
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 11] = [
-        Unread::XmiMetadata,
+    const ALL: [Unread; 10] = [
         Unread::CrossDocumentHref,
         Unread::OtherSacmNamespace,
         Unread::OtherRevision,
@@ -884,24 +870,23 @@ mod tests {
     /// entry added to [`Unread`] does not compile here until it is listed.
     const fn position(entry: Unread) -> usize {
         match entry {
-            Unread::XmiMetadata => 0,
-            Unread::CrossDocumentHref => 1,
-            Unread::OtherSacmNamespace => 2,
-            Unread::OtherRevision => 3,
-            Unread::Sacm24 => 4,
-            Unread::OtherXmiNamespace => 5,
-            Unread::Encoding => 6,
-            Unread::Capacity => 7,
-            Unread::Unheld => 8,
-            Unread::WrapperContent => 9,
-            Unread::UnwritablePrefix => 10,
+            Unread::CrossDocumentHref => 0,
+            Unread::OtherSacmNamespace => 1,
+            Unread::OtherRevision => 2,
+            Unread::Sacm24 => 3,
+            Unread::OtherXmiNamespace => 4,
+            Unread::Encoding => 5,
+            Unread::Capacity => 6,
+            Unread::Unheld => 7,
+            Unread::WrapperContent => 8,
+            Unread::UnwritablePrefix => 9,
         }
     }
 
     /// The tolerant table covers every entry, refuses exactly the limits, a
     /// SACM 2.4 root and an `XMI` element outside XMI 2.5.1, reads a root in
     /// another SACM namespace, and keeps the rest with
-    /// SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003 (LIB-API-011; ADR 0035 D1,
+    /// SACM-XMI-007 or SACM-XMI-003 (LIB-API-011; ADR 0035 D1,
     /// D2). Its name carries no row id: traced tests live in test files.
     #[test]
     fn the_tolerant_table_is_total_and_refuses_exactly_the_refused_set() {
@@ -929,8 +914,7 @@ mod tests {
         );
         for entry in ALL {
             let expected = match entry.refusal() {
-                _ if entry == Unread::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
-                Refusal::Interim(_) => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
+                Refusal::Interim(_) => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
                 Refusal::Defect => Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT),
                 Refusal::Tolerated(_) => Tolerant::Read(entry.code()),
                 Refusal::Tolerance(_) | Refusal::Limit => Tolerant::Refused,
@@ -956,11 +940,14 @@ mod tests {
         };
         assert_eq!(
             reason(
-                Unread::XmiMetadata,
-                &template::XMI_014_XMI_ROOT,
-                vec![Argument::text("element", "x")]
+                Unread::CrossDocumentHref,
+                &template::XMI_007_HREF,
+                vec![
+                    Argument::text("href", "o.xmi#xpointer(x)"),
+                    Argument::text("element", "metaClaim")
+                ]
             ),
-            "the XMI element \"x\" is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)"
+            "the href \"o.xmi#xpointer(x)\" of the reference element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)"
         );
         assert_eq!(
             reason(
@@ -1029,14 +1016,12 @@ mod tests {
                 }
             }
         }
-        // Each Interim entry is SACM-XMI-014 but the cross-document link,
-        // SACM-XMI-007; each Defect is SACM-XMI-003.
+        // The one Interim entry, the cross-document link, is SACM-XMI-007
+        // (SACM-XMI-014 has no entry since slice 0073a); each Defect is
+        // SACM-XMI-003.
         for entry in ALL {
             let expected = match entry.refusal() {
-                Refusal::Interim(_) if entry == Unread::CrossDocumentHref => {
-                    Some(Code::XMI_EXTERNAL_HREF)
-                }
-                Refusal::Interim(_) => Some(Code::XMI_UNREAD_CONTENT),
+                Refusal::Interim(_) => Some(Code::XMI_EXTERNAL_HREF),
                 Refusal::Defect => Some(Code::XMI_UNKNOWN_CONTENT),
                 Refusal::Tolerated(_) | Refusal::Tolerance(_) | Refusal::Limit => None,
             };

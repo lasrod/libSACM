@@ -1355,30 +1355,38 @@ fn sacm23_xmi_015_a_malformed_reference_element_is_preserved_or_unsupported_at_t
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
             assert_preserved_at(row, &what, &input, marks[0], "c1");
         }
-        // The identity attributes on a reference element are conforming XMI
-        // this version does not read yet (SACM23-XMI-019): refused at the
-        // attribute. `xsi:type` is taken as the type attribute, as
-        // LIB-COMPAT-001 reads it.
-        let refusals = [
+        // A type attribute or an identity attribute on a reference element
+        // keeps it whole with SACM-XMI-003 at its start tag (production 2c,
+        // rule 4e; ADR 0042 D4): until slice 0073a they were refused at the
+        // attribute as XMI metadata not read yet (SACM23-XMI-019). `xsi:type`
+        // is taken as the type attribute, as LIB-COMPAT-001 reads it.
+        let identity = [
             (
                 "an xmi:id",
-                format!("<{end} {MARK}xmi:id=\"r\" xmi:idref=\"c2\"/>"),
+                format!("{MARK}<{end} xmi:id=\"r\" xmi:idref=\"c2\"/>"),
             ),
             (
                 "an xmi:type",
-                format!("<{end} xmi:idref=\"c2\" {MARK}xmi:type=\"sacm:Claim\"/>"),
+                format!("{MARK}<{end} xmi:idref=\"c2\" xmi:type=\"sacm:Claim\"/>"),
             ),
             (
                 "an xsi:type",
-                format!("<{end} href=\"#c2\" {MARK}xsi:type=\"sacm:Claim\"/>"),
+                format!("{MARK}<{end} href=\"#c2\" xsi:type=\"sacm:Claim\"/>"),
+            ),
+            (
+                "an xmi:uuid",
+                format!("{MARK}<{end} xmi:idref=\"c2\" xmi:uuid=\"u\"/>"),
+            ),
+            (
+                "an xmi:label",
+                format!("{MARK}<{end} xmi:idref=\"c2\" xmi:label=\"l\"/>"),
             ),
         ];
-        for (what, content) in &refusals {
+        for (what, content) in &identity {
             let what = format!("<{end}>: {what}");
             let (input, marks) = marked(row, &c1_then_c2(flag, content));
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
         }
     }
 }

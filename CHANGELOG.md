@@ -29,6 +29,26 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `/declared-encoding` names ISO-8859-1 among the encodings read [LIB-COMPAT-016].
 - `ReadError` has the variant `LimitExceeded`; the enum is `#[non_exhaustive]`, so only a
   match without a fallback arm breaks [LIB-SEC-003].
+- XMI metadata is no longer preserved content: a strict read no longer refuses it and a
+  strict write no longer refuses a document that holds it, `has_preserved_content()` is
+  false for it, and no input gives SACM-XMI-014 any more. `Code::XMI_UNREAD_CONTENT`
+  stays; the code is never reused [SACM23-XMI-019].
+- The templates `SACM-XMI-014/*` are removed: 7 refusal templates and 8 diagnostic
+  templates [SACM23-XMI-019].
+- An XMI-namespace document element other than `xmi:XMI`, such as `<xmi:Extension>`, is
+  `ReadError::InvalidRoot` (`SACM-XMI-001/xmi-namespace-root`) in both modes, where it was
+  `Unsupported` with SACM-XMI-014 [SACM23-XMI-019].
+- An XMI-namespace element that XMI 2.5.1 does not define where it stands, an `href` or
+  `xmi:idref` on a root or a part, an `xmi:id` on the `value` of a `name`, and an identity
+  attribute or a type on a reference element do not conform: SACM-XMI-003, kept as
+  preserved content, where they were SACM-XMI-014. Under `xmi:XMI`, such an element is
+  refused by a strict read (`SACM-XMI-003/wrapper-element`) and kept as the document's
+  content by a tolerant one (`/wrapper-element-kept`) [SACM23-XMI-019].
+- A role element carrying `xmi:idref` or `href="#id"` is a same-file proxy: the root it
+  names moves into its place, so `roots()` and `parent()` change for such documents, where
+  the proxy was SACM-XMI-014 [SACM23-XMI-030].
+- `compare::Difference` has the variants `Metadata` and `DocumentMetadata`; the enum is
+  `#[non_exhaustive]` [SACM23-XMI-019].
 
 ### Added
 
@@ -57,6 +77,33 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - The `write` docs state the bound on its output, "# Output size" [LIB-SEC-003].
 - `cargo xtask fetch-spec` also fetches XML Schema Part 2: Datatypes Second Edition,
   pinned by SHA-256 [LIB-TOOL-022].
+- XMI metadata is read in both modes with no diagnostic, held exactly as written, compared,
+  and written back by both saves where it stood: `xmi:id`, `xmi:label`, `xmi:uuid`, `href`,
+  `xmi:idref`, `xmi:type` and the XSI schema locations on `xmi:XMI`; `documentation`,
+  `Documentation`, `difference`, `Difference`, `Add`, `Replace`, `Delete`, `extension`
+  and `Extension` under it; `xmi:uuid`, `xmi:label` and the schema locations on a root, a
+  child, a `name`, a `content`, `key` or `location`, or a `value`; and `xmi:extension` and
+  `xmi:Extension` in any of these. Its ids share the document's id space. A copy drops the
+  `xmi:uuid` of what it copies, a delete removes the metadata, and a move keeps it
+  [SACM23-XMI-019].
+- `SacmElement::uuid` and `SacmElement::label` give an element's `xmi:uuid` and
+  `xmi:label` [SACM23-XMI-019].
+- `compare::Difference::Metadata`, before `PreservedContent`, and
+  `Difference::DocumentMetadata`, before `DocumentPreservedContent` [SACM23-XMI-019].
+- A strict write checks XMI metadata as XMI.xsd types it: an `xmi:id` that is no `NCName`
+  (`SACM-ID-002/metadata-id-not-an-ncname`) and an `IDREF` or `IDREFS` token that names no
+  `xmi:id` of the output (`SACM-REF-001/metadata-dangling`) are `WriteError::Invalid`
+  [SACM23-XMI-019].
+- Same-file proxies: once every root is read, a proxy (`xmi:idref="id"` or `href="#id"`,
+  at most one type attribute, nothing else) that names a root of a kind its role and type
+  admit moves that root into its place, in both modes, with no diagnostic; chains are
+  followed. Otherwise it is kept whole in its container with SACM-XMI-003
+  (`SACM-XMI-003/proxy-of-no-root`, `/proxy-wrong-kind`, `/proxy-of-linked-root`,
+  `/proxy-shared`, `/proxy-cycle`, checked in that order); a root that keeps an `href` or
+  an `xmi:idref` of its own is not moved. Depth is counted as resolved: a moved root takes
+  its proxy's depth and its tree shifts with it, and an element nested deeper than
+  `Limits::max_depth` refuses the read as `ReadError::LimitExceeded`
+  (`SACM-SEC-003/depth`) [SACM23-XMI-030].
 
 ### Changed
 

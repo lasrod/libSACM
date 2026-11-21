@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case" />
+  <argumentPackage xmi:id="args">
+    <name content="Arguments" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name content="C1" />
+    </argumentElement>
+  </argumentPackage>
+  <artifactPackage xmi:id="arts">
+    <name content="Artifacts" />
+  </artifactPackage>
+</sacm:AssuranceCasePackage>

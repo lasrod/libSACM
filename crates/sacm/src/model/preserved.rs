@@ -1,8 +1,12 @@
 //! Preserved content: what an element read from XMI, or the document outside
 //! its elements, holds as written instead of read: content that is not SACM
 //! 2.3 where it stands (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a
-//! construct a strict read refuses, such as a value that is no literal or XMI
-//! metadata not read yet, such as `xmi:uuid` (ADR 0035).
+//! construct a strict read refuses, such as a value that is no literal (ADR
+//! 0035).
+//!
+//! XMI metadata, such as `xmi:uuid` or an `xmi:Extension`, is held in the same
+//! shape, apart from it: it conforms, so both saves write it back and it is
+//! never preserved content (SACM23-XMI-019, ADR 0042).
 //!
 //! Only [`xmi::read`](crate::xmi::read) makes it; the public API sees it only
 //! as [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content)
@@ -15,6 +19,9 @@
 //! dropping and writing one never recurses, however deep it is.
 
 use super::{ElementId, ReferenceEnd};
+
+/// The XMI 2.5.1 namespace, of `xmi:uuid`, `xmi:label` and the XMI elements.
+pub(crate) const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
 
 /// The preserved content of one element, its holder, or of the document
 /// outside its elements: attributes after the typed ones (for the document,
@@ -154,6 +161,28 @@ impl Preserved {
             }
         }
         released
+    }
+
+    /// The value of the attribute `local` in the XMI namespace, if it holds
+    /// one: `uuid` or `label` of XMI metadata (SACM23-XMI-019).
+    pub(crate) fn xmi_attribute(&self, local: &str) -> Option<&str> {
+        self.attributes
+            .iter()
+            .find(|attr| attr.name.namespace.as_deref() == Some(XMI_NS) && attr.name.local == local)
+            .map(|attr| attr.value.as_str())
+    }
+
+    /// A copy without its `xmi:uuid`, or `None` if nothing else is left: what
+    /// a copy of an element keeps of its XMI metadata (XMI 2.5.1 §7.6.1:
+    /// elements with one `xmi:uuid` "are all deemed to reference the same MOF
+    /// element"; ADR 0042). A `uuid` holds no id and names none, so the derived fields stay
+    /// right.
+    pub(crate) fn without_uuid(&self) -> Option<Box<Self>> {
+        let mut copy = self.clone();
+        copy.attributes.retain(|attr| {
+            !(attr.name.namespace.as_deref() == Some(XMI_NS) && attr.name.local == "uuid")
+        });
+        (!copy.is_empty()).then(|| Box::new(copy))
     }
 
     /// The number of preserved child elements: text and attributes do not

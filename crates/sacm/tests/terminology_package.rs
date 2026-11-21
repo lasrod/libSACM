@@ -258,85 +258,6 @@ fn refused(what: &str, input: &str) -> ReadError {
     }
 }
 
-/// The label of `Interim(row)`.
-fn interim(row: &str) -> String {
-    format!("(a limit of this version; {row} reads it)")
-}
-
-/// Asserts that `template`, without its one mark, is refused by a strict read
-/// as `Unsupported` with no code at the mark, its one-line reason ending with
-/// `label`; and that a tolerant read keeps it as preserved content of
-/// `holder` with exactly one `tolerant_code` Warning at the mark affecting
-/// `holder`, whose message names `row` when one is given.
-fn assert_unsupported_with(
-    what: &str,
-    template: &str,
-    label: &str,
-    tolerant_code: Code,
-    row: Option<&str>,
-    holder: &str,
-) {
-    let (input, at) = one_mark(what, template);
-    let error = refused(what, &input);
-    let ReadError::Unsupported {
-        location, reason, ..
-    } = &error
-    else {
-        panic!("{ROW}: {what}: not Unsupported: {error:?} ({error})");
-    };
-    // The strict refusal has the code of the tolerant Warning (LIB-API-017).
-    assert_eq!(
-        (*location, error.code()),
-        (Some(at), tolerant_code),
-        "{ROW}: {what}: not refused with the tolerant read's code at {at}: {error}"
-    );
-    assert!(
-        reason.ends_with(label) && !reason.contains('\n'),
-        "{ROW}: {what}: the reason {reason:?} does not end with {label:?}"
-    );
-    let output = match read(Mode::Tolerant, &input) {
-        Ok(output) => output,
-        Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
-    };
-    let found: Vec<_> = output
-        .diagnostics()
-        .iter()
-        .map(|found| {
-            (
-                found.code(),
-                found.severity(),
-                found.location(),
-                found.affected().to_vec(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        found,
-        [(
-            tolerant_code,
-            Severity::Warning,
-            Some(at),
-            vec![ElementId::from(holder)]
-        )],
-        "{ROW}: {what}: a tolerant read does not give one {tolerant_code} Warning at the \
-         construct affecting {holder:?}"
-    );
-    if let Some(row) = row {
-        let message = output.diagnostics()[0].message();
-        assert!(
-            message.contains(&format!("; {row} reads it")),
-            "{ROW}: {what}: the tolerant message does not name {row}: {message:?}"
-        );
-    }
-    assert!(
-        output
-            .document()
-            .get(holder)
-            .is_some_and(SacmElement::has_preserved_content),
-        "{ROW}: {what}: a tolerant read keeps nothing in {holder:?}"
-    );
-}
-
 /// Asserts that `template`, without its one mark, reads in both modes and
 /// keeps one construct as preserved content of `holder`: exactly one
 /// SACM-XMI-003 at the mark, affecting `holder`, a Warning in tolerant mode
@@ -800,35 +721,46 @@ fn sacm23_term_001_an_untyped_terminology_element_child_is_missing_type_or_kept_
 }
 
 #[test]
-fn sacm23_term_001_a_reference_form_terminology_element_under_a_package_is_a_proxy_not_read_yet() {
+fn sacm23_term_001_a_reference_form_terminology_element_under_a_package_is_a_same_file_proxy() {
     // Under a TerminologyPackage, `terminologyElement` is the composite role,
     // so a role element in reference form is a proxy (XMI 2.5.1 §7.10.1), not
-    // a group member and not SACM-XMI-005.
+    // a group member and not SACM-XMI-005. `k` names no root, so
+    // `xmi:idref="k"` and `href="#k"` are each kept with
+    // `SACM-XMI-003/proxy-of-no-root` at the start tag, in both modes
+    // (SACM23-XMI-030; until slice 0073a a strict read refused them naming
+    // SACM23-XMI-019 and SACM23-XMI-029).
     let sibling = typed("Category", "k");
     for (context, wrap, _) in contexts() {
-        for (form, child, row, tolerant_code) in [
+        for (form, child) in [
             (
                 "an untyped xmi:idref",
                 format!("{MARK}<terminologyElement xmi:idref=\"k\"/>"),
-                "SACM23-XMI-019",
-                Code::XMI_UNREAD_CONTENT,
             ),
             (
                 "an untyped href=\"#k\"",
                 format!("{MARK}<terminologyElement href=\"#k\"/>"),
-                "SACM23-XMI-029",
-                Code::XMI_EXTERNAL_HREF,
             ),
         ] {
             let what = format!("{form} terminologyElement in {context}");
-            assert_unsupported_with(
-                &what,
-                &wrap("", &format!("{sibling}{child}")),
-                &interim(row),
-                tolerant_code,
-                None,
-                "t",
+            let template = wrap("", &format!("{sibling}{child}"));
+            let doc = assert_preserved_at(&what, &template, "t");
+            assert_eq!(
+                placed(&doc, "k").1.as_deref(),
+                Some("t"),
+                "{ROW}: {what}: k moved"
             );
+            let (input, _) = one_mark(&what, &template);
+            match read(Mode::Tolerant, &input) {
+                Ok(output) => assert!(
+                    output
+                        .diagnostics()
+                        .iter()
+                        .all(|found| found.template() == "SACM-XMI-003/proxy-of-no-root"),
+                    "{ROW}: {what}: not kept as a proxy of no root: {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+            }
         }
     }
 }

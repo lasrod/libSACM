@@ -26,11 +26,14 @@ tolerant read, the default, opens
 every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an older
 SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
 depth 256, 1,000,000 XML nodes and 256 namespace bindings in scope): what a strict read refuses, such as a
-value that is no literal or conforming content not read yet (such as XMI metadata),
-it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
+value that is no literal or conforming content not read yet (such as an XPointer link),
+it keeps as preserved content with a Warning (SACM-XMI-007 for content not read
 yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
 (`ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
-`TerminologyElement`) as the names it writes, with a Warning (SACM-XMI-013). Nothing is dropped.
+`TerminologyElement`) as the names it writes, with a Warning (SACM-XMI-013). XMI
+metadata (`xmi:uuid`, `xmi:label`, schema locations, `xmi:Documentation`,
+`xmi:Extension`) is read in both modes and written back by both saves, and a root that a
+same-file proxy names moves into the proxy's place. Nothing is dropped.
 
 `sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
 checks only that the output is schema-valid, so a draft saves, and an application calls

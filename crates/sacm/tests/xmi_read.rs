@@ -24,11 +24,12 @@
 //! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
 //! roots are read, and other roots are refused as SACM-XMI-001. The tests here
 //! that need a refusal at a known place therefore use input that is still
-//! `Unsupported` there: an `xmi:Extension` document element (a
-//! `TerminologyPackageInterface` root until slice 0067 read it), a package
-//! name in the SACM 2.4 namespace (outside the SACM namespace until slice
-//! 0072, which makes that SACM-XMI-001), or a readable root with a child it
-//! cannot read. The roots
+//! `Unsupported` there: a package name in the SACM 2.4 namespace (outside
+//! the SACM namespace until slice 0072, which makes that SACM-XMI-001; an
+//! `xmi:Extension` document element until slice 0073a made it
+//! `InvalidRoot`, and a `TerminologyPackageInterface` root until slice 0067
+//! read it), or a readable root with a child it cannot read: a proxy of an
+//! element of another document (SACM23-XMI-029). The roots
 //! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
 use std::error::Error;
@@ -67,7 +68,7 @@ const SAMPLE: &str = concat!(
     " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
     " xmi:version=\"2.0\" xmi:id=\"case_1\">\n",
     "  <argumentPackage xmi:id=\"arg_1\">\n",
-    "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_1\" xmi:uuid=\"u\"/>\n",
+    "    <argumentElement href=\"other.sacm.xmi#c_1\"/>\n",
     "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_2\">",
     "<description><content><value>speed &lt; 30 km/h<![CDATA[ & more]]></value></content></description>",
     "</argumentElement>\n",
@@ -87,15 +88,16 @@ const SACM_ROOT_OPEN: &str = concat!(
 /// The SACM root end tag that closes [`SACM_ROOT_OPEN`].
 const SACM_ROOT_CLOSE: &str = "</sacm:AssuranceCasePackage>";
 
-/// A document element the reader recognises but cannot read yet: an
-/// `xmi:Extension` (SACM23-XMI-019), refused as `Unsupported` at its start
-/// tag in both modes. Until slice 0067 this was a
-/// `TerminologyPackageInterface` root, which that slice reads
-/// (SACM23-TERM-007).
-const XMI_ROOT: &str = concat!(
-    "<xmi:Extension",
-    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
-    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>",
+/// A document element the reader recognises but cannot read: a package in
+/// the SACM 2.4 namespace (SACM-XMI-008, LIB-COMPAT-018), refused as
+/// `Unsupported` at its start tag in both modes. Until slice 0067 this was
+/// a `TerminologyPackageInterface` root, which that slice reads
+/// (SACM23-TERM-007), and until slice 0073a an `xmi:Extension`, which is
+/// `InvalidRoot` since (SACM23-XMI-019, ADR 0042 D4).
+const UNREAD_ROOT: &str = concat!(
+    "<sacm:ArgumentPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20260504\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>",
 );
 
 // --- Helpers --------------------------------------------------------------
@@ -948,7 +950,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("<!--p-->\r\n\r  ", 3, 3),
     ];
     for (prolog, line, column) in roots {
-        let input = format!("{prolog}{XMI_ROOT}");
+        let input = format!("{prolog}{UNREAD_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -958,19 +960,22 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         );
     }
     // A child the reader cannot read, inside a readable root, after each
-    // line ending: the refusal is at the child's start tag.
+    // line ending: the refusal is at the child's `href`, 17 characters after
+    // its start tag (`<argumentPackage `).
     let children: [(&str, u32, u32); 4] = [
-        ("\r", 2, 1),
-        ("\r\n", 2, 1),
-        ("\r\r\n  ", 3, 3),
-        ("\n\r", 3, 1),
+        ("\r", 2, 18),
+        ("\r\n", 2, 18),
+        ("\r\r\n  ", 3, 20),
+        ("\n\r", 3, 18),
     ];
     for (before, line, column) in children {
         let input = sacm_document(
             "",
-            // An xmi:Extension: a TerminologyPackageInterface until slice
-            // 0067 read it (SACM23-TERM-007).
-            &format!("{before}<xmi:Extension/>"),
+            // A proxy of an element of another document (SACM23-XMI-029): a
+            // TerminologyPackageInterface until slice 0067 read it
+            // (SACM23-TERM-007), and an xmi:Extension until slice 0073a read
+            // it (SACM23-XMI-019).
+            &format!("{before}<argumentPackage href=\"o.xmi#ap\"/>"),
         );
         let error = assert_unsupported(row, &input);
         assert_eq!(
@@ -992,7 +997,7 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
         ("\u{FEFF}<!--p-->", 1, 9),
         ("\u{FEFF}<?xml version=\"1.0\"?>\n", 2, 1),
     ] {
-        let input = format!("{prolog}{XMI_ROOT}");
+        let input = format!("{prolog}{UNREAD_ROOT}");
         assert!(
             input.as_bytes().starts_with(b"\xEF\xBB\xBF"),
             "{row}: the test input does not start with a UTF-8 BOM"
@@ -1246,40 +1251,44 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 #[test]
 fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    // A readable root whose name carries `xmi:uuid`, conforming XMI that no
-    // verified row reads yet (SACM23-XMI-019): refused at the attribute's
-    // name, on line 4. `  <name ` is 8 characters. (Content that does not
-    // conform, such as an element in a value element, is preserved instead,
-    // ADR 0033.)
-    let name_child = sacm_document(
+    // A readable root whose child is a proxy of an element of another
+    // document under a concrete role, which no verified row reads yet
+    // (SACM23-XMI-029): refused at its `href`, on line 4. `  <argumentPackage `
+    // is 19 characters. (Until slice 0073a this was an `xmi:uuid` on the
+    // name, which SACM23-XMI-019 reads. Content that does not conform, such
+    // as an element in a value element, is preserved instead, ADR 0033.)
+    let href_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <name xmi:uuid=\"u\" content=\"case\"/>\n",
+        "\n  <argumentPackage href=\"o.xmi#ap\"/>\n",
     );
-    let error = assert_unsupported(row, &name_child);
+    let error = assert_unsupported(row, &href_child);
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 9)),
-        "{row}: the refusal is not located at the `xmi:uuid` of the name"
+        Some(loc(row, 4, 20)),
+        "{row}: the refusal is not located at the `href` of the proxy"
     );
-    // An AssuranceCasePackage root with an `xmi:Extension` child, which no
-    // verified row reads (a `terminologyPackage` child typed
-    // `sacm:TerminologyPackageInterface` until slice 0067 read it):
-    // `Unsupported`, with no document, at `<xmi:Extension` (line 4, column 3).
+    // An AssuranceCasePackage root with an ArgumentPackage child that holds
+    // such a proxy under the abstract role `argumentElement` (an
+    // `xmi:Extension` child until slice 0073a read it, and a
+    // `terminologyPackage` child typed `sacm:TerminologyPackageInterface`
+    // until slice 0067 read it): `Unsupported`, with no document, at
+    // `<argumentElement` (line 5, column 3).
     let unread_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <xmi:Extension/>\n",
+        "\n  <argumentPackage xmi:id=\"a\"><name content=\"A\"/>\n  \
+         <argumentElement href=\"o.xmi#c\"/></argumentPackage>\n",
     );
     let error = assert_unsupported(row, &unread_child);
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 3)),
-        "{row}: the refusal is not located at the start tag of the `xmi:Extension` child"
+        Some(loc(row, 5, 3)),
+        "{row}: the refusal is not located at the start tag of the proxy"
     );
     // A document element that is recognised but not read yet: refused at its
     // start tag, on line 3.
-    let terminology_root =
-        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{XMI_ROOT}");
-    let error = assert_unsupported(row, terminology_root.as_bytes());
+    let unread_root =
+        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{UNREAD_ROOT}");
+    let error = assert_unsupported(row, unread_root.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 3, 1)),
@@ -1287,23 +1296,23 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     );
     // `<?xml version="1.0"?>` is 21 characters and `<!-- é -->` 10: the
     // column counts characters, not bytes.
-    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{XMI_ROOT}");
+    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{UNREAD_ROOT}");
     let error = assert_unsupported(row, after_comment.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 1, 32)),
         "{row}: the refusal is not located at the root element's start tag"
     );
-    // The full sample, too. Its `argumentPackage` child and the Claim `c_1`
-    // in it are read (SACM23-XMI-016), so the first content it cannot read
-    // is `c_1`'s `xmi:uuid` attribute, refused at the first character of its
-    // name: line 5, column 57. (It was `isCitation` until SACM23-BASE-007
-    // read it.)
+    // The full sample, too. Its `argumentPackage` child is read
+    // (SACM23-XMI-016), so the first content it cannot read is the proxy of
+    // `c_1` in another document, refused at its start tag: line 5, column 5.
+    // (It was `isCitation` until SACM23-BASE-007 read it, and an `xmi:uuid`
+    // on `c_1` at column 57 until SACM23-XMI-019 read it in slice 0073a.)
     let error = assert_unsupported(row, SAMPLE.as_bytes());
     assert_eq!(
         error.location(),
-        Some(loc(row, 5, 57)),
-        "{row}: the sample is not refused at the `xmi:uuid` of `c_1`"
+        Some(loc(row, 5, 5)),
+        "{row}: the sample is not refused at the proxy of `c_1`"
     );
 }
 
@@ -1522,7 +1531,7 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_n
     for name in names {
         // The root start tag of a root that is not read yet is at line 2,
         // column 1; the encoding name at line 1, column 31.
-        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{XMI_ROOT}");
+        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{UNREAD_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -1706,24 +1715,27 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     assert_quoted_wherever_named(row, &text, "zqxroot");
 
     // A root that is recognised but not read yet.
-    let xmi_root = format!("<?xml version=\"1.0\"?>\n{XMI_ROOT}");
-    let error = assert_unsupported(row, xmi_root.as_bytes());
+    let unread_root = format!("<?xml version=\"1.0\"?>\n{UNREAD_ROOT}");
+    let error = assert_unsupported(row, unread_root.as_bytes());
     display_reason(row, &error, UNSUPPORTED_LEAD);
-    assert_quoted_wherever_named(row, &error.to_string(), "xmi:Extension");
+    assert_quoted_wherever_named(row, &error.to_string(), "sacm:ArgumentPackage");
 
-    // A child and an attribute that a readable root cannot read yet: XMI
-    // metadata (SACM23-XMI-019) under a prefix that only they use.
-    let child = sacm_document(
-        "<?xml version=\"1.0\"?>\n",
-        "<zqxchild:Extension xmlns:zqxchild=\"http://www.omg.org/spec/XMI/20131001\"/>",
-    );
-    let error = assert_unsupported(row, &child);
+    // A child and an attribute of the XMI element that have no element to
+    // be kept in, under a prefix that only they use: an XMI-namespace
+    // element XMI does not define and a vendor attribute, defects. (XMI
+    // metadata of a root until slice 0073a read it, SACM23-XMI-019.)
+    let child = b"<?xml version=\"1.0\"?>\n<xmi:XMI \
+        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+        xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\
+        <zqxchild:foo xmlns:zqxchild=\"http://www.omg.org/spec/XMI/20131001\"/>\
+        <sacm:ArgumentPackage xmi:id=\"p\"/></xmi:XMI>";
+    let error = assert_unsupported(row, child);
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &error.to_string(), "zqxchild");
-    let attribute = b"<?xml version=\"1.0\"?>\n<sacm:ArgumentPackage \
-        xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+    let attribute = b"<?xml version=\"1.0\"?>\n<xmi:XMI \
         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
-        xmlns:zqxattr=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\" zqxattr:uuid=\"u\"/>";
+        xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+        xmlns:zqxattr=\"urn:zqx\" zqxattr:note=\"u\"><sacm:ArgumentPackage xmi:id=\"p\"/></xmi:XMI>";
     let error = assert_unsupported(row, attribute);
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &error.to_string(), "zqxattr");

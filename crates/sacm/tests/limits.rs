@@ -621,6 +621,85 @@ fn lib_sec_003_kept_namespace_text_counts_against_the_size_limit() {
         ),
         "SACM-SEC-003/kept-namespaces",
     );
+    // XMI metadata counts the same (SACM23-XMI-019, slice 0073a): the same
+    // ten `<v:x/>`, each held in an `<xmi:Extension>`, keep at least the
+    // same namespace text, and give no diagnostic. Under a limit of the
+    // input's size the count passes it at a kept element's `<`; under a
+    // large limit the input reads with no diagnostic.
+    let holders = format!(
+        "{}{}{ROOT_END}",
+        v_root_start(),
+        "<xmi:Extension><v:x/></xmi:Extension>".repeat(10)
+    );
+    let len = u64::try_from(holders.len()).unwrap_or(u64::MAX);
+    assert!(
+        10 * KEPT_PER_CHILD > holders.len(),
+        "{ROW}: setup: the ten extensions keep more than the input's size"
+    );
+    let error = assert_exceeded_somewhere(
+        "ten xmi:Extension holders under a limit of the input's size",
+        holders.as_bytes(),
+        Limits::default().with_max_input_bytes(len),
+        "SACM-SEC-003/kept-namespaces",
+    );
+    let sites: Vec<SourceLocation> = (0..10)
+        .flat_map(|n| {
+            [
+                nth_position_of(&holders, "<xmi:Extension", n),
+                nth_position_of(&holders, "<v:x", n),
+            ]
+        })
+        .collect();
+    assert!(
+        error.location().is_some_and(|at| sites.contains(&at)),
+        "{ROW}: ten xmi:Extension holders: the refusal is not at a kept element's `<`: {error:?}"
+    );
+    for mode in MODES {
+        let options = under(Limits::default().with_max_input_bytes(1 << 20), mode);
+        let output = read_ok(
+            "ten xmi:Extension holders under 1 MiB",
+            holders.as_bytes(),
+            &options,
+        );
+        assert_eq!(
+            output.diagnostics(),
+            [],
+            "{ROW}: ten xmi:Extension holders: a {mode:?} read gives diagnostics"
+        );
+    }
+}
+
+/// Asserts that `input`, read under `limits` in both modes alike, is
+/// `LimitExceeded` for the input's size, with `template`, at a location the
+/// caller checks, and returns the refusal.
+fn assert_exceeded_somewhere(
+    what: &str,
+    input: &[u8],
+    limits: Limits,
+    template: &str,
+) -> ReadError {
+    let strict = refusal(what, input, &under(limits, Mode::Strict));
+    let tolerant = refusal(what, input, &under(limits, Mode::Tolerant));
+    assert_eq!(
+        tolerant, strict,
+        "{ROW}: {what}: the modes refuse differently"
+    );
+    assert!(
+        matches!(
+            strict,
+            ReadError::LimitExceeded {
+                limit: Limit::InputBytes,
+                ..
+            }
+        ),
+        "{ROW}: {what}: not LimitExceeded for the input's size: {strict:?}"
+    );
+    assert_eq!(
+        (strict.code().as_str(), strict.template()),
+        ("SACM-SEC-003", template),
+        "{ROW}: {what}: code and template"
+    );
+    strict
 }
 
 #[test]
@@ -1188,11 +1267,49 @@ fn preserved_under_bindings() -> (String, usize) {
     (input, 1000 * per_child)
 }
 
+/// `count` flat root `AssuranceCasePackage`s under `xmi:XMI`, each but the
+/// last holding a same-file proxy of the next (SACM23-XMI-030): as resolved,
+/// root `n` (from 1) is at depth `n + 1` and its name at `n + 2`.
+fn flat_proxy_chain(count: usize) -> String {
+    let mut input = format!("<xmi:XMI{NS}>");
+    for n in 1..=count {
+        let _ = write!(
+            input,
+            "<sacm:AssuranceCasePackage xmi:id=\"a{n}\"><name content=\"a{n}\"/>"
+        );
+        if n < count {
+            let _ = write!(input, "<assuranceCasePackage xmi:idref=\"a{}\"/>", n + 1);
+        }
+        input.push_str("</sacm:AssuranceCasePackage>");
+    }
+    input.push_str("</xmi:XMI>");
+    input
+}
+
 #[test]
 fn lib_sec_003_write_stays_within_the_documented_bound() {
     const D: usize = 64;
     let (preserved, kept) = preserved_under_bindings();
+    // One root more than the depth admits is refused, so no flat chain is
+    // written nested deeper than D: the depth is counted as resolved.
+    let longer = flat_proxy_chain(D - 1);
+    assert_exceeded(
+        "a flat proxy chain of 63 roots under depth 64",
+        longer.as_bytes(),
+        Limits::default().with_max_depth(64),
+        (
+            Limit::Depth,
+            64,
+            Some(position_of(&longer, "<name content=\"a63\"/>")),
+        ),
+        "SACM-SEC-003/depth",
+    );
     let inputs = [
+        (
+            "the longest flat proxy chain depth 64 admits",
+            flat_proxy_chain(D - 2),
+            0,
+        ),
         (
             "a chain of AssuranceCasePackages 64 deep",
             package_chain(D),

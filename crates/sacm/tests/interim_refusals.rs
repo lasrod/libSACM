@@ -1,11 +1,10 @@
 //! Tests that every `ReadError::Unsupported` names why it is refused
 //! (LIB-API-011; ADR 0033; D-PRESERVE; D-STRICT).
 //!
-//! Conforming content this version does not read yet (XMI metadata since
-//! slice 0067, which reads the last interface and binding kinds and every
-//! package's `interface` end, and the cross-document links SACM23-XMI-029
-//! reads since slice 0068, which reads an `href` with a document part), and
-//! input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
+//! Conforming content this version does not read yet (the cross-document
+//! links SACM23-XMI-029 reads, since slice 0068 reads an `href` with a
+//! document part; XMI metadata until slice 0073a read it, SACM23-XMI-019),
+//! and input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
 //! crate-private list whose entries are `Interim(row)`, `Tolerance(row)`,
 //! `Tolerated(row)` (slice 0072, ADR 0041 D6), `Limit` or `Defect`, and its
 //! reason ends with exactly one label:
@@ -24,7 +23,7 @@
 //! One input (or a few, where the entry covers several constructs) per entry
 //! of the list, read in strict mode, is refused with that entry's label. A
 //! tolerant read refuses only the limits, a SACM 2.4 root, an `XMI` element
-//! in another namespace and an XMI document element, reads a `Tolerated`
+//! in another namespace, reads a `Tolerated`
 //! root, and keeps the rest as preserved content with a Warning
 //! (ADR 0035; tested in `tolerant_read.rs`). Two
 //! entries have no input: a parser capacity limit (`Capacity`) and a failed
@@ -59,9 +58,6 @@ const NS: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
 );
-
-/// The declaration of `xsi` alone.
-const XSI: &str = "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
 
 /// The labels' openings; a reason holds exactly one label.
 const LABEL_OPENINGS: [&str; 3] = [
@@ -183,113 +179,6 @@ fn strict() -> ReadOptions {
 
 fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
-}
-
-// --- Interim: XMI document metadata (SACM23-XMI-019) --------------------------------
-
-#[test]
-fn lib_api_011_xmi_metadata_names_sacm23_xmi_019() {
-    let label = interim("SACM23-XMI-019");
-    let wrapper = |attributes: &str, body: &str| {
-        format!(
-            "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"{attributes}>{body}\
-             <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
-        )
-    };
-    let cases = [
-        (
-            "xmi:uuid on an object",
-            package(&claim("c1", " xmi:uuid=\"u1\"", "")),
-        ),
-        (
-            "xmi:label on an object",
-            package(&claim("c1", " xmi:label=\"l\"", "")),
-        ),
-        (
-            "xmi:idref on an object",
-            package(&format!(
-                "{}{}",
-                claim("c1", " xmi:idref=\"c2\"", ""),
-                claim("c2", "", "")
-            )),
-        ),
-        (
-            // On a root, which is no role element: a typed role element
-            // with an unqualified `href` is a proxy, which names
-            // SACM23-XMI-029 (untyped_abstract_roles.rs).
-            "href on an object (the root)",
-            format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" href=\"#c2\"><name content=\"p\"/>{}</sacm:ArgumentPackage>",
-                claim("c2", "", "")
-            ),
-        ),
-        (
-            "xmi:Extension in an object",
-            package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>")),
-        ),
-        (
-            "xmi:Documentation in the wrapper",
-            wrapper("", "<xmi:Documentation/>"),
-        ),
-        (
-            "xmi:Documentation as the document element",
-            format!("<xmi:Documentation xmlns:xmi=\"{XMI_NS}\"/>"),
-        ),
-        ("xmi:id on the wrapper", wrapper(" xmi:id=\"w\"", "")),
-        (
-            "xmi:type on the wrapper",
-            wrapper(" xmi:type=\"xmi:XMI\"", ""),
-        ),
-        ("xmi:uuid on the wrapper", wrapper(" xmi:uuid=\"u\"", "")),
-        ("xmi:label on the wrapper", wrapper(" xmi:label=\"l\"", "")),
-        ("xmi:idref on the wrapper", wrapper(" xmi:idref=\"p\"", "")),
-        ("href on the wrapper", wrapper(" href=\"#p\"", "")),
-        (
-            "xsi:schemaLocation on the wrapper",
-            wrapper(
-                &format!(" {XSI} xsi:schemaLocation=\"{SACM_NS} SACM.xsd\""),
-                "",
-            ),
-        ),
-        (
-            "xsi:noNamespaceSchemaLocation on the wrapper",
-            wrapper(
-                &format!(" {XSI} xsi:noNamespaceSchemaLocation=\"SACM.xsd\""),
-                "",
-            ),
-        ),
-        (
-            "xmi:id on a reference element",
-            package(&format!(
-                "{}{}",
-                claim("c1", "", "<metaClaim xmi:idref=\"c2\" xmi:id=\"r\"/>"),
-                claim("c2", "", "")
-            )),
-        ),
-        (
-            "xmi:uuid on a reference element",
-            package(&format!(
-                "{}{}",
-                claim("c1", "", "<metaClaim xmi:idref=\"c2\" xmi:uuid=\"u\"/>"),
-                claim("c2", "", "")
-            )),
-        ),
-        (
-            "xsi:schemaLocation on the root",
-            format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" xsi:schemaLocation=\"{SACM_NS} SACM.xsd\"><name content=\"p\"/></sacm:ArgumentPackage>"
-            ),
-        ),
-        (
-            "xsi:noNamespaceSchemaLocation on the root",
-            format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" xsi:noNamespaceSchemaLocation=\"SACM.xsd\"><name content=\"p\"/></sacm:ArgumentPackage>"
-            ),
-        ),
-    ];
-    for (what, input) in cases {
-        assert_text_refused_with("XmiMetadata", what, &input, &label);
-    }
 }
 
 // --- Interim: cross-document links not read yet (SACM23-XMI-029) -------------------
@@ -500,6 +389,13 @@ fn lib_api_011_content_on_the_xmi_wrapper_is_a_defect_in_the_input() {
             wrapper_with(" xmlns:v=\"urn:example:v\" v:w=\"1\"", ""),
         ),
         ("text before the root", wrapper_with("", "stray")),
+        // An XMI-namespace element XMI 2.5.1 does not define there (slice
+        // 0073a, SACM23-XMI-019, ADR 0042 D4); the XMI metadata elements are
+        // read.
+        (
+            "an XMI-namespace element XMI does not define",
+            wrapper_with("", "<xmi:foo/>"),
+        ),
     ];
     for (what, input) in cases {
         assert_text_refused_with("WrapperContent", what, &input, DEFECT);
@@ -534,8 +430,9 @@ fn lib_api_011_a_preserved_attribute_binding_sacm_or_xmi_elsewhere_is_a_defect_i
 
 /// The refused set of `Unread::tolerant()`: an encoding, a SACM 2.4 root
 /// (slice 0072; a root in another SACM namespace is read tolerantly since,
-/// LIB-COMPAT-004), an `XMI` element outside XMI 2.5.1 and an XMI-namespace
-/// document element are `Unsupported` in both modes, with the same refusal.
+/// LIB-COMPAT-004) and an `XMI` element outside XMI 2.5.1 are `Unsupported`
+/// in both modes, with the same refusal. An XMI-namespace document element
+/// is `InvalidRoot` since slice 0073a (SACM23-XMI-019, ADR 0042 D4).
 /// `Capacity` and `Unheld` have no input of a test's size. Every other entry
 /// is kept by a tolerant read (`tolerant_read.rs`).
 #[test]
@@ -569,11 +466,6 @@ fn lib_api_011_the_refused_entries_are_unsupported_in_both_modes() {
             )
             .into_bytes(),
             tolerance("LIB-COMPAT-002"),
-        ),
-        (
-            "XmiMetadata: xmi:Documentation as the document element",
-            format!("<xmi:Documentation xmlns:xmi=\"{XMI_NS}\"/>").into_bytes(),
-            interim("SACM23-XMI-019"),
         ),
     ];
     for (what, input, label) in &cases {

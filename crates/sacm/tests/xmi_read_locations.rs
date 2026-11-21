@@ -361,9 +361,11 @@ fn wrapper_rows() -> Vec<Row> {
             NoPackage,
             led(&format!("{MARK}{WRAPPER}/>")),
         ),
+        // `InvalidRoot` since slice 0073a (SACM23-XMI-019, ADR 0042 D4;
+        // `Unsupported` until then).
         row(
             "an XMI-namespace document element",
-            Unsupported,
+            InvalidRoot,
             led(&format!(
                 "{MARK}<xmi:Documentation xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>"
             )),
@@ -385,11 +387,14 @@ fn wrapper_rows() -> Vec<Row> {
             Unsupported,
             wrapped(&format!("  {MARK}x<sacm:ArgumentPackage xmi:id=\"a\"/>")),
         ),
+        // An XMI-namespace element XMI does not define there, a defect; an
+        // `xmi:Documentation` is XMI metadata since slice 0073a
+        // (SACM23-XMI-019, ADR 0042).
         row(
             "an XMI element beside the roots",
             Unsupported,
             wrapped(&format!(
-                "<sacm:ArgumentPackage xmi:id=\"a\"/>{MARK}<xmi:Documentation/>"
+                "<sacm:ArgumentPackage xmi:id=\"a\"/>{MARK}<xmi:foo/>"
             )),
         ),
     ]
@@ -431,14 +436,18 @@ fn root_rows() -> Vec<Row> {
                 "{MARK}<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),
         ),
-        // XMI metadata this version does not read yet (SACM23-XMI-019). An
-        // unqualified id, or another attribute the class lacks, is preserved
-        // instead (ADR 0033): `preserved_rows`.
+        // A cross-document link this version does not read yet
+        // (SACM23-XMI-029): a proxy of another document under the abstract
+        // role `argumentElement`, at its start tag. (An `xmi:uuid` on the
+        // root until slice 0073a read it as XMI metadata, SACM23-XMI-019.)
+        // An unqualified id, or another attribute the class lacks, is
+        // preserved instead (ADR 0033): `preserved_rows`.
         row(
-            "an xmi:uuid on a root",
+            "a proxy of another document in a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}xmi:uuid=\"u\"/>"
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\">{MARK}<argumentElement href=\"o.xmi#c\"/>\
+                 </sacm:ArgumentPackage>"
             )),
         ),
         row(
@@ -456,11 +465,15 @@ fn root_rows() -> Vec<Row> {
         ),
         // SACM23-XMI-025: an id with white space around an NCName is read
         // trimmed, so it is no refusal.
+        // A proxy of another document under a concrete role, at its `href`
+        // (SACM23-XMI-029). (An `xmi:label` on the root until slice 0073a
+        // read it as XMI metadata, SACM23-XMI-019.)
         row(
-            "an xmi:label on a root",
+            "a proxy of another document under a concrete role of a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}xmi:label=\"l\"/>"
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"a\"><argumentPackage {MARK}href=\"o.xmi#ap\"/>\
+                 </sacm:AssuranceCasePackage>"
             )),
         ),
         // SACM23-XMI-021: at the second name.
@@ -482,7 +495,7 @@ fn root_rows() -> Vec<Row> {
 
 /// The refusals of a root's name.
 fn name_rows() -> Vec<Row> {
-    use Variant::{DuplicateId, InvalidId, LegacyShape, Unsupported};
+    use Variant::{DuplicateId, InvalidId, LegacyShape};
     vec![
         // SACM23-XMI-022: a name's id is an id, at the name's start tag.
         row(
@@ -496,17 +509,9 @@ fn name_rows() -> Vec<Row> {
             in_ap(&format!("{MARK}<name xmi:id=\"p\"/>")),
         ),
         // A name typed ExpressionLangString is read since slice 0065
-        // (SACM23-BASE-009); XMI metadata on a name is not read yet.
-        row(
-            "an xmi:label on a name",
-            Unsupported,
-            in_ap(&format!("<name content=\"N\" {MARK}xmi:label=\"n\"/>")),
-        ),
-        row(
-            "an xmi:uuid on a name",
-            Unsupported,
-            in_ap(&format!("<name content=\"N\" {MARK}xmi:uuid=\"n\"/>")),
-        ),
+        // (SACM23-BASE-009), and XMI metadata on a name since slice 0073a
+        // (SACM23-XMI-019), so neither is a refusal: until then
+        // `xmi:label` and `xmi:uuid` on a name were `Unsupported` here.
         // `lang` and `content` are value elements (SACM23-XMI-014); one
         // `value`, and text, are C++ shapes, refused in strict mode
         // (LIB-COMPAT-008).
@@ -545,13 +550,10 @@ fn child_content_rows() -> Vec<Row> {
     use Variant::Unsupported as U;
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
-        // XMI metadata in a Claim, at depth 3 (SACM23-XMI-019). A utility
-        // element in a Claim is read (SACM23-BASE-004).
-        row(
-            "an xmi:Extension in a Claim, at depth 3",
-            U,
-            in_claim(&format!("{MARK}<xmi:Extension/>")),
-        ),
+        // XMI metadata in a Claim is read since slice 0073a
+        // (SACM23-XMI-019), and an XMI-namespace element XMI does not define
+        // is preserved: `preserved_rows`. A utility element in a Claim is
+        // read (SACM23-BASE-004).
         row(
             "a child with an empty id",
             Variant::InvalidId,
@@ -572,11 +574,14 @@ fn child_content_rows() -> Vec<Row> {
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}assertionDeclaration=\"Asserted\"/>"
             )),
         ),
+        // A preserved attribute whose prefix `sacm` is bound to another URI,
+        // a defect with nowhere to be kept (an `xmi:uuid` until slice 0073a
+        // read it as XMI metadata, SACM23-XMI-019).
         row(
             "a prefixed unread attribute of a child",
             U,
             in_acp(&format!(
-                "<argumentPackage xmi:id=\"x\" {MARK}xmi:uuid=\"u\"/>"
+                "<argumentPackage xmlns:sacm=\"urn:example:other\" xmi:id=\"x\" {MARK}sacm:extra=\"u\"/>"
             )),
         ),
         row(
@@ -584,11 +589,8 @@ fn child_content_rows() -> Vec<Row> {
             Variant::RepeatedValue,
             in_claim(&format!("<name/>{MARK}<name/>")),
         ),
-        row(
-            "an unread attribute of a child's name",
-            U,
-            in_claim(&format!("<name {MARK}xmi:uuid=\"n\"/>")),
-        ),
+        // An `xmi:uuid` on a child's name was `Unsupported` here until slice
+        // 0073a read it as XMI metadata (SACM23-XMI-019).
     ]
 }
 
@@ -642,7 +644,7 @@ fn in_tagged(body: &str) -> String {
 /// `key` roles (SACM23-BASE-004, SACM23-BASE-005; ADR 0025), and the strict
 /// refusals of their C++ shorthands (LIB-COMPAT-008).
 fn utility_rows() -> Vec<Row> {
-    use Variant::{LegacyShape as L, Unsupported as U};
+    use Variant::LegacyShape as L;
     vec![
         // The C++ shorthands (LIB-COMPAT-008): strict refuses each at its
         // first attribute or its text.
@@ -695,12 +697,6 @@ fn utility_rows() -> Vec<Row> {
             in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}value=\"v\"/>")),
         )
         .strict(),
-        // XMI metadata this version does not read yet (SACM23-XMI-019).
-        row(
-            "an xmi:Extension in a Description",
-            U,
-            in_description(&format!("<content/>{MARK}<xmi:Extension/>")),
-        ),
         // Text in a value is a C++ shape (LIB-COMPAT-008): refused in strict
         // mode at the text.
         row(
@@ -902,21 +898,9 @@ fn reference_rows() -> Vec<Row> {
                 "<abstractForm xmi:idref=\"c\"/>{MARK}<abstractForm href=\"#c\"/>"
             )),
         ),
-        // Malformed reference elements.
-        row(
-            "an xmi:id on a reference element",
-            U,
-            link(&format!(
-                "<citedElement {MARK}xmi:id=\"r\" xmi:idref=\"c\"/>"
-            )),
-        ),
-        row(
-            "an xmi:type on a reference element",
-            U,
-            link(&format!(
-                "<abstractForm xmi:idref=\"c\" {MARK}xmi:type=\"sacm:Claim\"/>"
-            )),
-        ),
+        // Malformed reference elements: since slice 0073a an identity or a
+        // type attribute keeps the whole element (production 2c, rule 4e;
+        // SACM23-XMI-019), in `preserved_rows`.
         // An XPointer href (SACM23-XMI-029): at the attribute's name. Since
         // slice 0068 an href with a document part is read (SACM23-XMI-027),
         // and one that names no element is preserved content (SACM-XMI-003).
@@ -1026,7 +1010,7 @@ fn typed_x(kind: &str, attributes: &str, content: &str) -> String {
 /// `argumentElement`, an `argumentElement` attribute on a package, an empty
 /// end, an end on a kind that lacks it, and an attribute with an element.
 fn artifact_rows() -> Vec<Row> {
-    use Variant::{RepeatedValue, Unsupported as U};
+    use Variant::RepeatedValue;
     let reference =
         |attributes: &str, content: &str| typed_x("ArtifactReference", attributes, content);
     let group = |attributes: &str, content: &str| typed_x("ArgumentGroup", attributes, content);
@@ -1039,17 +1023,9 @@ fn artifact_rows() -> Vec<Row> {
                 &format!("{MARK}<referencedArtifactElement xmi:idref=\"d\"/>"),
             ),
         ),
-        // A group's argumentElement is a reference end: a nested element is
-        // refused as a reference element, at the attribute no reference
-        // element has.
-        row(
-            "a nested element under a group's argumentElement",
-            U,
-            group(
-                "",
-                &format!("<argumentElement {MARK}xmi:type=\"sacm:Claim\" xmi:id=\"c9\"/>"),
-            ),
-        ),
+        // A group's argumentElement is a reference end: since slice 0073a a
+        // nested element is kept whole as a reference element with a type
+        // and an id (production 2c; SACM23-XMI-019), in `preserved_rows`.
         row(
             "a group's argumentElement as an attribute and an element",
             RepeatedValue,
@@ -1414,6 +1390,25 @@ fn preserved_rows() -> Vec<(Row, Holder)> {
                 "a name in a namespace",
                 P,
                 in_ap(&format!("{MARK}<sacm:name/>")),
+            ),
+            Last,
+        ),
+        // XMI-namespace elements XMI does not define, at their `<` (since
+        // slice 0073a; an `xmi:Extension` there was refused as XMI metadata
+        // not read yet until then, SACM23-XMI-019, ADR 0042 D4).
+        (
+            row(
+                "an xmi:foo in a Claim, at depth 3",
+                P,
+                in_claim(&format!("{MARK}<xmi:foo/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an xmi:foo in a Description",
+                P,
+                in_description(&format!("<content/>{MARK}<xmi:foo/>")),
             ),
             Last,
         ),
@@ -1971,6 +1966,41 @@ fn preserved_rows() -> Vec<(Row, Holder)> {
                 "a reference element in a namespace",
                 P,
                 link(&format!("{MARK}<sacm:citedElement xmi:idref=\"c\"/>")),
+            ),
+            Last,
+        ),
+        // An identity or a type attribute on a reference element keeps it
+        // whole (production 2c, rule 4e; SACM23-XMI-019, ADR 0042), at its
+        // start tag; refused at the attribute until slice 0073a.
+        (
+            row(
+                "an xmi:id on a reference element",
+                P,
+                link(&format!(
+                    "{MARK}<citedElement xmi:id=\"r\" xmi:idref=\"c\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an xmi:type on a reference element",
+                P,
+                link(&format!(
+                    "{MARK}<abstractForm xmi:idref=\"c\" xmi:type=\"sacm:Claim\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a nested element under a group's argumentElement",
+                P,
+                typed_x(
+                    "ArgumentGroup",
+                    "",
+                    &format!("{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c9\"/>"),
+                ),
             ),
             Last,
         ),

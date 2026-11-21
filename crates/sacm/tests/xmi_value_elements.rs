@@ -8,8 +8,9 @@
 //! character content exactly; an empty element is the empty string. A value
 //! element with an attribute, an element child or a namespace does not
 //! conform: the whole `name`, or the `assertionDeclaration` element, is kept
-//! as preserved content, at its start tag (ADR 0033); one in the XMI
-//! namespace is `Unsupported` there (SACM23-XMI-019). A property given twice (attribute and
+//! as preserved content, at its start tag (ADR 0033); so does one in the
+//! XMI namespace since slice 0073a, which XMI 2.5.1 does not define
+//! (SACM23-XMI-019, ADR 0042 D4; `Unsupported` until then). A property given twice (attribute and
 //! element, or two elements) is `ReadError::RepeatedValue` (SACM-MULT-001) in
 //! both modes, with every occurrence located: an attribute at its name, an
 //! element at its `<`.
@@ -46,8 +47,6 @@ use sacm::compare::semantic_compare;
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{AssertionDeclaration, Document, ElementId, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
-
-mod common;
 
 const ROW: &str = "SACM23-XMI-014";
 
@@ -303,35 +302,6 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
         panic!("{ROW}: setup: {what} has no xmi:id before its mark");
     };
     assert_preserved_at(what, &input, marks[0], holder);
-}
-
-/// Reads `template` without its one mark, in strict mode, and returns the
-/// refusal, failing the test unless it is `Unsupported` with no code, at the
-/// mark.
-fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
-    let (input, marks) = marked(template);
-    assert_eq!(
-        marks.len(),
-        1,
-        "{ROW}: setup: {what} has {} marks, not one",
-        marks.len()
-    );
-    let error = refused(what, &input);
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }),
-        "{ROW}: {what}: expected Unsupported, got {error:?}"
-    );
-    assert_eq!(
-        error.code().as_str(),
-        crate::common::unsupported_code(&error.to_string()),
-        "{ROW}: {what}: an Unsupported refusal does not have the code of its label"
-    );
-    assert_eq!(
-        error.location(),
-        Some(marks[0]),
-        "{ROW}: {what}: refused at the wrong place: {error}"
-    );
-    error
 }
 
 /// Reads `template` without its one mark, in strict mode, and returns the
@@ -1008,26 +978,9 @@ fn sacm23_xmi_014_a_declaration_element_holding_no_literal_is_invalid_literal_at
 
 // --- Item 4: shape ----------------------------------------------------------------
 
-/// The three value elements, each in its owner: `place` gives, for an
-/// element name, what the case is and the marked element.
-fn value_elements(place: &dyn Fn(&str) -> (String, String)) -> Vec<(String, String)> {
-    let mut cases = Vec::new();
-    for element in ["lang", "content"] {
-        let (what, inner) = place(element);
-        cases.push((
-            format!("{what} on <{element}>"),
-            in_ap(&format!("<name>{inner}</name>")),
-        ));
-    }
-    let (what, inner) = place("assertionDeclaration");
-    cases.push((
-        format!("{what} on <assertionDeclaration>"),
-        declared_claim(&inner),
-    ));
-    cases
-}
-
-/// [`value_elements`], with the mark moved to the start tag of the child the
+/// The three value elements, each in its owner (`place` gives, for an
+/// element name, what the case is and the element), with the mark at the
+/// start tag of the child the
 /// defect keeps whole as preserved content (ADR 0033): the `name` holding
 /// `lang` or `content`, held by the root `a`, or the `assertionDeclaration`
 /// element, held by the Claim `c1`.
@@ -1107,7 +1060,7 @@ fn sacm23_xmi_014_an_element_in_a_value_element_is_preserved_with_its_name_or_el
 }
 
 #[test]
-fn sacm23_xmi_014_a_value_element_in_a_namespace_is_preserved_or_unsupported_at_its_start_tag() {
+fn sacm23_xmi_014_a_value_element_in_a_namespace_is_preserved_at_its_start_tag() {
     // In no namespace it reads, however the no-namespace is reached.
     for twin in mixed_twins()
         .iter()
@@ -1149,18 +1102,13 @@ fn sacm23_xmi_014_a_value_element_in_a_namespace_is_preserved_or_unsupported_at_
                 ),
             )
         };
-        if form == "xmi-prefixed" {
-            // An XMI-namespace element in an object is XMI metadata this
-            // version does not read yet (SACM23-XMI-019): refused there.
-            for (what, template) in value_elements(&place) {
-                assert_unsupported_at_mark(&what, &template);
-            }
-        } else {
-            // Not conforming: the whole name, or the element itself, is kept
-            // as preserved content, at its start tag (ADR 0033).
-            for (what, template) in value_elements_marked_whole(&place) {
-                assert_preserved_at_mark(&what, &template);
-            }
+        // Not conforming: the whole name, or the element itself, is kept as
+        // preserved content, at its start tag (ADR 0033). So is an
+        // XMI-namespace value element since slice 0073a: XMI 2.5.1 defines no
+        // such element, so it is no XMI metadata (SACM23-XMI-019, ADR 0042
+        // D4; refused as not read yet until then).
+        for (what, template) in value_elements_marked_whole(&place) {
+            assert_preserved_at_mark(&what, &template);
         }
     }
 }

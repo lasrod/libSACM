@@ -44,8 +44,6 @@ use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, LangString, MultiLangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
-mod common;
-
 const ROW: &str = "LIB-COMPAT-008";
 
 /// Both modes, strict first.
@@ -1543,11 +1541,15 @@ fn assert_shape_in_both_modes(shape: &Shape) {
 }
 
 #[test]
-fn lib_compat_008_an_xmi_id_on_the_value_of_a_name_is_unsupported_at_it() {
-    assert_unsupported_at_mark(
+fn lib_compat_008_an_xmi_id_on_the_value_of_a_name_keeps_the_whole_name() {
+    // An `xmi:id` on the C++-shape `value` inside a name keeps the whole
+    // name with SACM-XMI-003 at its start tag, in both modes (SACM23-XMI-019
+    // acceptance 6, ADR 0042 D4); until slice 0073a it was refused at the
+    // attribute as XMI metadata not read yet.
+    assert_preserved_at_mark(
         "an xmi:id on a name's value",
         &named(&format!(
-            "<name><value {MARK}xmi:id=\"v\" content=\"X\"/></name>"
+            "{MARK}<name><value xmi:id=\"v\" content=\"X\"/></name>"
         )),
     );
 }
@@ -1748,22 +1750,4 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
         panic!("{ROW}: setup: {what} has no xmi:id before its mark");
     };
     assert_preserved_at(what, &input, marks[0], holder);
-}
-
-/// Reads `template` without its one mark in strict mode and asserts that it
-/// is refused as `Unsupported`, with no code, at the mark.
-fn assert_unsupported_at_mark(what: &str, template: &str) {
-    let (input, marks) = marked(template);
-    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-    let error = refused(what, &input);
-    assert!(
-        matches!(error, ReadError::Unsupported { .. })
-            && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-        "{ROW}: {what}: not Unsupported: {error:?} ({error})"
-    );
-    assert_eq!(
-        error.location(),
-        Some(marks[0]),
-        "{ROW}: {what}: not refused at the construct: {error}"
-    );
 }

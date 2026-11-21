@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-030: Golden P1 of slice 0073a (ADR 0042 D8). The AssuranceCasePackage case holds two same-file proxies, one with xmi:idref naming the root ArgumentPackage args and one with href="#arts" naming the root ArtifactPackage arts. Both resolve: args and arts move into case, in the proxies' places, and a write writes them nested. Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <sacm:AssuranceCasePackage xmi:id="case">
+    <name content="Case"/>
+    <argumentPackage xmi:idref="args"/>
+    <artifactPackage href="#arts"/>
+  </sacm:AssuranceCasePackage>
+  <sacm:ArgumentPackage xmi:id="args">
+    <name content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name content="C1"/>
+    </argumentElement>
+  </sacm:ArgumentPackage>
+  <sacm:ArtifactPackage xmi:id="arts">
+    <name content="Artifacts"/>
+  </sacm:ArtifactPackage>
+</xmi:XMI>

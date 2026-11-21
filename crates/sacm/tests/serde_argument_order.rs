@@ -90,14 +90,16 @@ const UNREPRESENTABLE_ARGUMENTS: [(&str, &str); 3] = [
 ];
 
 /// A `ReadError` `Unsupported` record with three arguments: the
-/// `SACM-XMI-014/xmi-child-of-root` value of `read-errors.json`, compact.
-const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/xmi-child-of-root","arguments":{"element":"xmi:Extension","container":"sacm:AssuranceCasePackage","row":"SACM23-XMI-019"},"location":{"line":3,"column":3},"reason":"the XMI element \"xmi:Extension\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)"}"#;
+/// `SACM-XMI-002/other-namespace` value of `read-errors.json`, compact. Until
+/// slice 0073a retired the templates of SACM-XMI-014 (SACM23-XMI-019, ADR
+/// 0042), the `SACM-XMI-014/xmi-child-of-root` value.
+const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-002","template":"SACM-XMI-002/other-namespace","arguments":{"element":"sacm:ArgumentPackage","namespace":"urn:example:sacm","row":"LIB-COMPAT-004"},"location":{"line":1,"column":1},"reason":"the root element \"sacm:ArgumentPackage\" is in the namespace \"urn:example:sacm\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)"}"#;
 
 /// The arguments of [`UNSUPPORTED`], in the template's order.
 const UNSUPPORTED_ARGUMENTS: [(&str, &str); 3] = [
-    ("element", "\"xmi:Extension\""),
-    ("container", "\"sacm:AssuranceCasePackage\""),
-    ("row", "\"SACM23-XMI-019\""),
+    ("element", "\"sacm:ArgumentPackage\""),
+    ("namespace", "\"urn:example:sacm\""),
+    ("row", "\"LIB-COMPAT-004\""),
 ];
 
 /// A diagnostic record with six arguments, one a Count: the finding of

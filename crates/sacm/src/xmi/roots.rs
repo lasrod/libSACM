@@ -143,13 +143,13 @@ use std::collections::BTreeSet;
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
-use super::limits::Budget;
+use super::limits::{Budget, exceeded};
 use super::namespaces::{
     self, Classes, RootNamespace, SACM_NS, SACM_PREFIX, Types, XMI_NS, XMI_PREFIX,
 };
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
-use super::{Limits, Mode, ReadError};
+use super::{Limit, Limits, Mode, ReadError};
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
@@ -469,18 +469,6 @@ impl Shape {
 /// refusal and its kept form, so none lacks a form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ElementReason {
-    /// SACM-XMI-014/unread-attribute.
-    UnreadAttribute,
-    /// SACM-XMI-014/nested-xmi-element.
-    NestedXmiElement,
-    /// SACM-XMI-014/xmi-child.
-    XmiChild,
-    /// SACM-XMI-014/xmi-child-of-root.
-    XmiChildOfRoot,
-    /// SACM-XMI-014/proxy-child.
-    ProxyChild,
-    /// SACM-XMI-014/proxy-child-of-root.
-    ProxyChildOfRoot,
     /// SACM-XMI-007/unread-attribute.
     ExternalAttribute,
     /// SACM-XMI-007/proxy-child.
@@ -494,13 +482,7 @@ enum ElementReason {
 impl ElementReason {
     /// Every reason.
     #[cfg(test)]
-    const ALL: [Self; 10] = [
-        Self::UnreadAttribute,
-        Self::NestedXmiElement,
-        Self::XmiChild,
-        Self::XmiChildOfRoot,
-        Self::ProxyChild,
-        Self::ProxyChildOfRoot,
+    const ALL: [Self; 4] = [
         Self::ExternalAttribute,
         Self::ExternalProxyChild,
         Self::ExternalProxyChildOfRoot,
@@ -510,12 +492,6 @@ impl ElementReason {
     /// The template of the strict read's refusal.
     fn refusal(self) -> &'static Template {
         match self {
-            Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE,
-            Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT,
-            Self::XmiChild => &template::XMI_014_XMI_CHILD,
-            Self::XmiChildOfRoot => &template::XMI_014_XMI_CHILD_OF_ROOT,
-            Self::ProxyChild => &template::XMI_014_PROXY_CHILD,
-            Self::ProxyChildOfRoot => &template::XMI_014_PROXY_CHILD_OF_ROOT,
             Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE,
             Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD,
             Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT,
@@ -527,12 +503,6 @@ impl ElementReason {
     /// that holds the content.
     fn kept(self) -> &'static Template {
         match self {
-            Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE_KEPT,
-            Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT_KEPT,
-            Self::XmiChild => &template::XMI_014_XMI_CHILD_KEPT,
-            Self::XmiChildOfRoot => &template::XMI_014_XMI_CHILD_OF_ROOT_KEPT,
-            Self::ProxyChild => &template::XMI_014_PROXY_CHILD_KEPT,
-            Self::ProxyChildOfRoot => &template::XMI_014_PROXY_CHILD_OF_ROOT_KEPT,
             Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE_KEPT,
             Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD_KEPT,
             Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT_KEPT,
@@ -546,33 +516,26 @@ impl ElementReason {
 /// of the (reason, holder) table of the kept forms (ADR 0035 D3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DocumentReason {
-    /// SACM-XMI-014/unread-attribute, on the XMI element.
-    UnreadAttribute,
-    /// SACM-XMI-014/nested-xmi-element, in the XMI element.
-    NestedXmiElement,
     /// SACM-XMI-003/unread-attribute, on the XMI element.
-    WrapperAttribute,
+    Attribute,
     /// SACM-XMI-003/wrapper-text.
-    WrapperText,
+    Text,
+    /// SACM-XMI-003/wrapper-element: an XMI-namespace element in the XMI
+    /// element that XMI 2.5.1 does not define there (SACM23-XMI-019).
+    Element,
 }
 
 impl DocumentReason {
     /// Every reason.
     #[cfg(test)]
-    const ALL: [Self; 4] = [
-        Self::UnreadAttribute,
-        Self::NestedXmiElement,
-        Self::WrapperAttribute,
-        Self::WrapperText,
-    ];
+    const ALL: [Self; 3] = [Self::Attribute, Self::Text, Self::Element];
 
     /// The template of the strict read's refusal.
     fn refusal(self) -> &'static Template {
         match self {
-            Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE,
-            Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT,
-            Self::WrapperAttribute => &template::XMI_003_UNREAD_ATTRIBUTE,
-            Self::WrapperText => &template::XMI_003_WRAPPER_TEXT,
+            Self::Attribute => &template::XMI_003_UNREAD_ATTRIBUTE,
+            Self::Text => &template::XMI_003_WRAPPER_TEXT,
+            Self::Element => &template::XMI_003_WRAPPER_ELEMENT,
         }
     }
 
@@ -580,10 +543,9 @@ impl DocumentReason {
     /// document.
     fn kept(self) -> &'static Template {
         match self {
-            Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE_KEPT_BY_DOCUMENT,
-            Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT_KEPT_BY_DOCUMENT,
-            Self::WrapperAttribute => &template::XMI_003_WRAPPER_ATTRIBUTE_KEPT,
-            Self::WrapperText => &template::XMI_003_WRAPPER_TEXT_KEPT,
+            Self::Attribute => &template::XMI_003_WRAPPER_ATTRIBUTE_KEPT,
+            Self::Text => &template::XMI_003_WRAPPER_TEXT_KEPT,
+            Self::Element => &template::XMI_003_WRAPPER_ELEMENT_KEPT,
         }
     }
 }
@@ -978,6 +940,10 @@ const MODES_ROW: &str = "LIB-COMPAT-001";
 /// The requirement of the Info for an element without an `xmi:id`.
 const MISSING_ID_ROW: &str = "SACM23-XMI-020";
 
+/// The requirement of the diagnostics of a same-file proxy kept instead of
+/// resolved.
+const PROXY_ROW: &str = "SACM23-XMI-030";
+
 /// The requirement of the Info for an `xmi:id` read trimmed.
 const TRIMMED_ID_ROW: &str = "SACM23-XMI-025";
 
@@ -1021,15 +987,28 @@ pub(super) fn read(
         revision: None,
         budget: Budget::new(text, limits),
     };
-    // What the document holds outside every element (ADR 0035 D3).
+    // What the document holds outside every element: its XMI metadata
+    // (SACM23-XMI-019, ADR 0042) and its preserved content (ADR 0035 D3).
     let mut outside = Kept::new(DocumentHolder);
+    let mut metadata = Kept::new(DocumentHolder);
+    let mut roots = Roots::default();
     if is_wrapper {
-        read_wrapper(&mut found, element, &mut document, &mut outside)?;
+        read_wrapper(&mut found, element, &mut roots, &mut outside, &mut metadata)?;
     } else {
-        read_root(&mut found, element, &mut document, &mut outside)?;
+        read_root(&mut found, element, &mut roots, &mut outside)?;
     }
+    // Once every root is read: the same-file proxies, then the elements
+    // (SACM23-XMI-030). What the document holds outside every element keeps
+    // its place among the roots that stay.
+    let stays = resolve(&mut found, tree, &mut roots, limits.max_depth())?;
+    hold(text, &mut document, roots.read)?;
+    let mut outside = outside.into_preserved();
+    let mut metadata = metadata.into_preserved();
+    outside.shift(&stays);
+    metadata.shift(&stays);
     document
-        .set_document_preserved(outside.into_preserved())
+        .set_document_metadata(metadata)
+        .and_then(|()| document.set_document_preserved(outside))
         .map_err(|error| {
             unsupported(
                 text,
@@ -1194,22 +1173,9 @@ impl<'a> Findings<'_, 'a> {
 }
 
 impl Findings<'_, '_> {
-    /// What this read does with `unread` at byte `offset`, kept in an
-    /// element for `reason`: the Warning a tolerant read keeps it with, or
-    /// its refusal, made from `arguments` ([`keep_or_refuse`]). Every
-    /// refusal site in an element that a tolerant read may keep asks this.
-    fn refuse_or_keep(
-        &self,
-        offset: usize,
-        unread: Unread,
-        reason: ElementReason,
-        arguments: Vec<Argument>,
-    ) -> Result<Keep, ReadError> {
-        keep_or_refuse(self.text, self.mode, offset, unread, reason, arguments)
-    }
-
-    /// [`refuse_or_keep`](Self::refuse_or_keep) for content the document
-    /// keeps outside every element, for `reason`.
+    /// What this read does with `unread` at byte `offset`, kept outside
+    /// every element for `reason`: the Warning a tolerant read keeps it
+    /// with, or its refusal, made from `arguments` ([`refuse_unless_kept`]).
     fn refuse_or_keep_in_document(
         &self,
         offset: usize,
@@ -1228,7 +1194,9 @@ impl Findings<'_, '_> {
         Ok(DocumentKeep::unread(offset, unread, reason, arguments))
     }
 
-    /// [`refuse_or_keep`](Self::refuse_or_keep) as a [`Fault`].
+    /// What this read does with `unread` at byte `offset`, kept in an
+    /// element for `reason`, as a [`Fault`] ([`keep_or_refuse`]). Every
+    /// refusal site in an element that a tolerant read may keep asks this.
     fn unread_fault(
         &self,
         offset: usize,
@@ -1433,6 +1401,42 @@ impl Findings<'_, '_> {
             .set_clause("7.8.6")
             .set_affected([owner.clone()]);
         self.push_at(diagnostic, offset)
+    }
+
+    /// Reports `proxy`, kept for `why` instead of resolved, at its start tag
+    /// (SACM23-XMI-030): one SACM-XMI-003 affecting its container, an Error
+    /// in strict mode and a Warning in tolerant mode, with clause 7.10.1.
+    fn unresolved(&mut self, proxy: &Proxy, why: Unresolved) -> Result<(), ReadError> {
+        let severity = match self.mode {
+            Mode::Strict => Severity::Error,
+            Mode::Tolerant => Severity::Warning,
+        };
+        let mut arguments = vec![
+            Argument::text("element", proxy.written.as_str()),
+            Argument::text("target", proxy.link.target.as_str()),
+        ];
+        let template = match why {
+            Unresolved::NoRoot => &template::XMI_003_PROXY_OF_NO_ROOT,
+            Unresolved::WrongKind {
+                target_class,
+                class,
+            } => {
+                arguments.push(Argument::text("target_class", target_class.name()));
+                arguments.push(Argument::text("class", class));
+                &template::XMI_003_PROXY_WRONG_KIND
+            }
+            Unresolved::LinkedRoot => &template::XMI_003_PROXY_OF_LINKED_ROOT,
+            Unresolved::Shared => &template::XMI_003_PROXY_SHARED,
+            Unresolved::Cycle => &template::XMI_003_PROXY_CYCLE,
+        };
+        arguments.extend([
+            Argument::text("holder_class", proxy.container_kind.name()),
+            Argument::text("holder_id", proxy.container.as_str()),
+        ]);
+        let diagnostic = Diagnostic::emit(template, severity, PROXY_ROW, arguments)
+            .set_clause("7.10.1")
+            .set_affected([proxy.container.clone()]);
+        self.push_at(diagnostic, proxy.at)
     }
 
     /// Adds `diagnostic`, located at the name of `attribute`.
@@ -1674,15 +1678,13 @@ fn classify<'a>(
             }
             Ok(true)
         }
-        // XMI document metadata, read by SACM23-XMI-019.
-        (Some(XMI_NS), _) => Err(unsupported(
-            text,
-            element.range().start,
-            Unread::XmiMetadata,
-            text_details(
-                &template::XMI_014_XMI_ROOT,
-                &[("element", &written_name(text, element))],
-            ),
+        // Another XMI element is XMI metadata, or no XMI element at all: as
+        // the document element, it holds no SACM package (SACM23-XMI-019).
+        (Some(XMI_NS), _) => Err(ReadError::invalid_root(
+            locate(text, element.range().start),
+            written_name(text, element),
+            &template::XMI_001_XMI_NAMESPACE_ROOT,
+            Vec::new(),
         )),
         // An XMI element outside the XMI namespace (ADR 0016 D1), which
         // LIB-COMPAT-002 may read.
@@ -1801,19 +1803,37 @@ fn invalid_root(text: &str, root: Node<'_, '_>) -> ReadError {
     )
 }
 
+/// The XMI elements XMI.xsd declares that XMI metadata holds under the XMI
+/// element (XMI 2.5.1 §7.5.3 to §7.5.6, SACM23-XMI-019).
+const WRAPPER_METADATA: [&str; 9] = [
+    "documentation",
+    "Documentation",
+    "difference",
+    "Difference",
+    "Add",
+    "Replace",
+    "Delete",
+    "extension",
+    "Extension",
+];
+
 /// Pass 2 for the XMI element: checks its attributes, then reads its roots
-/// and checks the content beside them, in document order.
+/// and checks the content beside them, in document order. Its XMI metadata
+/// goes to `metadata`, the rest of what it holds besides its roots to
+/// `outside`, and the roots' trees to `roots`.
 fn read_wrapper<'a>(
     found: &mut Findings<'_, 'a>,
     wrapper: Node<'a, '_>,
-    document: &mut Document,
+    roots: &mut Roots,
     outside: &mut Kept<DocumentHolder>,
+    metadata: &mut Kept<DocumentHolder>,
 ) -> Result<(), ReadError> {
     let text = found.text;
     let name = written_name(text, wrapper);
-    // The wrapper is no element of the document: what it carries besides
-    // `xmi:version` a strict read refuses, and a tolerant read keeps as the
-    // document's preserved content (ADR 0033, ADR 0035 D3).
+    // The wrapper is no element of the document: its XMI metadata is the
+    // document's (SACM23-XMI-019, ADR 0042); what it carries besides that
+    // and `xmi:version` a strict read refuses, and a tolerant read keeps as
+    // the document's preserved content (ADR 0033, ADR 0035 D3).
     for attribute in wrapper.attributes() {
         if is_xmi(&attribute, "version") {
             found.xmi_version(
@@ -1824,36 +1844,35 @@ fn read_wrapper<'a>(
             )?;
             continue;
         }
-        let is_metadata = ["id", "type", "uuid", "label", "idref"]
-            .iter()
-            .any(|local| is_xmi(&attribute, local))
-            || is_unqualified(&attribute, "href")
-            || is_schema_location(&attribute);
-        let (unread, reason) = if is_metadata {
-            (Unread::XmiMetadata, DocumentReason::UnreadAttribute)
-        } else {
-            (Unread::WrapperContent, DocumentReason::WrapperAttribute)
-        };
+        if is_wrapper_metadata(text, &attribute) {
+            // Its `xmi:id` is in the id space, as every metadata id is; an
+            // empty one identifies nothing, and a tolerant read keeps it as
+            // written outside it, with SACM-ID-002 (ADR 0035 D1, ADR 0042 D5).
+            if is_xmi(&attribute, "id") {
+                if attribute.value().is_empty() && found.mode == Mode::Tolerant {
+                    found.empty_id(
+                        wrapper,
+                        &template::ID_002_EMPTY_ID_OF_XMI_ELEMENT,
+                        Vec::new(),
+                        None,
+                    )?;
+                } else {
+                    let value = checked_id(found, wrapper, &attribute)?;
+                    metadata.ids.push(ElementId::new(value));
+                }
+            }
+            metadata.take_metadata_attribute(found, wrapper, &attribute)?;
+            continue;
+        }
         let at = attribute.range_qname().start;
         let arguments = attribute_arguments(text, &attribute, &name);
-        let keep = found.refuse_or_keep_in_document(at, unread, reason, arguments)?;
+        let keep = found.refuse_or_keep_in_document(
+            at,
+            Unread::WrapperContent,
+            DocumentReason::Attribute,
+            arguments,
+        )?;
         outside.keep_attribute(found, wrapper, &attribute, keep)?;
-        // A kept `xmi:id` of the wrapper is in the id space, as any id of the
-        // document's preserved content is; an empty one identifies nothing,
-        // and is kept as written outside it, with SACM-ID-002 (ADR 0035).
-        if is_xmi(&attribute, "id") {
-            if attribute.value().is_empty() {
-                found.empty_id(
-                    wrapper,
-                    &template::ID_002_EMPTY_ID_OF_XMI_ELEMENT,
-                    Vec::new(),
-                    None,
-                )?;
-            } else {
-                let value = checked_id(found, wrapper, &attribute)?;
-                outside.ids.push(ElementId::new(value));
-            }
-        }
     }
     for child in wrapper.children() {
         if !child.is_element() {
@@ -1861,25 +1880,31 @@ fn read_wrapper<'a>(
                 let keep = found.refuse_or_keep_in_document(
                     first,
                     Unread::WrapperContent,
-                    DocumentReason::WrapperText,
+                    DocumentReason::Text,
                     vec![Argument::text("element", name.as_str())],
                 )?;
                 outside.keep_text(found, child, keep)?;
             }
         } else if child.tag_name().namespace() == Some(XMI_NS) {
-            // XMI document metadata, read by SACM23-XMI-019.
-            let keep = found.refuse_or_keep_in_document(
-                child.range().start,
-                Unread::XmiMetadata,
-                DocumentReason::NestedXmiElement,
-                text_arguments(&[
-                    ("element", &written_name(text, child)),
-                    ("container", &name),
-                ]),
-            )?;
-            outside.keep_element(found, child, keep)?;
+            if WRAPPER_METADATA.contains(&child.tag_name().name()) {
+                // XMI metadata, kept whole and placed among the roots.
+                metadata.typed = outside.typed;
+                metadata.take_element(found, child)?;
+            } else {
+                // XMI 2.5.1 defines no such element here: a defect.
+                let keep = found.refuse_or_keep_in_document(
+                    child.range().start,
+                    Unread::WrapperContent,
+                    DocumentReason::Element,
+                    text_arguments(&[
+                        ("element", &written_name(text, child)),
+                        ("container", &name),
+                    ]),
+                )?;
+                outside.keep_element(found, child, keep)?;
+            }
         } else {
-            read_root(found, child, document, outside)?;
+            read_root(found, child, roots, outside)?;
         }
     }
     Ok(())
@@ -1943,6 +1968,20 @@ struct Pending {
     at: usize,
     /// Its preserved content so far (LIB-COMPAT-003, ADR 0033).
     kept: Kept<ElementHolder>,
+    /// Its XMI metadata so far (SACM23-XMI-019, ADR 0042), placed among its
+    /// typed children as preserved content is.
+    metadata: Kept<ElementHolder>,
+    /// The XMI metadata of its name, read with the name.
+    name_metadata: Option<Preserved>,
+    /// The place in document order of its parent; `None` for a root.
+    parent_order: Option<usize>,
+    /// Its place among its parent's children, or among the roots, in
+    /// document order: its `order`, or for a root a proxy moves, the
+    /// proxy's (SACM23-XMI-030).
+    place: usize,
+    /// Which of its typed slots survive, if a proxy it holds is kept: the
+    /// proxy's slot does not (SACM23-XMI-030).
+    slots: Option<Vec<bool>>,
 }
 
 /// The preserved content of one element, or of the document outside every
@@ -1992,6 +2031,19 @@ impl<H: Holder> Kept<H> {
     /// Whether the construct at byte `offset` is preserved.
     fn holds(&self, offset: usize) -> bool {
         self.offsets.contains(&offset)
+    }
+
+    /// Whether a preserved attribute is a link: an unqualified `href` or an
+    /// `xmi:idref`, which do not conform on a definition (XMI 2.5.1
+    /// production 2a, SACM23-XMI-019).
+    fn keeps_link(&self) -> bool {
+        self.attributes.iter().any(|(_, attr)| {
+            let name = &attr.name;
+            match name.namespace.as_deref() {
+                None => name.local == "href",
+                Some(namespace) => namespace == XMI_NS && name.local == "idref",
+            }
+        })
     }
 
     /// Takes `attribute` of `node` as preserved content, with the bindings
@@ -2175,6 +2227,23 @@ impl<H: Holder> Kept<H> {
         Some((first, true))
     }
 
+    /// Takes `attribute` of `node`, XMI metadata (ADR 0042), with the
+    /// bindings its prefix needs and the ids it may name, as
+    /// [`take_attribute`](Self::take_attribute) does. Its prefix is one the
+    /// writer writes back ([`is_writable_prefix`]), so it is never renamed
+    /// and never refused for its prefix.
+    fn take_metadata_attribute<'a>(
+        &mut self,
+        found: &Findings<'_, 'a>,
+        node: Node<'a, '_>,
+        attribute: &Attribute<'a, '_>,
+    ) -> Result<(), ReadError> {
+        let at = attribute.range_qname().start;
+        // No rename: the caller checked the prefix, so there is no Warning.
+        let _ = self.take_attribute(found, node, attribute, at)?;
+        Ok(())
+    }
+
     /// The preserved content, its attributes in input order and its
     /// bindings by prefix.
     fn into_preserved(self) -> Preserved {
@@ -2277,6 +2346,54 @@ impl Kept<ElementHolder> {
     ) -> Result<(), ReadError> {
         self.take_element(found, node)?;
         found.keep(keep, &self.holder)?;
+        Ok(())
+    }
+
+    /// Takes the proxies `proxies`, each with its slot among the typed
+    /// children, in slot order, as preserved content, each placed where it
+    /// stood: after every child placed at or before its slot (SACM23-XMI-030).
+    /// The caller then drops their slots. One merge, so linear in the
+    /// children and the proxies. A proxy carries no `xmi:id`; the id it
+    /// names counts as a reference.
+    fn take_proxies<'a>(
+        &mut self,
+        found: &Findings<'_, 'a>,
+        proxies: &[(usize, Node<'a, '_>)],
+    ) -> Result<(), ReadError> {
+        let children = std::mem::take(&mut self.children);
+        let mut merged = Vec::with_capacity(children.len().saturating_add(proxies.len()));
+        let mut proxies = proxies.iter().peekable();
+        let mut take = |merged: &mut Vec<Placed>, slot: usize, node: Node<'a, '_>| {
+            for attribute in node.attributes() {
+                self.references.extend(
+                    reference_tokens(&attribute)
+                        .into_iter()
+                        .filter(|token| !token.is_empty())
+                        .map(ElementId::new),
+                );
+            }
+            self.offsets.insert(node.range().start);
+            let fragment = preserve::fragment(found.text, node, &found.budget)?;
+            merged.push(Placed {
+                index: slot,
+                item: Item::Element(fragment),
+            });
+            Ok::<(), ReadError>(())
+        };
+        for placed in children {
+            while let Some(&&(slot, node)) = proxies.peek() {
+                if placed.index <= slot {
+                    break;
+                }
+                take(&mut merged, slot, node)?;
+                proxies.next();
+            }
+            merged.push(placed);
+        }
+        for &(slot, node) in proxies {
+            take(&mut merged, slot, node)?;
+        }
+        self.children = merged;
         Ok(())
     }
 
@@ -2495,7 +2612,7 @@ impl Pending {
         let shape = named(self.kind, self.id.as_str());
         found.legacy_shape(at, &self.id, Shape::ContentOnElement, shape)?;
         let mut held = Text::default();
-        held.push(value, None);
+        held.push(value, None, Preserved::default());
         self.content = Some(held);
         Ok(())
     }
@@ -2517,12 +2634,13 @@ impl Pending {
         if counted && !repeats {
             self.given.push("name");
         }
-        let (name, name_id) = name?;
+        let (name, name_id, metadata) = name?;
         if repeats {
             return Err(self.repeat(found, holder, node.range().start, "name", "name"));
         }
         self.name = Some(name);
         self.name_id = name_id;
+        self.name_metadata = Some(metadata);
         Ok(())
     }
 
@@ -2715,7 +2833,7 @@ impl Pending {
         let mut value = LangString::default();
         value.set_content(Some(attribute.value().to_owned()));
         let mut held = Text::default();
-        held.push(value, None);
+        held.push(value, None, Preserved::default());
         self.key = Some(held);
         Ok(())
     }
@@ -3035,19 +3153,58 @@ impl Shorthand {
     }
 }
 
-/// Pass 2 for one root: checks it and its tree in document order, then adds
-/// it to `document` as a parentless element, with its tree under it in
-/// document order (ADR 0010 D2); `outside`, the document's preserved
-/// content, counts it among the roots (ADR 0035 D3). The tree is walked with a stack, not by recursion,
-/// so a deep document cannot exhaust the call stack.
+/// What pass 2 has read of the roots before any is held: every element of
+/// their trees, the place in document order and the node of each root, and
+/// the same-file proxies (SACM23-XMI-030), each in reading order.
+#[derive(Default)]
+struct Roots {
+    read: Vec<Pending>,
+    orders: Vec<usize>,
+    nodes: Vec<roxmltree::NodeId>,
+    proxies: Vec<Proxy>,
+}
+
+/// A same-file proxy as read (SACM23-XMI-030): what it says, where it is,
+/// and the element that holds it.
+struct Proxy {
+    /// The proxy element, in the parsed tree.
+    node: roxmltree::NodeId,
+    /// The byte offset of its start tag.
+    at: usize,
+    /// Its name as written: the role.
+    written: String,
+    link: ProxyLink,
+    /// The element that holds it, its kind and its place in document order.
+    container: ElementId,
+    container_kind: ElementKind,
+    container_order: usize,
+    /// The index among the roots of the root whose tree holds it.
+    tree: usize,
+    /// How deep it is nested in that root: 1 for a child of the root.
+    depth: usize,
+    /// Its index among the typed children of its container: the place the
+    /// root it names takes.
+    slot: usize,
+    /// Its place in document order, which the root it names takes.
+    order: usize,
+}
+
+/// Pass 2 for one root: checks it and its tree in document order, and adds
+/// the elements read to `roots`, to be held once every root is read (ADR
+/// 0010 D2, SACM23-XMI-030); `outside`, the document's preserved content,
+/// counts it among the roots (ADR 0035 D3). The tree is walked with a
+/// stack, not by recursion, so a deep document cannot exhaust the call
+/// stack.
 fn read_root<'a>(
     found: &mut Findings<'_, 'a>,
     root: Node<'a, '_>,
-    document: &mut Document,
+    roots: &mut Roots,
     outside: &mut Kept<DocumentHolder>,
 ) -> Result<(), ReadError> {
-    let text = found.text;
     let first = root_start(found, root)?;
+    let tree = roots.orders.len();
+    roots.orders.push(first.order);
+    roots.nodes.push(root.id());
     // The elements whose content is being read, innermost last, each with
     // its node and the rest of its content, and the elements read whole.
     // Content is, on a ModelElement, one `name` (SACM23-XMI-012) and on an
@@ -3059,14 +3216,19 @@ fn read_root<'a>(
     // one per flag of its kind, one
     // reference element per single-valued end of its kind and any number per
     // multi-valued end (ADR 0026, ADR 0027); readable children
-    // (SACM23-XMI-016), white space, comments and processing instructions.
+    // (SACM23-XMI-016), same-file proxies (SACM23-XMI-030), XMI extensions
+    // (SACM23-XMI-019), white space, comments and processing instructions.
     let mut open = vec![(first, root, root.children())];
-    let mut read = Vec::new();
-    while let Some((element, holder, content)) = open.last_mut() {
+    loop {
+        // How deep in the root the content of the innermost element is.
+        let depth = open.len();
+        let Some((element, holder, content)) = open.last_mut() else {
+            break;
+        };
         let Some(node) = content.next() else {
             if let Some((mut element, _, _)) = open.pop() {
                 element.finish(found)?;
-                read.push(element);
+                roots.read.push(element);
             }
             continue;
         };
@@ -3081,6 +3243,13 @@ fn read_root<'a>(
             }
             continue;
         }
+        // An extension is XMI metadata, kept whole where it stands among
+        // the typed children (SACM23-XMI-019, ADR 0042).
+        if is_extension(node) {
+            element.metadata.typed = element.kept.typed;
+            element.metadata.take_element(found, node)?;
+            continue;
+        }
         // A property part is read whole, and kept as preserved content
         // instead, as if it had not been read, if it turns out not to
         // conform (ADR 0033), or, in tolerant mode, if a strict read
@@ -3089,32 +3258,80 @@ fn read_root<'a>(
         let outcome = match read_part(found, element, holder, node) {
             Ok(true) => Ok(None),
             Ok(false) => match child_start(found, node, element) {
-                Ok(Some(child)) => Ok(Some(child)),
-                Ok(None) => Err(Fault::Defect),
+                Ok(Child::Preserve) => Err(Fault::Defect),
+                Ok(child) => Ok(Some(child)),
                 Err(fault) => Err(fault),
             },
             Err(fault) => Err(fault),
         };
         match outcome {
             Ok(None) => {}
-            Ok(Some(child)) => {
+            Ok(Some(Child::Element(child))) => {
                 element.kept.typed = element.kept.typed.saturating_add(1);
-                open.push((child, node, node.children()));
+                open.push((*child, node, node.children()));
             }
-            Err(Fault::Refused(error)) => return Err(error),
-            Err(Fault::Defect) => {
+            Ok(Some(Child::Proxy(link))) => {
+                let proxy = read_proxy(found, node, link, element, (tree, depth))?;
+                roots.proxies.push(proxy);
+                element.kept.typed = element.kept.typed.saturating_add(1);
+            }
+            Ok(Some(Child::Preserve)) | Err(Fault::Defect) => {
                 found.rollback(checkpoint);
                 element.kept.preserve_element(found, node)?;
             }
+            Err(Fault::Refused(error)) => return Err(error),
             Err(Fault::Keep(keep)) => {
                 found.rollback(checkpoint);
                 element.kept.keep_element(found, node, keep)?;
             }
         }
     }
-    hold(text, document, read)?;
     outside.typed = outside.typed.saturating_add(1);
     Ok(())
+}
+
+/// The proxy `node`, which `link` describes, a child of `container` in the
+/// tree of the root `tree`, nested `depth` deep in it, as read
+/// (SACM23-XMI-030): it takes the next typed slot of its container and the
+/// next place in document order. Its
+/// `xsi:type` is reported as SACM-XMI-010 on the element it names, and a
+/// role or type spelling a tolerant read read as SACM-XMI-013, at its start
+/// tag, as a child's are.
+fn read_proxy(
+    found: &mut Findings<'_, '_>,
+    node: Node<'_, '_>,
+    mut link: ProxyLink,
+    container: &Pending,
+    (tree, depth): (usize, usize),
+) -> Result<Proxy, ReadError> {
+    let target = ElementId::new(link.target.as_str());
+    if let Some(spelled) = link.spelled.take() {
+        found.spelled_child(node, spelled, &container.id, &target)?;
+    }
+    if let Some(class) = link.class {
+        for attribute in node.attributes().filter(is_xsi_type) {
+            let arguments = named(class, target.as_str());
+            found.xsi_type(
+                &attribute,
+                &template::XMI_010_XSI_TYPE,
+                arguments,
+                target.as_str(),
+            )?;
+        }
+    }
+    Ok(Proxy {
+        node: node.id(),
+        at: node.range().start,
+        written: written_name(found.text, node),
+        link,
+        container: container.id.clone(),
+        container_kind: container.kind,
+        container_order: container.order,
+        tree,
+        depth,
+        slot: container.kept.typed,
+        order: found.next_order(),
+    })
 }
 
 /// Reads `node`, an element in `holder`, the node of `element`, if it is a
@@ -3273,84 +3490,507 @@ fn read_spelled_part<'a>(
     Ok(true)
 }
 
-/// Adds the elements of one root's tree, read whole, to `document`, each
-/// with everything read for it, its preserved content included, in document
-/// order, so a parent comes before its children. Everything is checked, so
-/// the inserts succeed; a failure would still be a refusal, never a panic.
-fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(), ReadError> {
-    read.sort_by_key(|element| element.order);
-    for mut element in read {
-        // What is held is taken out of `element`, which names the refusal
-        // if an insert fails.
-        let id = element.id.clone();
-        let held = document
-            .insert_node(
-                element.parent.as_ref(),
-                element.kind,
-                id.clone(),
-                element.name.take(),
-            )
-            .map_err(|error| error.to_string());
-        let declared = held.and_then(|()| match element.declaration {
-            Some(declaration) => document
-                .set_declaration(&id, declaration)
-                .map_err(|error| error.to_string()),
-            None => Ok(()),
-        });
-        let named = declared.and_then(|()| match element.name_id.take() {
-            Some(name_id) => document.set_name_id(&id, name_id),
-            None => Ok(()),
-        });
-        let identified = named.and_then(|()| match element.gid.take() {
-            Some(gid) => document.set_gid(&id, Some(gid)),
-            None => Ok(()),
-        });
-        let valued = identified.and_then(|()| {
-            std::mem::take(&mut element.strings)
-                .into_iter()
-                .filter_map(|(attribute, value)| value.map(|value| (attribute, value)))
-                .try_for_each(|(attribute, value)| document.set_string(&id, attribute, Some(value)))
-        });
-        let texts = [
-            (TextRole::Content, element.content.take()),
-            (TextRole::Key, element.key.take()),
-            (TextRole::Location, element.location.take()),
-        ];
-        let held = valued.and_then(|()| {
-            texts.into_iter().try_for_each(|(role, held)| match held {
-                Some(held) => document.set_text(&id, role, held),
-                None => Ok(()),
-            })
-        });
-        let flagged = held.and_then(|()| {
-            std::mem::take(&mut element.flags)
-                .into_iter()
-                .try_for_each(|(flag, value)| document.set_flag(&id, flag, value))
-        });
-        let referenced = flagged.and_then(|()| {
-            std::mem::take(&mut element.references)
-                .into_iter()
-                .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
-        });
-        let referenced = referenced.and_then(|()| {
-            std::mem::take(&mut element.hrefs)
-                .into_iter()
-                .try_for_each(|(end, hrefs)| document.set_hrefs(&id, end, hrefs))
-        });
-        let held = referenced.and_then(|()| {
-            let kept = std::mem::replace(
-                &mut element.kept,
-                Kept::new(ElementHolder {
-                    kind: element.kind,
-                    id: id.clone(),
-                }),
-            );
-            document.set_preserved(&id, kept.into_preserved())
-        });
-        held.map_err(|error| {
-            unsupported(text, element.at, Unread::Unheld, unheld(&element, &error))
-        })?;
+/// Why a same-file proxy is kept instead of resolved (SACM23-XMI-030), in
+/// the order of the checks: the id names no root; the root's kind is not of
+/// the role's declared type or of the proxy's type, which is `class`; the
+/// root keeps an `href` or an `xmi:idref` of its own; another proxy names
+/// the root too; or the proxies form a cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Unresolved {
+    NoRoot,
+    WrongKind {
+        target_class: ElementKind,
+        class: &'static str,
+    },
+    LinkedRoot,
+    Shared,
+    Cycle,
+}
+
+/// Resolves the same-file proxies of `roots` once every root is read
+/// (SACM23-XMI-030; XMI 2.5.1 §7.10.1 "When following the link from a
+/// proxy, the definition of the proxy is replaced by the referenced
+/// element"), and returns which roots stay roots, by index.
+///
+/// A proxy whose id names a root of a kind its role and its type admit,
+/// that keeps no `href` or `xmi:idref` of its own, that no other such proxy
+/// names, and that is in no cycle, moves the root into its place: the root
+/// gets the proxy's container as its parent and the proxy's place in
+/// document order. Chains are followed, since each moved root keeps its
+/// tree. Every other proxy is kept whole as preserved content of its
+/// container, at its place, with one SACM-XMI-003 at its `<` affecting the
+/// container: an Error in strict mode, a Warning in tolerant mode. A root
+/// that keeps a link attribute is not moved: written in a proxy's place, it
+/// would read back as a role element with a link and content, which is no
+/// element.
+///
+/// Depth is counted as resolved ([`check_depth`]): an element nested deeper
+/// than `max_depth` once the roots have moved refuses the read, in both
+/// modes, before any proxy is reported (LIB-SEC-003).
+///
+/// Linear in the roots, the proxies and the elements of the moved roots,
+/// but for the sort of the root ids and the grouping by container.
+fn resolve(
+    found: &mut Findings<'_, '_>,
+    tree: &roxmltree::Document<'_>,
+    roots: &mut Roots,
+    max_depth: u64,
+) -> Result<Vec<bool>, ReadError> {
+    roots.read.sort_by_key(|element| element.order);
+    let index_of = |read: &[Pending], order: usize| {
+        read.binary_search_by_key(&order, |element| element.order)
+            .ok()
+    };
+    let mut stays = vec![true; roots.orders.len()];
+    if roots.proxies.is_empty() {
+        return Ok(stays);
     }
+    let mut outcomes = proxy_roots(roots);
+    mark_shared(&mut outcomes, roots.orders.len());
+    mark_cycles(&mut outcomes, &roots.proxies, roots.orders.len());
+    check_depth(found.text, tree, roots, &outcomes, max_depth)?;
+    // Each resolved root moves; each kept proxy is reported, then kept in
+    // its container, at its place, which is no typed slot any more.
+    let mut kept: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+    for (index, outcome) in outcomes.into_iter().enumerate() {
+        let Some(proxy) = roots.proxies.get(index) else {
+            continue;
+        };
+        match outcome {
+            Ok(root) => {
+                if let Some(flag) = stays.get_mut(root) {
+                    *flag = false;
+                }
+                let moved = roots
+                    .orders
+                    .get(root)
+                    .and_then(|&order| index_of(&roots.read, order));
+                if let Some(element) = moved.and_then(|index| roots.read.get_mut(index)) {
+                    element.parent = Some(proxy.container.clone());
+                    element.parent_order = Some(proxy.container_order);
+                    element.place = proxy.order;
+                }
+            }
+            Err(why) => {
+                found.unresolved(proxy, why)?;
+                if let Some(container) = index_of(&roots.read, proxy.container_order) {
+                    kept.entry(container).or_default().push(index);
+                }
+            }
+        }
+    }
+    for (container, held) in kept {
+        let Some(element) = roots.read.get_mut(container) else {
+            continue;
+        };
+        let mut slots = vec![true; element.kept.typed];
+        let mut nodes = Vec::with_capacity(held.len());
+        for proxy in held.iter().filter_map(|&index| roots.proxies.get(index)) {
+            if let Some(slot) = slots.get_mut(proxy.slot) {
+                *slot = false;
+            }
+            if let Some(node) = tree.get_node(proxy.node) {
+                nodes.push((proxy.slot, node));
+            }
+        }
+        element.kept.take_proxies(found, &nodes)?;
+        element.slots = Some(slots);
+    }
+    Ok(stays)
+}
+
+/// Checks 1 and 2 of [`resolve`] for each proxy of `roots`, whose elements
+/// are sorted by place, and the check of the root's own link attributes: the
+/// index of the root it names, or why it is kept, as no root is named, or
+/// one of a kind its role or its type does not admit, or one that keeps an
+/// `href` or an `xmi:idref`.
+fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
+    let index_of = |read: &[Pending], order: usize| {
+        read.binary_search_by_key(&order, |element| element.order)
+            .ok()
+    };
+    // Each root by its id, with its kind and whether it keeps a link.
+    let mut kinds = Vec::with_capacity(roots.orders.len());
+    let mut linked = Vec::with_capacity(roots.orders.len());
+    let mut by_id = std::collections::BTreeMap::new();
+    for (root, &order) in roots.orders.iter().enumerate() {
+        let element = index_of(&roots.read, order).and_then(|index| roots.read.get(index));
+        kinds.push(element.map(|element| element.kind));
+        linked.push(element.is_some_and(|element| element.kept.keeps_link()));
+        if let Some(element) = element {
+            by_id.insert(element.id.as_str().to_owned(), root);
+        }
+    }
+    // Checks 1 and 2, proxy by proxy.
+    roots
+        .proxies
+        .iter()
+        .map(|proxy| {
+            let link = &proxy.link;
+            let root = by_id
+                .get(link.target.as_str())
+                .copied()
+                .ok_or(Unresolved::NoRoot)?;
+            let Some(kind) = kinds.get(root).copied().flatten() else {
+                return Err(Unresolved::NoRoot);
+            };
+            let fits =
+                link.declared.admits(kind) && link.class.is_none_or(|class| kind.is_kind_of(class));
+            if !fits {
+                return Err(Unresolved::WrongKind {
+                    target_class: kind,
+                    class: link.class.map_or(link.declared.name(), ElementKind::name),
+                });
+            }
+            if linked.get(root).copied().unwrap_or(false) {
+                return Err(Unresolved::LinkedRoot);
+            }
+            Ok(root)
+        })
+        .collect()
+}
+
+/// Refuses the read if an element is nested deeper than `max` once the
+/// proxies whose `outcomes` name a root are resolved (SACM23-XMI-030,
+/// LIB-SEC-003): `LimitExceeded` for the depth, at the first such element in
+/// document order.
+///
+/// Depth is counted as resolved. A root that stays keeps its input depth:
+/// 1 for the document element, 2 under `xmi:XMI`. A moved root takes its
+/// proxy's depth, and every element of its tree, its parts, its XMI metadata
+/// and its preserved content included, shifts with it. So what a write nests
+/// is bounded by the limit the document was read under, however long a
+/// chain of proxies is.
+///
+/// The scan before parsing has checked every element at its input depth, so
+/// only the trees of the moved roots are walked: once each, without
+/// recursion. The depth of each root is found once, along its chain, which
+/// holds no cycle ([`mark_cycles`]). So the check is linear in the roots,
+/// the proxies and the elements of the moved roots.
+fn check_depth(
+    text: &str,
+    tree: &roxmltree::Document<'_>,
+    roots: &Roots,
+    outcomes: &[Result<usize, Unresolved>],
+    max: u64,
+) -> Result<(), ReadError> {
+    let count = roots.nodes.len();
+    // The proxy that moves each root, if one does.
+    let mut moved_by: Vec<Option<&Proxy>> = vec![None; count];
+    for (proxy, outcome) in roots.proxies.iter().zip(outcomes) {
+        if let Some(slot) = outcome
+            .as_ref()
+            .ok()
+            .and_then(|&root| moved_by.get_mut(root))
+        {
+            *slot = Some(proxy);
+        }
+    }
+    // The depth of each root as resolved, found along its chain: up to a
+    // root that stays or whose depth is known, then back down.
+    let mut depths: Vec<Option<u64>> = vec![None; count];
+    let mut chain: Vec<(usize, usize)> = Vec::new();
+    for start in 0..count {
+        chain.clear();
+        let mut current = start;
+        let mut depth = loop {
+            if let Some(known) = depths.get(current).copied().flatten() {
+                break known;
+            }
+            // No chain is longer than the roots: the proxies left form no
+            // cycle.
+            match moved_by.get(current).copied().flatten() {
+                Some(proxy) if chain.len() < count => {
+                    chain.push((current, proxy.depth));
+                    current = proxy.tree;
+                }
+                _ => {
+                    let stays = roots
+                        .nodes
+                        .get(current)
+                        .and_then(|&id| tree.get_node(id))
+                        .map_or(1, input_depth);
+                    if let Some(slot) = depths.get_mut(current) {
+                        *slot = Some(stays);
+                    }
+                    break stays;
+                }
+            }
+        };
+        for &(root, below) in chain.iter().rev() {
+            depth = depth.saturating_add(u64::try_from(below).unwrap_or(u64::MAX));
+            if let Some(slot) = depths.get_mut(root) {
+                *slot = Some(depth);
+            }
+        }
+    }
+    // The elements of each moved root, in document order.
+    for (root, &id) in roots.nodes.iter().enumerate() {
+        if moved_by.get(root).copied().flatten().is_none() {
+            continue;
+        }
+        let (Some(node), Some(mut depth)) =
+            (tree.get_node(id), depths.get(root).copied().flatten())
+        else {
+            continue;
+        };
+        // `depth` is that of `current`: one more for a first child, the
+        // same for a sibling, one less for each parent climbed to.
+        let mut current = Some(node);
+        while let Some(at) = current {
+            if at.is_element() && depth > max {
+                return Err(exceeded(
+                    Limit::Depth,
+                    max,
+                    locate(text, at.range().start),
+                    &template::SEC_003_DEPTH,
+                    None,
+                ));
+            }
+            current = at.first_child();
+            if current.is_some() {
+                depth = depth.saturating_add(1);
+                continue;
+            }
+            // The next node of the root's tree in document order, if any.
+            let mut done = at;
+            while done != node {
+                if let Some(next) = done.next_sibling() {
+                    current = Some(next);
+                    break;
+                }
+                let Some(parent) = done.parent() else {
+                    break;
+                };
+                done = parent;
+                depth = depth.saturating_sub(1);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The depth of the element `node` in the input: 1 for the document
+/// element.
+fn input_depth(node: Node<'_, '_>) -> u64 {
+    u64::try_from(node.ancestors().filter(Node::is_element).count()).unwrap_or(u64::MAX)
+}
+
+/// Check 3 of [`resolve`]: each proxy that passed checks 1 and 2 and names a
+/// root that another such proxy names too is kept, as shared. `count` is the
+/// number of roots.
+fn mark_shared(outcomes: &mut [Result<usize, Unresolved>], count: usize) {
+    let mut naming = vec![0_usize; count];
+    for &root in outcomes.iter().flatten() {
+        if let Some(count) = naming.get_mut(root) {
+            *count = count.saturating_add(1);
+        }
+    }
+    for outcome in outcomes.iter_mut() {
+        if let Ok(root) = *outcome {
+            if naming.get(root).is_some_and(|&count| count > 1) {
+                *outcome = Err(Unresolved::Shared);
+            }
+        }
+    }
+}
+
+/// Check 4 of [`resolve`]: each proxy left that is part of a cycle of
+/// proxies (a self-link included) is kept. `count` is the number of roots.
+fn mark_cycles(outcomes: &mut [Result<usize, Unresolved>], proxies: &[Proxy], count: usize) {
+    // Check 4: the rest name each root at most once, so following, from
+    // each root, the tree of the proxy that names it is a walk along one
+    // path; one that comes back to itself is a cycle. Each root is walked
+    // once, so this is linear.
+    let mut named_by: Vec<Option<usize>> = vec![None; count];
+    for (proxy, outcome) in outcomes.iter().enumerate() {
+        if let Some(slot) = outcome
+            .as_ref()
+            .ok()
+            .and_then(|&root| named_by.get_mut(root))
+        {
+            *slot = Some(proxy);
+        }
+    }
+    let next = |root: usize| {
+        named_by
+            .get(root)
+            .copied()
+            .flatten()
+            .and_then(|proxy| proxies.get(proxy))
+            .map(|proxy| proxy.tree)
+    };
+    // 0: not walked; 1: on the path being walked; 2: walked.
+    let mut state = vec![0_u8; count];
+    let mut in_cycle = vec![false; count];
+    let mut path = Vec::new();
+    for start in 0..count {
+        path.clear();
+        let mut current = start;
+        loop {
+            match state.get(current) {
+                Some(1) => {
+                    if let Some(at) = path.iter().position(|&root| root == current) {
+                        for &root in path.get(at..).unwrap_or_default() {
+                            if let Some(flag) = in_cycle.get_mut(root) {
+                                *flag = true;
+                            }
+                        }
+                    }
+                    break;
+                }
+                Some(0) => {}
+                _ => break,
+            }
+            if let Some(seen) = state.get_mut(current) {
+                *seen = 1;
+            }
+            path.push(current);
+            match next(current) {
+                Some(tree) => current = tree,
+                None => break,
+            }
+        }
+        for &root in &path {
+            if let Some(seen) = state.get_mut(root) {
+                *seen = 2;
+            }
+        }
+    }
+    for outcome in outcomes.iter_mut() {
+        if let Ok(root) = *outcome {
+            if in_cycle.get(root).copied().unwrap_or(false) {
+                *outcome = Err(Unresolved::Cycle);
+            }
+        }
+    }
+}
+
+/// Adds the elements of every root's tree, read whole and sorted by their
+/// place in document order, to `document`, each with everything read for
+/// it, its metadata and preserved content included: depth first from the
+/// roots, so a parent comes before its children, and the children of each
+/// element in their order, a root a proxy moved at the proxy's place
+/// (SACM23-XMI-030). Everything is checked, so the inserts succeed; a
+/// failure would still be a refusal, never a panic.
+fn hold(text: &str, document: &mut Document, read: Vec<Pending>) -> Result<(), ReadError> {
+    let index_of = |order: usize| {
+        read.binary_search_by_key(&order, |element| element.order)
+            .ok()
+    };
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); read.len()];
+    let mut roots = Vec::new();
+    for (index, element) in read.iter().enumerate() {
+        match element.parent_order.and_then(index_of) {
+            Some(parent) => children[parent].push(index),
+            None => roots.push(index),
+        }
+    }
+    let place = |index: &usize| read.get(*index).map_or(0, |element| element.place);
+    roots.sort_by_key(place);
+    for held in &mut children {
+        held.sort_by_key(place);
+    }
+    let mut read: Vec<Option<Pending>> = read.into_iter().map(Some).collect();
+    let mut pending: Vec<usize> = roots.into_iter().rev().collect();
+    while let Some(index) = pending.pop() {
+        if let Some(element) = read.get_mut(index).and_then(Option::take) {
+            hold_element(text, document, element)?;
+        }
+        if let Some(held) = children.get_mut(index) {
+            pending.extend(std::mem::take(held).into_iter().rev());
+        }
+    }
+    Ok(())
+}
+
+/// Adds `element`, read whole, to `document`, under its parent, which is
+/// held already, with everything read for it.
+fn hold_element(
+    text: &str,
+    document: &mut Document,
+    mut element: Pending,
+) -> Result<(), ReadError> {
+    // What is held is taken out of `element`, which names the refusal
+    // if an insert fails.
+    let id = element.id.clone();
+    let held = document
+        .insert_node(
+            element.parent.as_ref(),
+            element.kind,
+            id.clone(),
+            element.name.take(),
+        )
+        .map_err(|error| error.to_string());
+    let declared = held.and_then(|()| match element.declaration {
+        Some(declaration) => document
+            .set_declaration(&id, declaration)
+            .map_err(|error| error.to_string()),
+        None => Ok(()),
+    });
+    let named = declared.and_then(|()| match element.name_id.take() {
+        Some(name_id) => document.set_name_id(&id, name_id),
+        None => Ok(()),
+    });
+    let named = named.and_then(|()| match element.name_metadata.take() {
+        Some(metadata) => document.set_metadata(&id, true, metadata),
+        None => Ok(()),
+    });
+    let identified = named.and_then(|()| match element.gid.take() {
+        Some(gid) => document.set_gid(&id, Some(gid)),
+        None => Ok(()),
+    });
+    let valued = identified.and_then(|()| {
+        std::mem::take(&mut element.strings)
+            .into_iter()
+            .filter_map(|(attribute, value)| value.map(|value| (attribute, value)))
+            .try_for_each(|(attribute, value)| document.set_string(&id, attribute, Some(value)))
+    });
+    let texts = [
+        (TextRole::Content, element.content.take()),
+        (TextRole::Key, element.key.take()),
+        (TextRole::Location, element.location.take()),
+    ];
+    let held = valued.and_then(|()| {
+        texts.into_iter().try_for_each(|(role, held)| match held {
+            Some(held) => document.set_text(&id, role, held),
+            None => Ok(()),
+        })
+    });
+    let flagged = held.and_then(|()| {
+        std::mem::take(&mut element.flags)
+            .into_iter()
+            .try_for_each(|(flag, value)| document.set_flag(&id, flag, value))
+    });
+    let referenced = flagged.and_then(|()| {
+        std::mem::take(&mut element.references)
+            .into_iter()
+            .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
+    });
+    let referenced = referenced.and_then(|()| {
+        std::mem::take(&mut element.hrefs)
+            .into_iter()
+            .try_for_each(|(end, hrefs)| document.set_hrefs(&id, end, hrefs))
+    });
+    let held = referenced.and_then(|()| {
+        let holder = || ElementHolder {
+            kind: element.kind,
+            id: id.clone(),
+        };
+        let mut kept = std::mem::replace(&mut element.kept, Kept::new(holder())).into_preserved();
+        let mut metadata =
+            std::mem::replace(&mut element.metadata, Kept::new(holder())).into_preserved();
+        // A kept proxy is no typed child: what is placed after it moves up
+        // (SACM23-XMI-030).
+        if let Some(slots) = element.slots.take() {
+            kept.shift(&slots);
+            metadata.shift(&slots);
+        }
+        document
+            .set_metadata(&id, false, metadata)
+            .and_then(|()| document.set_preserved(&id, kept))
+    });
+    held.map_err(|error| unsupported(text, element.at, Unread::Unheld, unheld(&element, &error)))?;
     Ok(())
 }
 
@@ -3369,20 +4009,54 @@ fn unheld(element: &Pending, error: &str) -> Details {
     )
 }
 
-/// The entry of `attribute` of an object (a root, a child, a `name`, a
-/// `content`, a `key` or a `value`) if it is XMI metadata this version
-/// does not read yet (SACM23-XMI-019): `xmi:uuid`, `xmi:label`,
-/// `xmi:idref`, `href`, and `xsi:schemaLocation` or
-/// `xsi:noNamespaceSchemaLocation`. They conform, so they are refused, not
-/// preserved (ADR 0033). A role element's `href` is its reference form
-/// instead ([`role_metadata`]).
-fn object_metadata(attribute: &Attribute<'_, '_>) -> Option<Unread> {
-    let is_metadata = ["uuid", "label", "idref"]
+/// Whether `attribute` of an object (a root, a child, a `name`, a
+/// `content`, a `key`, a `location` or a `value`) is XMI metadata
+/// (SACM23-XMI-019): `xmi:uuid`, `xmi:label`, `xsi:schemaLocation` or
+/// `xsi:noNamespaceSchemaLocation`, written with a prefix the writer can
+/// write back. Its `href` and `xmi:idref` are not: on a definition they do
+/// not conform (production 2a), and on a role element they make it a proxy.
+fn is_object_metadata(text: &str, attribute: &Attribute<'_, '_>) -> bool {
+    let is_metadata = ["uuid", "label"]
+        .iter()
+        .any(|local| is_xmi(attribute, local))
+        || is_schema_location(attribute);
+    is_metadata && is_writable_prefix(text, attribute)
+}
+
+/// Whether `attribute` of the XMI element is its XMI metadata (XMI.xsd
+/// `XMI`, SACM23-XMI-019): `xmi:id`, `xmi:label`, `xmi:uuid`, `href`,
+/// `xmi:idref`, `xmi:type`, `xsi:schemaLocation` or
+/// `xsi:noNamespaceSchemaLocation`, written with a prefix the writer can
+/// write back.
+fn is_wrapper_metadata(text: &str, attribute: &Attribute<'_, '_>) -> bool {
+    let is_metadata = ["id", "label", "uuid", "idref", "type"]
         .iter()
         .any(|local| is_xmi(attribute, local))
         || is_unqualified(attribute, "href")
         || is_schema_location(attribute);
-    is_metadata.then_some(Unread::XmiMetadata)
+    is_metadata && is_writable_prefix(text, attribute)
+}
+
+/// Whether the prefix `attribute` is written with can be written back on
+/// its element as it stands: not `sacm` or `xmi` bound to another namespace
+/// than the writer binds them to. One that cannot is preserved content
+/// instead, which renames it (ADR 0035).
+fn is_writable_prefix(text: &str, attribute: &Attribute<'_, '_>) -> bool {
+    let written = attribute_written(text, attribute);
+    match written.split_once(':').map(|(prefix, _)| prefix) {
+        Some(SACM_PREFIX) => attribute.namespace() == Some(SACM_NS),
+        Some(XMI_PREFIX) => attribute.namespace() == Some(XMI_NS),
+        _ => true,
+    }
+}
+
+/// Whether `node` is an `xmi:extension` or `xmi:Extension` element, which
+/// any object may hold as XMI metadata (XMI 2.5.1 §7.5.4, §7.8.3, rule 4c;
+/// SACM23-XMI-019).
+fn is_extension(node: Node<'_, '_>) -> bool {
+    node.is_element()
+        && node.tag_name().namespace() == Some(XMI_NS)
+        && matches!(node.tag_name().name(), "extension" | "Extension")
 }
 
 /// Whether `attribute` is `xsi:schemaLocation` or
@@ -3400,18 +4074,23 @@ fn is_schema_location(attribute: &Attribute<'_, '_>) -> bool {
 fn pending(
     found: &mut Findings<'_, '_>,
     node: Node<'_, '_>,
-    parent: Option<ElementId>,
+    parent: Option<&Pending>,
     kind: ElementKind,
     id: ElementId,
     written: String,
 ) -> Pending {
-    let kept = Kept::new(ElementHolder {
+    let holder = || ElementHolder {
         kind,
         id: id.clone(),
-    });
+    };
+    let (kept, metadata) = (Kept::new(holder()), Kept::new(holder()));
+    let order = found.next_order();
     Pending {
-        order: found.next_order(),
-        parent,
+        order,
+        place: order,
+        slots: None,
+        parent: parent.map(|parent| parent.id.clone()),
+        parent_order: parent.map(|parent| parent.order),
         kind,
         id,
         gid: None,
@@ -3431,6 +4110,8 @@ fn pending(
         written,
         at: node.range().start,
         kept,
+        metadata,
+        name_metadata: None,
     }
 }
 
@@ -3487,9 +4168,9 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     // Besides `xmi:id`, `xmi:version`, the type and `gid`, only the
     // SACMElement flags and references are read, in document order (ADR
     // 0016 D4, ADR 0026), and the C++ `name` attribute (LIB-COMPAT-008).
-    // XMI metadata is not read yet: a strict read refuses it, and a tolerant
-    // read keeps it (ADR 0035 D2); anything else does not conform, and is
-    // preserved (ADR 0033).
+    // XMI metadata is kept as written (SACM23-XMI-019, ADR 0042); anything
+    // else, `href` and `xmi:idref` included (production 2a), does not
+    // conform, and is preserved (ADR 0033).
     let mut start = StartTag::default();
     for attribute in root.attributes() {
         if is_type(&attribute) || is_xmi(&attribute, "id") {
@@ -3513,12 +4194,10 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
             Ok(Given::Read) => continue,
             Ok(Given::NoId) => {}
             Ok(Given::Other) => {
-                if let Some(unread) = object_metadata(&attribute) {
-                    let at = attribute.range_qname().start;
-                    let arguments = attribute_arguments(text, &attribute, &element.written);
-                    let reason = attribute_reason(unread);
-                    let keep = found.refuse_or_keep(at, unread, reason, arguments)?;
-                    element.kept.keep_attribute(found, root, &attribute, keep)?;
+                if is_object_metadata(text, &attribute) {
+                    element
+                        .metadata
+                        .take_metadata_attribute(found, root, &attribute)?;
                     continue;
                 }
             }
@@ -3536,30 +4215,48 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     Ok(element)
 }
 
+/// What [`child_start`] makes of a child element.
+enum Child {
+    /// An element, whose content is read next.
+    Element(Box<Pending>),
+    /// A same-file proxy (SACM23-XMI-030), resolved once every root is read.
+    Proxy(ProxyLink),
+    /// It does not conform as a whole: the caller keeps it whole (ADR 0033).
+    Preserve,
+}
+
 /// Checks the start tag of `node`, a child element of `parent`: its role,
 /// type and kind, its id, and its other attributes, in that order, reading
-/// an Assertion's `assertionDeclaration` and the flags and references.
-/// `None` if the child does not conform as a whole (its role, namespace or
-/// type), so the caller preserves it whole (ADR 0033). [`Fault::Keep`] if a
-/// tolerant read keeps it whole where a strict read refuses it: a child
-/// [`child_kind`] keeps, and a role element in reference form, with an
-/// `xmi:idref` or an `href` (ADR 0035 D1). An attribute a strict read
+/// an Assertion's `assertionDeclaration` and the flags and references, and
+/// keeping its XMI metadata (SACM23-XMI-019). [`Child::Proxy`] for a
+/// same-file proxy, and [`Child::Preserve`] if the child does not conform
+/// as a whole (its role, namespace or type), so the caller preserves it
+/// whole (ADR 0033). [`Fault::Keep`] if a tolerant read keeps it whole where
+/// a strict read refuses it: a child [`child_kind`] keeps, and a role
+/// element in reference form with an `href` to another document (ADR 0035
+/// D1). An attribute a strict read
 /// refuses, a tolerant read keeps as preserved content of the child. A role
 /// or type spelling a tolerant read reads (SACM23-XMI-009) is one
 /// SACM-XMI-013 Warning at the start tag, affecting the parent for the role
 /// and the child for the type.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass over a child's start tag, each attribute in turn"
+)]
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     parent: &Pending,
-) -> Result<Option<Pending>, Fault> {
+) -> Result<Child, Fault> {
     let text = found.text;
-    let ChildKind::Read { kind, spelled } = child_kind(found, node, parent)? else {
-        return Ok(None);
+    let (kind, spelled) = match child_kind(found, node, parent)? {
+        ChildKind::Read { kind, spelled } => (kind, spelled),
+        ChildKind::Proxy(link) => return Ok(Child::Proxy(link)),
+        ChildKind::Preserve => return Ok(Child::Preserve),
     };
     let written = written_name(text, node);
     let id = read_id(found, node, kind)?;
-    let mut element = pending(found, node, Some(parent.id.clone()), kind, id, written);
+    let mut element = pending(found, node, Some(parent), kind, id, written);
     let id = element.id.clone();
     if let Some(spelled) = spelled {
         found.spelled_child(node, spelled, &parent.id, &id)?;
@@ -3572,8 +4269,8 @@ fn child_start<'a>(
     // (LIB-COMPAT-008): `name` on a ModelElement, and `lang`, `content` and,
     // on a TaggedValue, `key` and `value` on a UtilityElement, in document
     // order, so a refusal after them lands on the later attribute. XMI
-    // metadata is not read yet; anything else does not conform, and is
-    // preserved (ADR 0033).
+    // metadata is kept as written (SACM23-XMI-019); anything else does not
+    // conform, and is preserved (ADR 0033).
     let is_assertion = kind.is_a(AbstractClass::Assertion);
     let is_utility = kind.is_a(AbstractClass::UtilityElement);
     let is_tagged_value = kind == ElementKind::TaggedValue;
@@ -3652,16 +4349,24 @@ fn child_start<'a>(
             element.read_key_attribute(found, &attribute)?;
             continue;
         }
-        if let Some(unread) = role_metadata(&attribute) {
-            let arguments = attribute_arguments(text, &attribute, &element.written);
-            let fault = found.unread_fault(at, unread, attribute_reason(unread), arguments);
-            // In reference form, the role element is no object but a
-            // reference to one: it is kept whole (ADR 0035 D1).
-            if is_reference_form(&attribute) {
-                return Err(fault);
-            }
-            element.keep_attribute(found, node, &attribute, fault)?;
+        if is_object_metadata(text, &attribute) {
+            element
+                .metadata
+                .take_metadata_attribute(found, node, &attribute)?;
             continue;
+        }
+        if is_unqualified(&attribute, "href") {
+            // In reference form, the role element is no object but a proxy
+            // of one in another document, which SACM23-XMI-029 reads: it is
+            // kept whole (XMI 2.5.1 §7.10.1, §7.10.2; ADR 0035 D1). A
+            // same-file one is a proxy ([`child_kind`]).
+            let arguments = attribute_arguments(text, &attribute, &element.written);
+            return Err(found.unread_fault(
+                at,
+                Unread::CrossDocumentHref,
+                ElementReason::ExternalAttribute,
+                arguments,
+            ));
         }
         element
             .kept
@@ -3669,29 +4374,7 @@ fn child_start<'a>(
     }
     element.flags = start.flags;
     element.references = start.references;
-    Ok(Some(element))
-}
-
-/// Whether `attribute` of a role element makes it the reference form of a
-/// composite (XMI 2.5.1 §7.10.1): an `xmi:idref`, or an unqualified `href`.
-fn is_reference_form(attribute: &Attribute<'_, '_>) -> bool {
-    is_xmi(attribute, "idref") || is_unqualified(attribute, "href")
-}
-
-/// The entry of `attribute` of a role element of a composite, typed or
-/// under a concrete role, if this version does not read it yet: an
-/// unqualified `href` makes the element the reference form of a composite
-/// held in another document, a proxy (XMI 2.5.1 §7.10.1, §7.10.2), which
-/// SACM23-XMI-029 reads; anything else as on any object
-/// ([`object_metadata`]), so an `xmi:idref` names SACM23-XMI-019. A
-/// qualified `xlink:href` or `xmi:href` is not `href` (XMI.xsd
-/// `LinkAttribs`).
-fn role_metadata(attribute: &Attribute<'_, '_>) -> Option<Unread> {
-    if is_unqualified(attribute, "href") {
-        Some(Unread::CrossDocumentHref)
-    } else {
-        object_metadata(attribute)
-    }
+    Ok(Child::Element(Box::new(element)))
 }
 
 /// The name that `attribute`, an unqualified `name` on the `ModelElement`
@@ -3882,9 +4565,23 @@ enum ChildKind {
         kind: ElementKind,
         spelled: Option<Spelled>,
     },
+    /// It is a same-file proxy (SACM23-XMI-030), resolved once every root is
+    /// read.
+    Proxy(ProxyLink),
     /// It does not conform as a whole, by its namespace, role or type: the
     /// caller keeps it as preserved content (ADR 0033).
     Preserve,
+}
+
+/// What a same-file proxy says (SACM23-XMI-030; XMI 2.5.1 §7.10.1): the
+/// type its role declares, the class its type attribute names, if it has
+/// one, the id it names, and the spelling a tolerant read read in its role
+/// or type (SACM23-XMI-009).
+struct ProxyLink {
+    declared: DeclaredType,
+    class: Option<ElementKind>,
+    target: String,
+    spelled: Option<Spelled>,
 }
 
 /// The kind of the child element `node` of a `parent` element, which
@@ -3928,18 +4625,14 @@ fn child_kind(
     // an element's.
     let in_root = parent_element.parent.is_none();
     let container = parent_element.written.as_str();
-    match node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
-        Some(XMI_NS) => {
-            let reason = if in_root {
-                ElementReason::XmiChildOfRoot
-            } else {
-                ElementReason::XmiChild
-            };
-            let arguments = text_arguments(&[("element", &written), ("container", container)]);
-            return Err(found.unread_fault(at, Unread::XmiMetadata, reason, arguments));
-        }
-        Some(_) => return Ok(ChildKind::Preserve),
-        None => {}
+    // An XMI extension is XMI metadata, which the caller takes first; any
+    // other qualified child is no role element (ADR 0033).
+    if node
+        .tag_name()
+        .namespace()
+        .is_some_and(|uri| !uri.is_empty())
+    {
+        return Ok(ChildKind::Preserve);
     }
     let local = node.tag_name().name();
     let mut spelled = None;
@@ -3977,26 +4670,50 @@ fn child_kind(
             _ => typed = Some(kind),
         }
     }
+    // A role element carrying an `xmi:idref`, or an `href` to an id of this
+    // document, is a proxy (SACM23-XMI-030; XMI 2.5.1 §7.10.1), which names
+    // its object rather than leaving its class out: of a root, which moves
+    // into its place once every root is read. One of a type the role does
+    // not admit is no proxy of the role; one with anything on or in it
+    // besides its link and a type does not conform (ADR 0033).
+    if is_same_file_proxy(node) {
+        if typed.is_some_and(|kind| !role.declared.admits(kind)) {
+            return Ok(ChildKind::Preserve);
+        }
+        let Some(target) = proxy_target(text, node) else {
+            return Err(Fault::Defect);
+        };
+        if type_spelled {
+            let reason = Spelled::of_child(Spelling::Type, &written, container, in_root);
+            spelled = Some(child_spelling(found, at, reason)?);
+        }
+        return Ok(ChildKind::Proxy(ProxyLink {
+            declared: role.declared,
+            class: typed,
+            target,
+            spelled,
+        }));
+    }
     let kind = match (typed, role.declared) {
         (Some(kind), _) | (None, DeclaredType::Kind(kind)) => kind,
         // Named after its role, so no class can be inferred (LIB-COMPAT-010),
-        // unless it is the reference form of a composite, a proxy, which
-        // names its object rather than leaving its class out (XMI 2.5.1
-        // §7.10.1): not read yet.
+        // unless it is the reference form of a composite, a proxy of an
+        // element of another document, which names its object rather than
+        // leaving its class out (XMI 2.5.1 §7.10.1): not read yet
+        // (SACM23-XMI-029).
         (None, DeclaredType::Abstract(class)) => {
-            if let Some(unread) = proxy_link(node) {
-                let reason = match (unread.code() == Code::XMI_EXTERNAL_HREF, in_root) {
-                    (true, true) => ElementReason::ExternalProxyChildOfRoot,
-                    (true, false) => ElementReason::ExternalProxyChild,
-                    (false, true) => ElementReason::ProxyChildOfRoot,
-                    (false, false) => ElementReason::ProxyChild,
+            if has_href(node) {
+                let reason = if in_root {
+                    ElementReason::ExternalProxyChildOfRoot
+                } else {
+                    ElementReason::ExternalProxyChild
                 };
                 let arguments = text_arguments(&[
                     ("element", &written),
                     ("container", container),
                     ("class", class.name()),
                 ]);
-                return Err(found.unread_fault(at, unread, reason, arguments));
+                return Err(found.unread_fault(at, Unread::CrossDocumentHref, reason, arguments));
             }
             return Err(match found.mode {
                 Mode::Strict => Fault::Refused(ReadError::missing_type(
@@ -4061,18 +4778,66 @@ fn child_spelling(found: &Findings<'_, '_>, at: usize, spelled: Spelled) -> Resu
     }
 }
 
-/// The entry of the role element `node` if it is in the reference form of a
-/// composite (XMI 2.5.1 §7.10.1): an `xmi:idref` (SACM23-XMI-019), else an
-/// unqualified `href` (SACM23-XMI-029) (LIB-COMPAT-010).
-fn proxy_link(node: Node<'_, '_>) -> Option<Unread> {
-    let attributes = || node.attributes();
-    if attributes().any(|attribute| is_xmi(&attribute, "idref")) {
-        Some(Unread::XmiMetadata)
-    } else if attributes().any(|attribute| is_unqualified(&attribute, "href")) {
-        Some(Unread::CrossDocumentHref)
-    } else {
-        None
+/// Whether the role element `node` carries an unqualified `href`: under an
+/// abstract role with no type, the reference form of a composite in another
+/// document, which SACM23-XMI-029 reads (LIB-COMPAT-010).
+fn has_href(node: Node<'_, '_>) -> bool {
+    node.attributes()
+        .any(|attribute| is_unqualified(&attribute, "href"))
+}
+
+/// Whether the role element `node` is a same-file proxy as XMI 2.5.1 rule 2l
+/// writes it (§7.10.1, SACM23-XMI-030): it carries an `xmi:idref`, or an
+/// unqualified `href` whose value, trimmed, is `#id`. Whether it carries
+/// nothing else is [`proxy_target`]'s check.
+fn is_same_file_proxy(node: Node<'_, '_>) -> bool {
+    node.attributes().any(|attribute| {
+        is_xmi(&attribute, "idref")
+            || (is_unqualified(&attribute, "href")
+                && matches!(
+                    classify_href(attribute.value().trim_matches(is_xml_space)),
+                    HrefForm::Id(_)
+                ))
+    })
+}
+
+/// The id the same-file proxy `node` names, if it is one as §7.10.1 allows
+/// (SACM23-XMI-030): exactly one link attribute, an `xmi:idref` holding one
+/// token or an `href="#id"`, at most one type attribute (`xmi:type` or
+/// `xsi:type`), no other attribute, and only white space, comments and
+/// processing instructions in it ("Proxies … contain no nested elements";
+/// "XML attributes may be defined, but not contents"). `None` otherwise.
+fn proxy_target(text: &str, node: Node<'_, '_>) -> Option<String> {
+    let mut target = None;
+    let mut links = 0_usize;
+    let mut types = 0_usize;
+    for attribute in node.attributes() {
+        let value = attribute.value().trim_matches(is_xml_space);
+        if is_xmi(&attribute, "idref") {
+            links = links.saturating_add(1);
+            if value.is_empty() || value.contains(is_xml_space) {
+                return None;
+            }
+            target = Some(value);
+        } else if is_unqualified(&attribute, "href") {
+            links = links.saturating_add(1);
+            let HrefForm::Id(id) = classify_href(value) else {
+                return None;
+            };
+            target = Some(id);
+        } else if is_type(&attribute) {
+            types = types.saturating_add(1);
+        } else {
+            return None;
+        }
     }
+    let holds_content = node
+        .children()
+        .any(|child| child.is_element() || text_offset(text, child).is_some());
+    if links != 1 || types > 1 || holds_content {
+        return None;
+    }
+    target.map(str::to_owned)
 }
 
 /// The `assertionDeclaration` that `value` names, of the element `element`,
@@ -4135,12 +4900,12 @@ fn parse_flag(
 /// instructions.
 ///
 /// Each attribute is checked in document order, then the link, then the
-/// content. The identity attributes `xmi:id`, `xmi:type` (or `xsi:type`),
-/// `xmi:uuid` and `xmi:label` are XMI metadata not read yet
-/// (SACM23-XMI-019), and an `XLink` attribute or an `XPointer` `href` a
+/// content. An `XLink` attribute or an `XPointer` `href` is a
 /// cross-document link not read yet (SACM23-XMI-029): each is refused at
 /// the attribute. Anything else that does not conform is
-/// [`Fault::Defect`]: a second link attribute, any other attribute, an
+/// [`Fault::Defect`]: an identity attribute or a type, which production 2c
+/// and rule 4e do not give a reference element (SACM23-XMI-019), a second
+/// link attribute, any other attribute, an
 /// `xmi:idref` that is empty or holds white space, an `href` that names no
 /// element, no link, a child
 /// element, or text. The caller then keeps the whole element as preserved
@@ -4165,19 +4930,20 @@ fn read_reference(
         let is_idref = is_xmi(&attribute, "idref");
         let at = attribute.range_qname().start;
         if !(is_idref || is_unqualified(&attribute, "href")) {
-            let is_identity = ["id", "type", "uuid", "label"]
-                .iter()
-                .any(|local| is_xmi(&attribute, local))
-                || is_xsi_type(&attribute);
-            let unread = if is_identity {
-                Unread::XmiMetadata
-            } else if attribute.namespace() == Some(XLINK_NS) {
-                Unread::CrossDocumentHref
-            } else {
+            // An XLink attribute is SACM23-XMI-029's (§7.6.2). Anything else,
+            // identity attributes and a type included, keeps the element
+            // whole: production 2c and rule 4e give a reference element only
+            // its link (SACM23-XMI-019).
+            if attribute.namespace() != Some(XLINK_NS) {
                 return Err(Fault::Defect);
-            };
+            }
             let arguments = attribute_arguments(text, &attribute, &element);
-            return Err(found.unread_fault(at, unread, attribute_reason(unread), arguments));
+            return Err(found.unread_fault(
+                at,
+                Unread::CrossDocumentHref,
+                ElementReason::ExternalAttribute,
+                arguments,
+            ));
         }
         if link.is_some() {
             return Err(Fault::Defect);
@@ -4542,7 +5308,7 @@ fn read_name<'a>(
     node: Node<'a, '_>,
     kind: ElementKind,
     owner: &ElementId,
-) -> Result<(LangString, Option<ElementId>), Fault> {
+) -> Result<(LangString, Option<ElementId>, Preserved), Fault> {
     read_lang_string(found, node, LangPart::Name, owner, kind, "name")
 }
 
@@ -4615,9 +5381,10 @@ impl LangPart {
 /// whose content is the text, all of it, or the attribute, never both. It
 /// is reported at its first attribute, else at its text. An `xsi:type`, and
 /// an `xmi:id` read trimmed, are reported on the owner. XMI metadata on it,
-/// or an XMI element in it, is refused (SACM23-XMI-019). Anything else,
-/// such as either shorthand beside a `value` or a `lang` alone, does not
-/// conform: [`Fault::Defect`] (ADR 0033).
+/// and an XMI extension in it, placed by value, are kept as written
+/// (SACM23-XMI-019). Anything else, such as either shorthand beside a
+/// `value`, a `lang` alone, an `href`, an `xmi:idref` or another XMI
+/// element, does not conform: [`Fault::Defect`] (ADR 0033).
 fn read_text<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -4626,7 +5393,6 @@ fn read_text<'a>(
     owner: &ElementId,
 ) -> Result<Text, Fault> {
     let text = found.text;
-    let element = written_name(text, node);
     if node.attributes().any(|attribute| {
         is_type(&attribute)
             && !names_class(&found.types, node, attribute.value(), "MultiLangString")
@@ -4641,6 +5407,11 @@ fn read_text<'a>(
         owner,
         kind,
     )?);
+    // Its XMI metadata, its children placed by value (SACM23-XMI-019).
+    let mut metadata = Kept::new(ElementHolder {
+        kind,
+        id: owner.clone(),
+    });
     let has_values = node
         .children()
         .any(|child| is_value_element(child, "value"));
@@ -4663,11 +5434,8 @@ fn read_text<'a>(
                 IdOwner::Text(role).arguments(kind, owner.as_str()),
                 owner.as_str(),
             )?;
-        } else if let Some(unread) = object_metadata(&attribute) {
-            let arguments = attribute_arguments(text, &attribute, &element);
-            let reason = attribute_reason(unread);
-            let at = attribute.range_qname().start;
-            return Err(found.unread_fault(at, unread, reason, arguments));
+        } else if is_object_metadata(text, &attribute) {
+            metadata.take_metadata_attribute(found, node, &attribute)?;
         } else if !(is_type(&attribute) || is_xmi(&attribute, "id")) {
             return Err(Fault::Defect);
         }
@@ -4693,42 +5461,29 @@ fn read_text<'a>(
             }
         } else if is_value_element(child, "value") {
             let part = LangPart::Value(role);
-            let (value, id) = read_lang_string(found, child, part, owner, kind, &property)?;
-            held.push(value, id);
+            let (value, id, value_metadata) =
+                read_lang_string(found, child, part, owner, kind, &property)?;
+            held.push(value, id, value_metadata);
+        } else if is_extension(child) {
+            metadata.typed = held.value().len();
+            metadata.take_element(found, child)?;
         } else {
-            return Err(xmi_element_in(found, child, &element));
+            // Another XMI element is no metadata here; anything else does
+            // not conform either (ADR 0033).
+            return Err(Fault::Defect);
         }
     }
     match shorthand.into_lang_string() {
         Ok(Some((value, at))) => {
             let shape = IdOwner::Text(role).arguments(kind, owner.as_str());
             found.legacy_shape(at, owner, Shape::Shorthand, shape)?;
-            held.push(value, None);
+            held.push(value, None, Preserved::default());
         }
         Ok(None) => {}
         Err(_) => return Err(Fault::Defect),
     }
+    held.set_metadata(metadata.into_preserved());
     Ok(held)
-}
-
-/// What an element `child` that `element`, a `name`, `content`, `key`, `location` or
-/// `value`, does not read makes it: refused if it is in the XMI namespace,
-/// which is XMI metadata not read yet (SACM23-XMI-019), and otherwise
-/// [`Fault::Defect`] (ADR 0033).
-fn xmi_element_in(found: &Findings<'_, '_>, child: Node<'_, '_>, element: &str) -> Fault {
-    if child.tag_name().namespace() != Some(XMI_NS) {
-        return Fault::Defect;
-    }
-    let arguments = text_arguments(&[
-        ("element", &written_name(found.text, child)),
-        ("container", element),
-    ]);
-    found.unread_fault(
-        child.range().start,
-        Unread::XmiMetadata,
-        ElementReason::NestedXmiElement,
-        arguments,
-    )
 }
 
 /// The `LangString` that `node`, a `name` or a `value` of a `content` or
@@ -4757,8 +5512,9 @@ fn xmi_element_in(found: &Findings<'_, '_>, child: Node<'_, '_>, element: &str) 
 /// attribute and the element, are `RepeatedValue` of
 /// `<property>.expression`. With neither, it reads with no expression.
 ///
-/// XMI metadata on it, and an XMI element in it, are conforming and not
-/// read yet, so refused. Anything else does not conform, such as a second
+/// XMI metadata on it, and an XMI extension in it, are kept as written
+/// (SACM23-XMI-019). Anything else does not conform, such as an `href`, an
+/// `xmi:idref`, another XMI element in it, a second
 /// `value` or `content` carrying `lang` in a `name`, which holds one
 /// `LangString`, an `expression` on a plain `LangString`, an empty
 /// `expression`, and a `value` typed `ExpressionLangString` in a `name`:
@@ -4774,10 +5530,9 @@ fn read_lang_string<'a>(
     owner: &ElementId,
     kind: ElementKind,
     property: &str,
-) -> Result<(LangString, Option<ElementId>), Fault> {
+) -> Result<(LangString, Option<ElementId>, Preserved), Fault> {
     let text = found.text;
     let mode = found.mode;
-    let element = written_name(text, node);
     let is_name = property == "name";
     let is_expression = check_lang_string_tag(&found.types, node)?;
     // A `value` in a `name` is the C++ shape of the name's one plain
@@ -4792,6 +5547,12 @@ fn read_lang_string<'a>(
     };
     let repeated = |field: &str| repeated_field(text, mode, node, field, owner, kind, property);
     let mut fields = Fields::default();
+    // Its XMI metadata, every child of which is placed at index 0
+    // (SACM23-XMI-019).
+    let mut metadata = Kept::new(ElementHolder {
+        kind,
+        id: owner.clone(),
+    });
     // The `expression` of an ExpressionLangString (§8.4), once it is given.
     let mut expression: Option<ElementId> = None;
     for attribute in node.attributes() {
@@ -4811,16 +5572,11 @@ fn read_lang_string<'a>(
                 Ok(())
             }
             _ if is_type(&attribute) || is_xmi(&attribute, "id") => Ok(()),
-            _ => {
-                return Err(match object_metadata(&attribute) {
-                    Some(unread) => {
-                        let arguments = attribute_arguments(text, &attribute, &element);
-                        let at = attribute.range_qname().start;
-                        found.unread_fault(at, unread, attribute_reason(unread), arguments)
-                    }
-                    None => Fault::Defect,
-                });
+            _ if is_object_metadata(text, &attribute) => {
+                metadata.take_metadata_attribute(found, node, &attribute)?;
+                Ok(())
             }
+            _ => return Err(Fault::Defect),
         };
         // Attributes are unique in a start tag (XML 1.0 §3.1), so neither
         // field is given twice here.
@@ -4893,8 +5649,12 @@ fn read_lang_string<'a>(
             if let Some(content) = value.content() {
                 fields.content(Some(content.to_owned())).map_err(repeated)?;
             }
+        } else if is_extension(child) {
+            metadata.take_element(found, child)?;
         } else {
-            return Err(xmi_element_in(found, child, &element));
+            // Another XMI element is no metadata here; anything else does
+            // not conform either (ADR 0033).
+            return Err(Fault::Defect);
         }
     }
     let mut name = fields.value;
@@ -4907,7 +5667,7 @@ fn read_lang_string<'a>(
             None => name.with_no_expression(),
         };
     }
-    Ok((name, name_id))
+    Ok((name, name_id, metadata.into_preserved()))
 }
 
 /// The one id of the `expression` attribute `attribute` of `node`, an
@@ -5065,29 +5825,26 @@ impl Fields {
 
 /// The `LangString` that `node`, a `value` in the `name` of the element
 /// `owner` of `kind`, holds: the C++ shape of a name's one `LangString`
-/// (LIB-COMPAT-008), read as a `value` of a `content` is. An `xmi:id` on it
-/// is XMI metadata on a value that this version does not read, since a
-/// name has one id, on the `name` (SACM23-XMI-019): refused at it.
+/// (LIB-COMPAT-008), read as a `value` of a `content` is. The name is
+/// written back as one `name` element, so what only a `value` can carry does
+/// not conform: an `xmi:id` (a name has one id, on the `name`) and XMI
+/// metadata, which could not be written where it stood (SACM23-XMI-019):
+/// [`Fault::Defect`], which keeps the whole name.
 fn read_name_value<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     owner: &ElementId,
     kind: ElementKind,
 ) -> Result<LangString, Fault> {
-    let text = found.text;
-    if let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) {
-        let element = written_name(text, node);
-        let arguments = attribute_arguments(text, &attribute, &element);
-        let at = attribute.range_qname().start;
-        return Err(found.unread_fault(
-            at,
-            Unread::XmiMetadata,
-            ElementReason::UnreadAttribute,
-            arguments,
-        ));
+    if node.attributes().any(|attribute| is_xmi(&attribute, "id")) {
+        return Err(Fault::Defect);
     }
-    read_lang_string(found, node, LangPart::NameValue, owner, kind, "name.value")
-        .map(|(value, _)| value)
+    let (value, _, metadata) =
+        read_lang_string(found, node, LangPart::NameValue, owner, kind, "name.value")?;
+    if !metadata.is_empty() {
+        return Err(Fault::Defect);
+    }
+    Ok(value)
 }
 
 /// Whether `name`, a `name` element, holds a field besides its `value`
@@ -5235,17 +5992,6 @@ fn attribute_arguments(text: &str, attribute: &Attribute<'_, '_>, element: &str)
     ])
 }
 
-/// Why an element keeps an attribute that `unread` names: a link to
-/// another document (SACM-XMI-007), or XMI metadata not read yet
-/// (SACM-XMI-014).
-fn attribute_reason(unread: Unread) -> ElementReason {
-    if unread.code() == Code::XMI_EXTERNAL_HREF {
-        ElementReason::ExternalAttribute
-    } else {
-        ElementReason::UnreadAttribute
-    }
-}
-
 /// The name of `element` as written in its start tag: `prefix:Local`, or
 /// `Local`.
 fn written_name(text: &str, element: Node<'_, '_>) -> String {
@@ -5272,8 +6018,14 @@ mod tests {
         id: &str,
         written: &str,
     ) -> super::Pending {
+        let holder = || super::ElementHolder {
+            kind,
+            id: ElementId::new(id),
+        };
         super::Pending {
             order: 0,
+            place: 0,
+            parent_order: parent.as_ref().map(|_| 0),
             parent,
             kind,
             id: ElementId::new(id),
@@ -5293,10 +6045,10 @@ mod tests {
             given: Vec::new(),
             written: written.to_owned(),
             at: 0,
-            kept: super::Kept::new(super::ElementHolder {
-                kind,
-                id: ElementId::new(id),
-            }),
+            kept: super::Kept::new(holder()),
+            metadata: super::Kept::new(holder()),
+            name_metadata: None,
+            slots: None,
         }
     }
 
@@ -5305,7 +6057,6 @@ mod tests {
     /// instead, in an element and in the document; and each C++ shape its
     /// refusal and its `-read` form (LIB-API-018).
     #[test]
-    #[expect(clippy::too_many_lines, reason = "one table, one row per cell")]
     fn the_reason_and_holder_mapping_gives_each_cell_of_the_table() {
         use super::{DocumentReason, ElementReason, Shape};
         use crate::diagnostic::template::{Carrier, Template};
@@ -5318,24 +6069,6 @@ mod tests {
         assert_eq!(
             in_element,
             [
-                (
-                    "SACM-XMI-014/unread-attribute",
-                    "SACM-XMI-014/unread-attribute-kept"
-                ),
-                (
-                    "SACM-XMI-014/nested-xmi-element",
-                    "SACM-XMI-014/nested-xmi-element-kept"
-                ),
-                ("SACM-XMI-014/xmi-child", "SACM-XMI-014/xmi-child-kept"),
-                (
-                    "SACM-XMI-014/xmi-child-of-root",
-                    "SACM-XMI-014/xmi-child-of-root-kept"
-                ),
-                ("SACM-XMI-014/proxy-child", "SACM-XMI-014/proxy-child-kept"),
-                (
-                    "SACM-XMI-014/proxy-child-of-root",
-                    "SACM-XMI-014/proxy-child-of-root-kept"
-                ),
                 (
                     "SACM-XMI-007/unread-attribute",
                     "SACM-XMI-007/unread-attribute-kept"
@@ -5357,20 +6090,16 @@ mod tests {
             in_document,
             [
                 (
-                    "SACM-XMI-014/unread-attribute",
-                    "SACM-XMI-014/unread-attribute-kept-by-document"
-                ),
-                (
-                    "SACM-XMI-014/nested-xmi-element",
-                    "SACM-XMI-014/nested-xmi-element-kept-by-document"
-                ),
-                (
                     "SACM-XMI-003/unread-attribute",
                     "SACM-XMI-003/wrapper-attribute-kept"
                 ),
                 (
                     "SACM-XMI-003/wrapper-text",
                     "SACM-XMI-003/wrapper-text-kept"
+                ),
+                (
+                    "SACM-XMI-003/wrapper-element",
+                    "SACM-XMI-003/wrapper-element-kept"
                 ),
             ],
             "LIB-API-018: the document column"
@@ -5637,9 +6366,13 @@ mod tests {
 
     #[test]
     fn refusals_name_the_child_element_and_its_entry() {
+        // An XMI extension in a child is XMI metadata, read in both modes
+        // (SACM23-XMI-019).
+        let extension = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>";
+        assert_eq!(refusal(extension), None, "{extension:?}");
         let cases = [(
-            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",
-            "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
+            "<argumentElement href=\"o.xmi#c\"/>",
+            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         )];
         for (content, reason) in cases {
             assert_eq!(
@@ -5895,12 +6628,12 @@ mod tests {
 
         let input = in_p(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">\
-             <name xmi:uuid=\"u\" content=\"A\"/><name content=\"B\"/>\
+             <name href=\"#c\" content=\"A\"/><name content=\"B\"/>\
              </argumentElement>",
         );
         let (found, document) = kept(&input);
         let codes: Vec<&str> = found.iter().map(|(code, _, _)| code.as_str()).collect();
-        assert_eq!(codes, ["SACM-XMI-014"]);
+        assert_eq!(codes, ["SACM-XMI-003"]);
         assert_eq!(
             document
                 .get("c")
@@ -6116,17 +6849,17 @@ mod tests {
             )
         };
         let on_claim = message(&in_p(
-            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" xmi:uuid=\"u\"/>",
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" href=\"o.xmi#c\"/>",
         ));
         assert_eq!(
             on_claim,
-            "the attribute \"xmi:uuid\" of the element \"argumentElement\" is not read in this \
-             release, so it is kept as preserved content of the Claim \"c\", which a tolerant \
-             write writes back and a strict write refuses; SACM23-XMI-019 reads it"
+            "the attribute \"href\" of the element \"argumentElement\" is not read in this \
+             release, so it is kept as preserved content of the ArgumentPackage \"p\", which a \
+             tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it"
         );
         let outside = message(
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
-             xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"><xmi:Documentation/>\
+             xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"><xmi:foo/>\
              <sacm:ArgumentPackage xmi:id=\"p\"/></xmi:XMI>",
         );
         assert!(
@@ -6150,7 +6883,7 @@ mod tests {
         };
         assert_eq!(
             first(&in_p(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" xmi:uuid=\"u\"/>"
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" href=\"o.xmi#c\"/>"
             )),
             ("LIB-API-011".to_owned(), None)
         );
@@ -6164,22 +6897,17 @@ mod tests {
         );
     }
 
-    /// An empty `xmi:id` in content the document holds outside its elements
-    /// is kept, with SACM-ID-002 affecting no element.
+    /// An empty `xmi:id` in XMI metadata the document holds outside its
+    /// elements is kept, with SACM-ID-002 affecting no element
+    /// (SACM23-XMI-019).
     #[test]
     fn an_empty_id_outside_every_element_affects_no_element() {
         let input = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
              xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\
              <xmi:Documentation xmi:id=\"\"/><sacm:ArgumentPackage xmi:id=\"p\"/></xmi:XMI>";
         let (found, document) = kept(input);
-        assert_eq!(
-            found,
-            [
-                finding("SACM-ID-002", &[], (1, 110)),
-                finding("SACM-XMI-014", &[], (1, 110)),
-            ]
-        );
-        assert!(document.has_preserved_content());
+        assert_eq!(found, [finding("SACM-ID-002", &[], (1, 110))]);
+        assert!(!document.has_preserved_content() && document.document_metadata().is_some());
         assert!(document.get("p").is_some());
     }
 
@@ -6204,5 +6932,265 @@ mod tests {
         let e1 = document.get("e1");
         assert_eq!(e1.and_then(SacmElement::date), Some("2024"));
         assert!(e1.is_some_and(SacmElement::has_preserved_content));
+    }
+
+    /// The wrapper start tag binding `xmi` and `sacm`, with the extra
+    /// attributes `attributes`, holding `content`.
+    fn wrapper_with(attributes: &str, content: &str) -> String {
+        format!(
+            "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+             xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"{attributes}>{content}</xmi:XMI>"
+        )
+    }
+
+    /// The binding of `xsi`, as an attribute.
+    const XSI: &str = " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
+
+    /// The root ArgumentPackage `id`, holding `body`.
+    fn package(id: &str, body: &str) -> String {
+        format!(
+            "<sacm:ArgumentPackage xmi:id=\"{id}\"><name content=\"{id}\"/>{body}</sacm:ArgumentPackage>"
+        )
+    }
+
+    /// Reads `input` strictly, with no diagnostic, and writes it strictly.
+    fn strict_clean(input: &str) -> (Document, String) {
+        let output = read(input.as_bytes(), &strict()).unwrap_or_else(|error| panic!("{error:?}"));
+        assert!(
+            output.diagnostics().is_empty(),
+            "{:?}\n{input}",
+            output.diagnostics()
+        );
+        let document = output.into_document();
+        assert!(!document.has_preserved_content(), "{input}");
+        let text =
+            write(&document, &WriteOptions::default()).unwrap_or_else(|error| panic!("{error:?}"));
+        (document, text)
+    }
+
+    /// Every XMI element XMI.xsd declares under `xmi:XMI`, and every metadata
+    /// attribute of it, is XMI metadata: read strictly with no diagnostic and
+    /// written back by a strict save (SACM23-XMI-019).
+    #[test]
+    fn each_wrapper_element_and_attribute_of_xmi_xsd_is_metadata() {
+        // XMI.xsd's global elements but `XMI` (XMI 2.5.1 §7.5.3 to §7.5.6),
+        // listed here, not taken from the reader.
+        for local in [
+            "documentation",
+            "Documentation",
+            "difference",
+            "Difference",
+            "Add",
+            "Replace",
+            "Delete",
+            "extension",
+            "Extension",
+        ] {
+            let element = format!("<xmi:{local} n=\"1\"/>");
+            let (document, text) =
+                strict_clean(&wrapper_with("", &format!("{element}{}", package("p", ""))));
+            assert!(document.document_metadata().is_some(), "{local}");
+            assert!(
+                text.contains(&format!("<xmi:{local} n=\"1\" />")),
+                "{local}\n{text}"
+            );
+        }
+        for attribute in [
+            " xmi:id=\"w\"",
+            " xmi:label=\"l\"",
+            " xmi:uuid=\"u\"",
+            " href=\"#p\"",
+            " xmi:idref=\"p\"",
+            " xmi:type=\"xmi:XMI\"",
+            " xsi:schemaLocation=\"a b\"",
+            " xsi:noNamespaceSchemaLocation=\"a\"",
+        ] {
+            let (_, text) = strict_clean(&wrapper_with(
+                &format!("{XSI}{attribute}"),
+                &package("p", ""),
+            ));
+            assert!(text.contains(attribute.trim_start()), "{attribute}\n{text}");
+        }
+    }
+
+    /// `xmi:extension`, lower case, is XMI metadata in an element and in a
+    /// part, as `xmi:Extension` is (XMI 2.5.1 rule 4c); the schema locations
+    /// are metadata on an element and on a part (SACM23-XMI-019).
+    #[test]
+    fn the_lower_case_extension_and_the_schema_locations_are_metadata_everywhere() {
+        let input = wrapper_with(
+            "",
+            &package(
+                "p",
+                &format!(
+                    "<xmi:extension a=\"1\"/><argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"{XSI} \
+                     xsi:noNamespaceSchemaLocation=\"s\"><name content=\"C\" xsi:schemaLocation=\"a b\">\
+                     <xmi:extension b=\"2\"/></name></argumentElement>"
+                ),
+            ),
+        );
+        let (document, text) = strict_clean(&input);
+        assert!(document.get("p").and_then(SacmElement::metadata).is_some());
+        assert!(text.contains("<xmi:extension a=\"1\" />"), "{text}");
+        assert!(
+            text.contains("xsi:noNamespaceSchemaLocation=\"s\""),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "<name content=\"C\"{XSI} xsi:schemaLocation=\"a b\">"
+            )),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("<xmi:extension{XSI} b=\"2\" />")),
+            "{text}"
+        );
+    }
+
+    /// A kept proxy stands where it was among its container's children: after
+    /// what was placed before it, before what follows it, and no typed slot
+    /// any more, so what follows it stays before the next typed child
+    /// (SACM23-XMI-030).
+    #[test]
+    fn a_kept_proxy_keeps_its_place_and_gives_up_its_slot() {
+        let input = wrapper_with(
+            "",
+            &package(
+                "p",
+                "<v:a xmlns:v=\"urn:v\"/><argumentElement xmi:idref=\"nope\"/><v:b xmlns:v=\"urn:v\"/>\
+                 <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>",
+            ),
+        );
+        let (found, document) = kept(&input);
+        assert_eq!(found.len(), 3, "{found:?}");
+        let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
+        let text = write(&document, &tolerant).unwrap_or_else(|error| panic!("{error:?}"));
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}\n{text}"))
+        };
+        assert!(
+            at("<v:a ") < at("<argumentElement xmi:idref=\"nope\" />")
+                && at("<argumentElement xmi:idref=\"nope\" />") < at("<v:b ")
+                && at("<v:b ") < at("xmi:id=\"c\""),
+            "{text}"
+        );
+    }
+
+    /// A root that a member of a cycle names, and that is in no cycle itself,
+    /// is resolved: only the proxies of the cycle are kept (SACM23-XMI-030).
+    #[test]
+    fn a_root_that_a_cycle_names_is_moved_into_the_cycle() {
+        let case = |id: &str, body: &str| {
+            format!(
+                "<sacm:AssuranceCasePackage xmi:id=\"{id}\"><name content=\"{id}\"/>{body}</sacm:AssuranceCasePackage>"
+            )
+        };
+        // `d` first, so the walk from it passes into the cycle before it
+        // finds it.
+        let input = wrapper_with(
+            "",
+            &[
+                case("d", ""),
+                case(
+                    "a",
+                    "<assuranceCasePackage xmi:idref=\"b\"/><assuranceCasePackage xmi:idref=\"d\"/>",
+                ),
+                case("b", "<assuranceCasePackage xmi:idref=\"a\"/>"),
+            ]
+            .concat(),
+        );
+        let (found, document) = kept(&input);
+        assert_eq!(
+            found
+                .iter()
+                .map(|(code, affected, _)| (code.as_str(), affected.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("SACM-XMI-003", vec!["a".to_owned()]),
+                ("SACM-XMI-003", vec!["b".to_owned()])
+            ]
+        );
+        let roots: Vec<&str> = document.roots().map(|root| root.id().as_str()).collect();
+        assert_eq!(roots, ["a", "b"]);
+        assert_eq!(
+            document
+                .get("d")
+                .and_then(SacmElement::parent)
+                .map(|parent| parent.id().as_str()),
+            Some("a")
+        );
+    }
+
+    /// A root that comes before its proxy's container takes the proxy's
+    /// place among the container's typed children, after the child read
+    /// before the proxy (SACM23-XMI-030).
+    #[test]
+    fn a_moved_root_takes_the_proxys_place_among_the_typed_children() {
+        let input = wrapper_with(
+            "",
+            &format!(
+                "{}<sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>\
+                 <argumentPackage xmi:id=\"inline\"><name content=\"inline\"/></argumentPackage>\
+                 <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>",
+                package("args", "")
+            ),
+        );
+        let (document, _) = strict_clean(&input);
+        let children: Vec<&str> = document
+            .get("case")
+            .map(|case| case.children().map(|child| child.id().as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(children, ["inline", "args"]);
+    }
+
+    /// Content the document holds outside its elements, placed before a root
+    /// that stays, keeps its place before it once a root before it moves
+    /// (SACM23-XMI-030, `Preserved::shift`).
+    #[test]
+    fn document_content_keeps_its_place_before_a_remaining_root() {
+        let input = wrapper_with(
+            "",
+            &format!(
+                "{}<xmi:Documentation n=\"1\"/><sacm:AssuranceCasePackage xmi:id=\"case\">\
+                 <name content=\"case\"/><argumentPackage xmi:idref=\"args\"/>\
+                 </sacm:AssuranceCasePackage>",
+                package("args", "")
+            ),
+        );
+        let (_, text) = strict_clean(&input);
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}\n{text}"))
+        };
+        assert!(
+            at("<xmi:Documentation n=\"1\" />") < at("xmi:id=\"case\""),
+            "{text}"
+        );
+    }
+
+    /// An extension in a `content` is placed among its values, where it
+    /// stood (SACM23-XMI-019).
+    #[test]
+    fn an_extension_in_a_content_stays_between_its_values() {
+        let input = wrapper_with(
+            "",
+            &package(
+                "p",
+                "<note xmi:id=\"n\"><content><value content=\"a\"/><xmi:Extension e=\"1\"/>\
+                 <value content=\"b\"/></content></note>",
+            ),
+        );
+        let (_, text) = strict_clean(&input);
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}\n{text}"))
+        };
+        assert!(
+            at("<value content=\"a\" />") < at("<xmi:Extension e=\"1\" />")
+                && at("<xmi:Extension e=\"1\" />") < at("<value content=\"b\" />"),
+            "{text}"
+        );
     }
 }

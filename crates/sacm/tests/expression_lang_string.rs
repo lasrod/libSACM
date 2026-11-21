@@ -1248,7 +1248,8 @@ fn sacm23_base_009_an_expression_attribute_on_a_claim_is_a_preserved_attribute()
 // ---------------------------------------------------------------------------
 
 #[test]
-fn sacm23_base_009_xmi_metadata_and_a_cross_document_href_on_expression_are_unsupported() {
+fn sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_document_href_is_unsupported()
+ {
     let in_name = |inside: &str| {
         case(
             &claim(
@@ -1259,16 +1260,47 @@ fn sacm23_base_009_xmi_metadata_and_a_cross_document_href_on_expression_are_unsu
             "",
         )
     };
+    // An identity attribute on a reference element keeps the whole name with
+    // SACM-XMI-003 (production 2c, rule 4e; ADR 0042 D4): `Unsupported`
+    // naming SACM23-XMI-019 until slice 0073a.
     let metadata = in_name("<expression xmi:idref=\"t1\" xmi:id=\"e\"/>");
-    let error = strict_refusal(BASE_009, "an xmi:id on an expression element", &metadata);
-    assert!(
-        matches!(error, ReadError::Unsupported { .. })
-            && error
-                .to_string()
-                .ends_with("(a limit of this version; SACM23-XMI-019 reads it)"),
-        "{BASE_009}: an xmi:id on an expression element is not Unsupported naming \
-         SACM23-XMI-019: {error}"
-    );
+    for (mode, severity) in [
+        (Mode::Strict, Severity::Error),
+        (Mode::Tolerant, Severity::Warning),
+    ] {
+        let what = format!("an xmi:id on an expression element, {mode:?}");
+        let output = read_ok(BASE_009, &what, mode, &metadata);
+        let found: Vec<(Code, Severity, &str, Vec<String>)> = output
+            .diagnostics()
+            .iter()
+            .map(|one| {
+                (
+                    one.code(),
+                    one.severity(),
+                    one.template(),
+                    one.arguments()
+                        .iter()
+                        .filter_map(|argument| argument.value().as_text().map(str::to_owned))
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                Code::XMI_UNKNOWN_CONTENT,
+                severity,
+                "SACM-XMI-003/element-kept",
+                vec!["name".to_owned(), "Claim".to_owned(), "c1".to_owned()]
+            )],
+            "{BASE_009}: {what}: the whole name is not kept with one SACM-XMI-003"
+        );
+        assert_eq!(
+            element(BASE_009, output.document(), "c1").name(),
+            None,
+            "{BASE_009}: {what}: the name is read"
+        );
+    }
     let href = in_name("<expression href=\"other.xmi#t1\"/>");
     let error = strict_refusal(BASE_009, "a cross-document href", &href);
     assert!(

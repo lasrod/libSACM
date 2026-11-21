@@ -7,7 +7,8 @@
 //! (`interim_refusals.rs`, unchanged). A tolerant read keeps it at its
 //! construct, with one Warning at the strict refusal's location:
 //! SACM-XMI-014 for conforming content a later row reads, its message naming
-//! that row; SACM-XMI-007 for a cross-document link SACM23-XMI-029 is to
+//! that row, until slice 0073a read the last of it, XMI metadata
+//! (SACM23-XMI-019, ADR 0042); SACM-XMI-007 for a cross-document link SACM23-XMI-029 is to
 //! read (slice 0068 reads an `href` with a document part on a reference
 //! element, SACM23-XMI-027); SACM-XMI-003 for
 //! content on `xmi:XMI` and for a preserved attribute whose `sacm` or `xmi`
@@ -188,127 +189,17 @@ struct Kept {
     input: String,
     /// The Warning's code.
     code: Code,
-    /// For SACM-XMI-014, the row its message names.
+    /// For an `Interim` entry, the row its message names: none is left
+    /// since slice 0073a retired SACM-XMI-014.
     row: Option<&'static str>,
     /// The element that holds the content, or `None` for the document.
     holder: Option<&'static str>,
 }
 
-fn kept(
-    entry: &'static str,
-    what: &'static str,
-    input: String,
-    row: &'static str,
-    holder: Option<&'static str>,
-) -> Kept {
-    Kept {
-        entry,
-        what,
-        input,
-        code: Code::XMI_UNREAD_CONTENT,
-        row: Some(row),
-        holder,
-    }
-}
-
-#[expect(
-    clippy::too_many_lines,
-    reason = "one flat table is easier to review than several"
-)]
 fn kept_entries() -> Vec<Kept> {
     let mut cases = Vec::new();
-    // XMI document metadata (SACM23-XMI-019).
-    let metadata = "SACM23-XMI-019";
-    for (what, input, holder) in [
-        (
-            "xmi:uuid on an object",
-            package(&claim("c1", " xmi:uuid=\"u1\"", "")),
-            Some("c1"),
-        ),
-        (
-            "xmi:label on an object",
-            package(&claim("c1", " xmi:label=\"l\"", "")),
-            Some("c1"),
-        ),
-        (
-            "href on an object (the root)",
-            package(&claim("c2", "", "")).replace("xmi:id=\"p\">", "xmi:id=\"p\" href=\"#c2\">"),
-            Some("p"),
-        ),
-        (
-            "xmi:Extension in an object",
-            package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>")),
-            Some("c1"),
-        ),
-        (
-            "xmi:Documentation in the wrapper",
-            wrapper("", "<xmi:Documentation/>"),
-            None,
-        ),
-        ("xmi:id on the wrapper", wrapper(" xmi:id=\"w\"", ""), None),
-        (
-            "xmi:type on the wrapper",
-            wrapper(" xmi:type=\"xmi:XMI\"", ""),
-            None,
-        ),
-        (
-            "xmi:uuid on the wrapper",
-            wrapper(" xmi:uuid=\"u\"", ""),
-            None,
-        ),
-        ("href on the wrapper", wrapper(" href=\"#p\"", ""), None),
-        (
-            "xsi:schemaLocation on the wrapper",
-            wrapper(
-                &format!(" {XSI} xsi:schemaLocation=\"{SACM_NS} SACM.xsd\""),
-                "",
-            ),
-            None,
-        ),
-        (
-            "xmi:id on a reference element",
-            package(&format!(
-                "{}{}",
-                claim("c1", "", "<metaClaim xmi:idref=\"c2\" xmi:id=\"r\"/>"),
-                claim("c2", "", "")
-            )),
-            Some("c1"),
-        ),
-        (
-            "xsi:schemaLocation on the root",
-            package("").replace(
-                "xmi:id=\"p\">",
-                &format!("xmi:id=\"p\" xsi:schemaLocation=\"{SACM_NS} SACM.xsd\">"),
-            ),
-            Some("p"),
-        ),
-    ] {
-        cases.push(kept("XmiMetadata", what, input, metadata, holder));
-    }
-    // XMI metadata in a name and in a value of a content: the whole part is
-    // kept, held by the name's owner and by the UtilityElement (the samples
-    // ExpressionLangString gave until slice 0065 read it, SACM23-BASE-009).
-    cases.push(kept(
-        "XmiMetadata",
-        "xmi:uuid on a name",
-        format!(
-            "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\
-             <name xmi:uuid=\"u\" content=\"p\"/></sacm:ArgumentPackage>"
-        ),
-        metadata,
-        Some("p"),
-    ));
-    cases.push(kept(
-        "XmiMetadata",
-        "xmi:uuid on a value of a content",
-        package(&claim(
-            "c1",
-            "",
-            "<note xmi:id=\"n\"><content><value xmi:uuid=\"u\" content=\"v\"/></content></note>",
-        )),
-        metadata,
-        Some("n"),
-    ));
+    // XMI metadata is read since slice 0073a, with no diagnostic
+    // (SACM23-XMI-019, ADR 0042), so no entry is SACM-XMI-014.
     // The spellings SACM23-XMI-009 reads are no kept entry since slice
     // 0057: see `spelled_entries`.
     // A cross-document link not read yet: SACM-XMI-007 (SACM23-XMI-029).
@@ -335,6 +226,12 @@ fn kept_entries() -> Vec<Kept> {
             wrapper(" v:w=\"1\"", ""),
         ),
         ("text before the root", wrapper("", "stray")),
+        // An XMI-namespace element XMI does not define (slice 0073a,
+        // SACM23-XMI-019, ADR 0042 D4).
+        (
+            "an XMI-namespace element XMI does not define under the wrapper",
+            wrapper("", "<xmi:foo/>"),
+        ),
     ] {
         cases.push(Kept {
             entry: "WrapperContent",
@@ -594,12 +491,12 @@ fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
             package("<argumentElement href=\"other.sacm.xmi#c9\"/>"),
             "p",
         ),
+        // To another document: a typed role element with `href="#c2"` is a
+        // same-file proxy since slice 0073a (SACM23-XMI-030), so it is no
+        // sample here.
         (
             "a typed role element with an href",
-            package(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" href=\"#c2\"/>{}",
-                claim("c2", "", "")
-            )),
+            package("<argumentElement xmi:type=\"sacm:Claim\" href=\"other.sacm.xmi#c2\"/>"),
             "p",
         ),
     ];
@@ -654,17 +551,21 @@ fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
 /// Attributes, XMI-namespace children and text of `xmi:XMI` are held by the
 /// document, each with its Warning at its construct, and written back in
 /// place among the roots; the writer wraps the output in `xmi:XMI` for it.
+/// Since slice 0073a `xsi:schemaLocation` is XMI metadata, read with no
+/// diagnostic and written back on the wrapper, and the XMI-namespace child
+/// is `<xmi:foo>`, which XMI does not define (`<xmi:Documentation>` until
+/// then; SACM23-XMI-019, ADR 0042).
 #[test]
 fn lib_compat_003_wrapper_content_is_document_level_preserved_content_in_place() {
     let input = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" {XSI} xmlns:v=\"urn:v\" \
          v:w=\"1\" xsi:schemaLocation=\"{SACM_NS} SACM.xsd\">\n\
          \x20 <sacm:ArgumentPackage xmi:id=\"a\"><name content=\"A\"/></sacm:ArgumentPackage>\n\
-         \x20 <xmi:Documentation exporter=\"tool\"/>\n\
+         \x20 <xmi:foo exporter=\"tool\"/>\n\
          \x20 <sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage>\n\
          </xmi:XMI>\n"
     );
-    let what = "a wrapper with a vendor attribute, xsi:schemaLocation and xmi:Documentation";
+    let what = "a wrapper with a vendor attribute, xsi:schemaLocation and xmi:foo";
     let output = tolerant(COMPAT_003, what, &input);
     let mut found: Vec<(Code, Severity, Vec<ElementId>, Option<SourceLocation>)> = output
         .diagnostics()
@@ -689,16 +590,10 @@ fn lib_compat_003_wrapper_content_is_document_level_preserved_content_in_place()
                 Some(position_of(COMPAT_003, &input, "v:w="))
             ),
             (
-                Code::XMI_UNREAD_CONTENT,
+                Code::XMI_UNKNOWN_CONTENT,
                 Severity::Warning,
                 vec![],
-                Some(position_of(COMPAT_003, &input, "xsi:schemaLocation="))
-            ),
-            (
-                Code::XMI_UNREAD_CONTENT,
-                Severity::Warning,
-                vec![],
-                Some(position_of(COMPAT_003, &input, "<xmi:Documentation"))
+                Some(position_of(COMPAT_003, &input, "<xmi:foo"))
             ),
         ],
         "{COMPAT_003}: {what}: not one Warning at each construct, affecting no element"
@@ -724,7 +619,7 @@ fn lib_compat_003_wrapper_content_is_document_level_preserved_content_in_place()
         COMPAT_003,
         what,
         &text,
-        &["xmi:id=\"a\"", "<xmi:Documentation", "xmi:id=\"b\""],
+        &["xmi:id=\"a\"", "<xmi:foo", "xmi:id=\"b\""],
     );
     assert!(
         matches!(
@@ -752,7 +647,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
     let input = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
          <sacm:ArgumentPackage xmi:id=\"a\"><name content=\"A\"/></sacm:ArgumentPackage>\
-         <xmi:Documentation/>\
+         <xmi:foo/>\
          <sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage>\
          <sacm:ArgumentPackage xmi:id=\"c\"><name content=\"C\"/></sacm:ArgumentPackage>\
          </xmi:XMI>"
@@ -764,12 +659,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
         COMPAT_003,
         "as read",
         &text,
-        &[
-            "xmi:id=\"a\"",
-            "<xmi:Documentation",
-            "xmi:id=\"b\"",
-            "xmi:id=\"c\"",
-        ],
+        &["xmi:id=\"a\"", "<xmi:foo", "xmi:id=\"b\"", "xmi:id=\"c\""],
     );
     let apply = |doc: &mut Document, what: &str, operation: edit::Operation| {
         if let Err(error) = edit::apply(doc, operation) {
@@ -785,7 +675,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
         COMPAT_003,
         what,
         &text,
-        &["<xmi:Documentation", "xmi:id=\"b\"", "xmi:id=\"c\""],
+        &["<xmi:foo", "xmi:id=\"b\"", "xmi:id=\"c\""],
     );
 
     let what = "after deleting b, after it";
@@ -796,7 +686,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
         COMPAT_003,
         what,
         &text,
-        &["xmi:id=\"a\"", "<xmi:Documentation", "xmi:id=\"c\""],
+        &["xmi:id=\"a\"", "<xmi:foo", "xmi:id=\"c\""],
     );
 
     let what = "after reordering the roots to c, b, a";
@@ -811,12 +701,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
         COMPAT_003,
         what,
         &text,
-        &[
-            "xmi:id=\"c\"",
-            "<xmi:Documentation",
-            "xmi:id=\"b\"",
-            "xmi:id=\"a\"",
-        ],
+        &["xmi:id=\"c\"", "<xmi:foo", "xmi:id=\"b\"", "xmi:id=\"a\""],
     );
 
     let what = "after creating the root d";
@@ -835,7 +720,7 @@ fn lib_compat_003_document_level_content_moves_with_root_edits() {
         &text,
         &[
             "xmi:id=\"a\"",
-            "<xmi:Documentation",
+            "<xmi:foo",
             "xmi:id=\"b\"",
             "xmi:id=\"c\"",
             "xmi:id=\"d\"",
@@ -889,7 +774,7 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
     let input = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
          <sacm:ArgumentPackage xmi:id=\"a\"><name content=\"A\"/></sacm:ArgumentPackage>\
-         <xmi:Documentation/>\
+         <xmi:foo/>\
          <sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage>\
          </xmi:XMI>"
     );
@@ -897,8 +782,8 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
     let moved = read_doc(
         "a, b, D",
         &input.replace(
-            "<xmi:Documentation/><sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage>",
-            "<sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage><xmi:Documentation/>",
+            "<xmi:foo/><sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage>",
+            "<sacm:ArgumentPackage xmi:id=\"b\"><name content=\"B\"/></sacm:ArgumentPackage><xmi:foo/>",
         ),
     );
     assert_eq!(
@@ -919,8 +804,8 @@ fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root()
     // XMI metadata, text and an attribute of the wrapper each hold no root.
     for (what, input) in [
         (
-            "xmi:Documentation beside the one root p, p deleted",
-            wrapper("", "<xmi:Documentation/>"),
+            "xmi:foo beside the one root p, p deleted",
+            wrapper("", "<xmi:foo/>"),
         ),
         ("text beside the one root p, p deleted", wrapper("", "note")),
         (
@@ -947,17 +832,21 @@ fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root()
 }
 
 /// A kept `xmi:id` of `xmi:XMI` is in the document's id space: a root that
-/// repeats it is `DuplicateId`, and an edit cannot take it. A strict read
-/// refuses it as XMI metadata not read yet.
+/// repeats it is `DuplicateId`, and an edit cannot take it. Since slice 0073a
+/// a strict read reads it as XMI metadata, with no diagnostic
+/// (SACM23-XMI-019, ADR 0042 D5); until then it refused it as not read yet.
 #[test]
 fn lib_compat_003_a_wrapper_id_is_in_the_id_space() {
     let what = "xmi:id=\"w\" on the wrapper";
     let input = wrapper(" xmi:id=\"w\"", "");
-    let strict = strict_refusal(COMPAT_003, what, &input);
-    assert!(
-        matches!(strict, ReadError::Unsupported { .. }),
-        "{COMPAT_003}: {what}: the strict refusal is not Unsupported: {strict:?}"
-    );
+    match read(Mode::Strict, &input) {
+        Ok(output) => assert!(
+            output.diagnostics().is_empty(),
+            "{COMPAT_003}: {what}: a strict read gives {:?}",
+            output.diagnostics()
+        ),
+        Err(error) => panic!("{COMPAT_003}: {what}: a strict read refuses it: {error:?}"),
+    }
     let mut doc = tolerant(COMPAT_003, what, &input).into_document();
     let answer = edit::apply(
         &mut doc,
@@ -984,40 +873,56 @@ fn lib_compat_003_a_wrapper_id_is_in_the_id_space() {
 
 /// An empty `xmi:id` on `xmi:XMI` identifies nothing: a tolerant read keeps
 /// it as written, outside the id space, with one SACM-ID-002 Warning
-/// affecting no element, beside its SACM-XMI-014.
+/// affecting no element. Since slice 0073a it is kept as the document's XMI
+/// metadata, not as preserved content, and gives no SACM-XMI-014 beside its
+/// SACM-ID-002 (SACM23-XMI-019, ADR 0042 D2, D5).
 #[test]
 fn lib_compat_003_an_empty_wrapper_id_is_id_002() {
     let what = "xmi:id=\"\" on the wrapper";
     let output = tolerant(COMPAT_003, what, &wrapper(" xmi:id=\"\"", ""));
-    let found: Vec<(Code, Severity, usize)> = output
+    let found: Vec<(Code, Severity, usize, &str)> = output
         .diagnostics()
         .iter()
-        .map(|found| (found.code(), found.severity(), found.affected().len()))
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.affected().len(),
+                found.template(),
+            )
+        })
         .collect();
     assert_eq!(
         found,
-        [
-            (Code::ID_INVALID, Severity::Warning, 0),
-            (Code::XMI_UNREAD_CONTENT, Severity::Warning, 0),
-        ],
-        "{COMPAT_003}: {what}: not one SACM-ID-002 and one SACM-XMI-014 affecting no element"
+        [(
+            Code::ID_INVALID,
+            Severity::Warning,
+            0,
+            "SACM-ID-002/empty-id-of-xmi-element"
+        )],
+        "{COMPAT_003}: {what}: not one SACM-ID-002 affecting no element"
     );
     let doc = output.into_document();
     assert!(
-        doc.has_preserved_content(),
-        "{COMPAT_003}: {what}: the empty id is not kept"
+        !doc.has_preserved_content(),
+        "{COMPAT_003}: {what}: the empty id is held as preserved content, not as metadata"
     );
-    assert_round_trips(COMPAT_003, what, &doc);
+    let text = assert_round_trips(COMPAT_003, what, &doc);
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("<xmi:XMI ") && line.contains("xmi:id=\"\"")),
+        "{COMPAT_003}: {what}: the empty id is not written back on the wrapper\n{text}"
+    );
 }
 
 /// The `xmi:id` of document-level content stays in the id space when an
 /// element is deleted: the delete frees only what the element owned.
 #[test]
 fn lib_compat_003_a_document_level_id_stays_in_the_id_space_after_a_delete() {
-    let what = "xmi:Documentation xmi:id=\"d\" beside a package holding c1, c1 deleted";
+    let what = "xmi:foo xmi:id=\"d\" beside a package holding c1, c1 deleted";
     let input = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
-         <xmi:Documentation xmi:id=\"d\"/>{}</xmi:XMI>",
+         <xmi:foo xmi:id=\"d\"/>{}</xmi:XMI>",
         package(&claim("c1", "", ""))
     );
     let mut doc = tolerant(COMPAT_003, what, &input).into_document();

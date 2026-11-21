@@ -41,8 +41,6 @@ use sacm::xmi::{
     self, Mode, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
 };
 
-mod common;
-
 /// Line 1 of every output.
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 /// The attributes the document element carries before any `xmi:id`, as written.
@@ -406,33 +404,6 @@ fn assert_preserved_at(row: &str, what: &str, input: &str, line: u32, column: u3
     assert_eq!(
         documents[0], documents[1],
         "{row}: {what}: the modes read different documents"
-    );
-}
-
-/// Asserts that a strict read refuses `input` as `Unsupported`, with no
-/// code, at line `line`, column `column`, and returns no document. A
-/// tolerant read keeps it (LIB-COMPAT-001, ADR 0035).
-fn assert_unsupported_at(row: &str, what: &str, input: &str, line: u32, column: u32) {
-    let strict = ReadOptions::default().with_mode(Mode::Strict);
-    let error = match read_with(row, input.as_bytes(), strict) {
-        Ok(output) => panic!(
-            "{row}: {what}: read returned a document of {} elements for {input:?}",
-            output.document().element_count()
-        ),
-        Err(error) => error,
-    };
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }),
-        "{row}: {what}: expected Unsupported for {input:?}, got {error:?}"
-    );
-    assert!(
-        error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-        "{row}: {what}: the Unsupported refusal does not carry the code of its label"
-    );
-    assert_eq!(
-        error.location(),
-        Some(loc(row, line, column)),
-        "{row}: {what}: the refusal of {input:?} is not at line {line}, column {column}: {error}"
     );
 }
 
@@ -1178,15 +1149,52 @@ fn sacm23_xmi_012_white_space_comments_and_processing_instructions_in_name_are_a
 }
 
 #[test]
-fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_or_preserved() {
+fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_metadata_or_preserved() {
     let row = "SACM23-XMI-012";
     // An `xmi:id` on `name` is read (SACM23-XMI-022), so it is not among
-    // these. The XMI attributes are conforming and not read yet
-    // (SACM23-XMI-019): refused at the attribute.
+    // these. The XMI attributes `xmi:uuid` and `xmi:label` are read as the
+    // name's XMI metadata, with no diagnostic, and both saves write them back
+    // (SACM23-XMI-019, ADR 0042; refused at the attribute until slice 0073a).
     for attribute in ["xmi:uuid=\"u1\"", "xmi:label=\"l1\""] {
-        // The attribute starts line 3, after four spaces.
         let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
-        assert_unsupported_at(row, attribute, &input, 3, 5);
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            let doc = match read_with(
+                row,
+                input.as_bytes(),
+                ReadOptions::default().with_mode(mode),
+            ) {
+                Ok(output) => {
+                    assert_eq!(
+                        output.diagnostics(),
+                        [],
+                        "{row}: {attribute} on name: a {mode:?} read gives diagnostics"
+                    );
+                    output.into_document()
+                }
+                Err(error) => {
+                    panic!("{row}: {attribute} on name: a {mode:?} read refused it: {error}")
+                }
+            };
+            assert_eq!(
+                doc.get("a").and_then(SacmElement::name),
+                Some(&LangString::new("A")),
+                "{row}: {attribute} on name: the name is not read ({mode:?})"
+            );
+            for write_mode in [Mode::Strict, Mode::Tolerant] {
+                let text = match xmi::write(&doc, &WriteOptions::default().with_mode(write_mode)) {
+                    Ok(text) => text,
+                    Err(error) => {
+                        panic!(
+                            "{row}: {attribute} on name: a {write_mode:?} write refused it: {error}"
+                        )
+                    }
+                };
+                assert!(
+                    text.contains(&format!("<name content=\"A\" {attribute} />")),
+                    "{row}: {attribute} on name: a {write_mode:?} write does not write it back:\n{text}"
+                );
+            }
+        }
     }
     // The others do not conform: a defect inside the name, which keeps the
     // whole name as preserved content of a, at its start tag (ADR 0033).

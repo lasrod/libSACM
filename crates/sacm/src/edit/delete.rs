@@ -432,8 +432,11 @@ impl<'d> Tree<'d> {
                 let preserved = element
                     .preserved()
                     .map_or(&[][..], |held| held.ids.as_slice());
+                // The ids of its XMI metadata are its own too (ADR 0042 D5).
+                let metadata = element.metadata_parts().flat_map(|held| held.ids.iter());
                 std::iter::once(element.id())
                     .chain(preserved)
+                    .chain(metadata)
                     .map(move |id| (id, position))
             })
             .collect();
@@ -488,9 +491,13 @@ impl<'d> Tree<'d> {
     /// lower index among its children: whether a child of it before its last
     /// preserved child is deleted (ADR 0033).
     fn moves_preserved(&self, element: SacmElement<'_>, deleted: &[bool]) -> bool {
+        // Its XMI metadata children are placed the same way (ADR 0042).
         let Some(last) = element
             .preserved()
-            .and_then(|preserved| preserved.children.iter().map(|placed| placed.index).max())
+            .into_iter()
+            .chain(element.metadata())
+            .flat_map(|placed| placed.children.iter().map(|placed| placed.index))
+            .max()
         else {
             return false;
         };
@@ -574,8 +581,10 @@ impl<'d> Tree<'d> {
             let preserved = element
                 .preserved()
                 .map_or(&[][..], |held| held.ids.as_slice());
+            let metadata = element.metadata_parts().flat_map(|held| held.ids.iter());
             let held = std::iter::once(element.id())
                 .chain(preserved)
+                .chain(metadata)
                 .filter_map(|id| triggers.get(id))
                 .flatten()
                 .copied()
