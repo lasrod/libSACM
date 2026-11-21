@@ -1646,6 +1646,47 @@ fn sacm23_xmi_019_a_copy_drops_the_uuid_a_delete_removes_and_a_move_keeps() {
         answer.is_ok(),
         "{ROW}: after SetContent::remove n1, CreateClaim::with_id(\"x9\") is refused: {answer:?}"
     );
+    // And the ids its metadata named: while the extension names `claim_1`, a
+    // generated id skips it; once the content is removed, it is free.
+    let source = read_clean(
+        "n1 whose content holds an extension naming claim_1",
+        Mode::Strict,
+        &package(
+            "<note xmi:id=\"n1\"><content><xmi:Extension xmi:idref=\"claim_1\"/>\
+             <value content=\"a\"/></content></note>",
+        ),
+    );
+    let created_ids = |mutation: &edit::Mutation| -> Vec<String> {
+        mutation
+            .created_ids()
+            .iter()
+            .map(|id| id.as_str().to_owned())
+            .collect()
+    };
+    let mut held = source.clone();
+    let mutation = apply(
+        "CreateClaim while the content's extension names claim_1",
+        &mut held,
+        CreateClaim::new("p", LangString::new("C")),
+    );
+    assert_eq!(
+        created_ids(&mutation),
+        ["claim_2"],
+        "{ROW}: while the content's extension names claim_1, CreateClaim does not create claim_2"
+    );
+    let mut doc = source;
+    apply("SetContent::remove n1", &mut doc, SetContent::remove("n1"));
+    let mutation = apply(
+        "CreateClaim after SetContent::remove n1",
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")),
+    );
+    assert_eq!(
+        created_ids(&mutation),
+        ["claim_1"],
+        "{ROW}: after SetContent::remove n1, the id its extension named is not free: CreateClaim \
+         does not create claim_1"
+    );
     // A copy whose extension names an id of the target: the id it names
     // would be another element's there.
     let source = read_clean(

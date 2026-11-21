@@ -1253,6 +1253,69 @@ fn sacm23_xmi_030_a_root_with_a_link_attribute_is_not_moved() {
             "{ROW}: {what}: roots()"
         );
     }
+    // Attributes that are no link: an unqualified attribute other than
+    // `href`, an `href` in the XMI namespace, and an `idref` in another
+    // namespace. The root keeps each, and is moved.
+    let (input, marks) = marked(
+        &wrapped(&[
+            case("case", "<argumentPackage xmi:idref=\"args\"/>"),
+            format!(
+                "<sacm:ArgumentPackage xmi:id=\"args\" {MARK}foo=\"1\" {MARK}xmi:href=\"x\" \
+                 {MARK}foo:idref=\"case\"><name content=\"args\"/></sacm:ArgumentPackage>"
+            ),
+        ])
+        .replacen("<xmi:XMI ", "<xmi:XMI xmlns:foo=\"urn:foo\" ", 1),
+    );
+    assert!(
+        input.contains("xmlns:foo=\"urn:foo\"") && marks.len() == 3,
+        "{ROW}: setup: the input does not declare foo, or has not three marks"
+    );
+    for mode in MODES {
+        let what = format!("a proxy of a root with foo, xmi:href and foo:idref, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        let attribute_kept = |at: (u32, u32), attribute: &str| {
+            kept(
+                mode,
+                "SACM-XMI-003/attribute-kept",
+                at,
+                "args",
+                &[
+                    ("attribute", attribute),
+                    ("holder_class", "ArgumentPackage"),
+                    ("holder_id", "args"),
+                ],
+            )
+        };
+        assert_eq!(
+            diagnostics(&what, &output),
+            [
+                attribute_kept(marks[0], "foo"),
+                attribute_kept(marks[1], "xmi:href"),
+                attribute_kept(marks[2], "foo:idref"),
+            ],
+            "{ROW}: {what}: not exactly three attribute-kept on args, with no \
+             proxy-of-linked-root"
+        );
+        let doc = output.document();
+        assert_eq!(root_ids(doc), ["case"], "{ROW}: {what}: roots()");
+        assert_eq!(
+            parent_of(&what, doc, "args").as_deref(),
+            Some("case"),
+            "{ROW}: {what}: args is not moved into case"
+        );
+        let text = written(&what, doc, Mode::Tolerant);
+        let back = read_ok("the output", Mode::Tolerant, &text).into_document();
+        assert!(
+            back == *doc,
+            "{ROW}: {what}: the output read back is not ==: {:?}\n{text}",
+            semantic_compare(doc, &back)
+        );
+        assert_eq!(
+            written("the output read back", &back, Mode::Tolerant),
+            text,
+            "{ROW}: {what}: the second write is not byte-stable"
+        );
+    }
 }
 
 // --- 13. Depth, as resolved ------------------------------------------------------------
@@ -1446,4 +1509,126 @@ fn sacm23_xmi_030_a_chain_deeper_than_the_depth_limit_is_refused() {
         &proxy_chain(300, false, 255),
         Limits::default(),
     );
+    // The walk of a moved tree counts elements only, and comes back up. `a`
+    // names `b`, which holds `b2` holding `b3`, then `b4` holding `b5`. As
+    // resolved, b is at 3, b2 and b4 at 4, b3 and b5 at 5, and their names
+    // at 6. The name of `b3` holds white space and a processing instruction,
+    // which are no elements.
+    let b3 = "<assuranceCasePackage xmi:id=\"b3\"><name content=\"b3\"> <?pi x?> </name>\
+              </assuranceCasePackage>";
+    let walked = wrapped(&[
+        case("a", "<assuranceCasePackage xmi:idref=\"b\"/>"),
+        case(
+            "b",
+            &format!("{}{}", inline("b2", b3), inline("b4", &inline("b5", ""))),
+        ),
+    ]);
+    for mode in MODES {
+        let what = format!("a naming b, whose two branches reach depth 6, {mode:?}");
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        let output = match xmi::read(walked.as_bytes(), &options) {
+            Ok(output) => output,
+            Err(error) => panic!("{ROW}: {what}: refused under depth 6: {error:?} ({error})"),
+        };
+        assert_eq!(output.diagnostics(), [], "{ROW}: {what}: diagnostics");
+        let doc = output.document();
+        assert_eq!(
+            parent_of(&what, doc, "b").as_deref(),
+            Some("a"),
+            "{ROW}: {what}: the parent of b"
+        );
+        for write_mode in MODES {
+            let text = written(&what, doc, write_mode);
+            let options = ReadOptions::default()
+                .with_mode(Mode::Strict)
+                .with_limits(limits);
+            let back = match xmi::read(text.as_bytes(), &options) {
+                Ok(back) => back.into_document(),
+                Err(error) => panic!(
+                    "{ROW}: {what}: the {write_mode:?} output is refused under the limits of \
+                     its input: {error:?} ({error})\n{text}"
+                ),
+            };
+            assert!(
+                back == *doc,
+                "{ROW}: {what}: the {write_mode:?} output read back is not ==: {:?}",
+                semantic_compare(doc, &back)
+            );
+        }
+    }
+    // Depth is counted once the shared and the cyclic proxies are known to
+    // move nothing. In a cycle, `a` and `b` each hold a proxy of the other
+    // and a tree whose deepest name is at depth 6 as written: neither moves,
+    // so neither is deeper.
+    let role = "assuranceCasePackage";
+    let tree_of = |id: &str| {
+        inline(
+            &format!("{id}2"),
+            &inline(&format!("{id}3"), &inline(&format!("{id}4"), "")),
+        )
+    };
+    let (input, marks) = marked(&wrapped(&[
+        case("a", &format!("{}{}", proxy(role, "b"), tree_of("a"))),
+        case("b", &format!("{}{}", proxy(role, "a"), tree_of("b"))),
+    ]));
+    for mode in MODES {
+        let what = format!("a cycle of two roots whose trees reach depth 6, {mode:?}");
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        let output = match xmi::read(input.as_bytes(), &options) {
+            Ok(output) => output,
+            Err(error) => panic!("{ROW}: {what}: refused under depth 6: {error:?} ({error})"),
+        };
+        let cycle = |holder: &str, target: &str, at: (u32, u32)| {
+            kept(
+                mode,
+                "SACM-XMI-003/proxy-cycle",
+                at,
+                holder,
+                &proxy_arguments(role, target, "AssuranceCasePackage", holder),
+            )
+        };
+        assert_eq!(
+            diagnostics(&what, &output),
+            [cycle("a", "b", marks[0]), cycle("b", "a", marks[1])],
+            "{ROW}: {what}: not two proxy-cycle"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["a", "b"],
+            "{ROW}: {what}: roots()"
+        );
+    }
+    // Shared: `a` holds two proxies of `b`, whose tree reaches depth 6 as
+    // written. `b` does not move, so it is no deeper.
+    let (input, marks) = marked(&wrapped(&[
+        case("a", &format!("{}{}", proxy(role, "b"), proxy(role, "b"))),
+        case("b", &tree_of("b")),
+    ]));
+    for mode in MODES {
+        let what = format!("two proxies of a root whose tree reaches depth 6, {mode:?}");
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        let output = match xmi::read(input.as_bytes(), &options) {
+            Ok(output) => output,
+            Err(error) => panic!("{ROW}: {what}: refused under depth 6: {error:?} ({error})"),
+        };
+        let shared = |at: (u32, u32)| {
+            kept(
+                mode,
+                "SACM-XMI-003/proxy-shared",
+                at,
+                "a",
+                &proxy_arguments(role, "b", "AssuranceCasePackage", "a"),
+            )
+        };
+        assert_eq!(
+            diagnostics(&what, &output),
+            [shared(marks[0]), shared(marks[1])],
+            "{ROW}: {what}: not two proxy-shared"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["a", "b"],
+            "{ROW}: {what}: roots()"
+        );
+    }
 }

@@ -62,3 +62,4 @@ The other half, slice 0073b, holds SACM23-XMI-029 and LIB-EDIT-020.
     - B4.3: a delete frees metadata ids in `compact`, not `release_metadata`; a `SetContent::remove` case kills the ids half. The references-loop mutant survives and is a follow-up.
     - `lib_api_018_template_rs_declares_the_108_diagnostic_templates` is renamed to `…_the_109_…`.
     - The dangling affected id of a spelled proxy of no root is a follow-up for slice 0073b.
+- 2026-11-21 verification round 2 (5628f15): FAIL on test gaps only. Every round-1 item is fixed, the lead's rulings are accepted, and no wrong behaviour was found. Six hand mutants of the fix-round code survive (F1 to F4). The maintainer allowed a third round for exactly the four prescribed test additions; the `release_metadata` follow-up is replaced by F4's test.
