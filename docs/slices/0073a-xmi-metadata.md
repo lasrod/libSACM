@@ -1,8 +1,8 @@
 ---
 slice: 0073a
 name: xmi-metadata
-state: in-progress
-step: verification
+state: done
+step: closed
 rows: [SACM23-XMI-019, SACM23-XMI-030]
 mode: pr
 base: main (271ed77)
@@ -63,3 +63,4 @@ The other half, slice 0073b, holds SACM23-XMI-029 and LIB-EDIT-020.
     - `lib_api_018_template_rs_declares_the_108_diagnostic_templates` is renamed to `…_the_109_…`.
     - The dangling affected id of a spelled proxy of no root is a follow-up for slice 0073b.
 - 2026-11-21 verification round 2 (5628f15): FAIL on test gaps only. Every round-1 item is fixed, the lead's rulings are accepted, and no wrong behaviour was found. Six hand mutants of the fix-round code survive (F1 to F4). The maintainer allowed a third round for exactly the four prescribed test additions; the `release_metadata` follow-up is replaced by F4's test.
+- 2026-11-21 verification round 3 (8daea1d): PASS for both rows. Record: docs/verification/0073a-xmi-metadata.md.
