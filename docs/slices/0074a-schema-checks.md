@@ -1,8 +1,8 @@
 ---
 slice: 0074a
 name: schema-checks
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-TOOL-004, LIB-TOOL-023]
 mode: pr
 base: main (6ca9884)
@@ -90,3 +90,4 @@ defects D29 to D32.
       the PR-diff mutants job has no spec.
   - The maintainer approved adding `SACM XML Schema` to main's required checks
     (2026-11-22). The lead added it.
+- 2026-11-22 verify round 2 (b1db295): PASS for both rows. Record docs/verification/0074a-schema-checks.md; both rows verified. Two triage reasons reworded; the 11 "equivalent" rows are a follow-up (they can be told apart through the `pub` xtask API).

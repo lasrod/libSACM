@@ -6043,7 +6043,8 @@ tests = [
   "xtask/tests/metamodel.rs::lib_tool_004_the_inventory_agrees_with_the_model",
   "xtask/tests/metamodel.rs::lib_tool_004_every_attribute_and_value_composition_is_read_and_written",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074a-schema-checks.md"
 depends_on = ["LIB-TOOL-002", "LIB-API-003", "LIB-API-012", "LIB-API-015"]
 acceptance = [
   "In `xtask/tests/metamodel.rs` (tests 3 to 10 need the spec; with `SACM_SPEC_DIR` unset and the file absent they print `<ROW>: SKIPPED: <path> is absent; run `cargo xtask fetch-spec`` on stderr and pass; set with the file absent, or empty, they fail; a wrong hash always fails): `lib_tool_004_parse_reads_classes_properties_bounds_and_enumerations`: on `SAMPLE_MODEL`, the exact `Metamodel` value, including `Box.next` with lower 2, upper None and `Leaf.state` with `Enumeration, 1, Some(1)`.",
@@ -8012,7 +8013,8 @@ tests = [
   "xtask/tests/schema.rs::lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without_goldens",
   "xtask/tests/run.rs::lib_tool_023_run_dispatches_schema_and_the_usage_lists_it",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074a-schema-checks.md"
 depends_on = ["LIB-TOOL-004", "LIB-TOOL-021", "LIB-CLI-003", "LIB-COMPAT-007", "SACM23-XMI-019"]
 
 [[row]]
