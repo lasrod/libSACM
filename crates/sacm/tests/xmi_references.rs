@@ -31,8 +31,6 @@ use sacm::model::{Document, ElementId, LangString, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
-mod common;
-
 const XMI_005: &str = "SACM23-XMI-005";
 const XMI_015: &str = "SACM23-XMI-015";
 
@@ -308,20 +306,6 @@ fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, h
     assert_eq!(
         documents[0], documents[1],
         "{row}: {what}: the modes read different documents"
-    );
-}
-
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. })
-            && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
-        "{row}: {what}: not Unsupported: {error:?}"
-    );
-    assert_eq!(
-        error.location(),
-        Some(at),
-        "{row}: {what}: not refused at the construct: {error}"
     );
 }
 
@@ -1208,24 +1192,37 @@ fn sacm23_xmi_015_an_element_naming_an_unknown_id_is_kept_and_reported_by_valida
 // --- Item 5: href forms that are not same-document ids ----------------------------------------------
 
 #[test]
-fn sacm23_xmi_015_an_xpointer_href_is_unsupported_and_one_naming_no_element_is_preserved() {
+fn sacm23_xmi_015_an_xpointer_href_is_read_and_one_naming_no_element_is_preserved() {
     let row = XMI_015;
     for (end, flag) in ENDS {
-        // An XPointer fragment: a link SACM23-XMI-029 reads, refused at the
-        // attribute.
-        for value in ["#xpointer(id('c2'))", "other.xmi#xpointer(id('c2'))"] {
+        // An XPointer fragment is read as an `Href`, whose document part may
+        // be empty, since slice 0073b (SACM23-XMI-029): it was refused at the
+        // attribute, naming that row, until then.
+        for (value, document) in [
+            ("#xpointer(id('c2'))", ""),
+            ("other.xmi#xpointer(id('c2'))", "other.xmi"),
+        ] {
             let what = format!("<{end} href={value:?}/>");
-            let (input, marks) = marked(
+            let doc = read_ok(
                 row,
-                &c1_then_c2(flag, &format!("<{end} {MARK}href=\"{value}\"/>")),
+                &what,
+                &c1_then_c2(flag, &format!("<{end} href=\"{value}\"/>")),
             );
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
-            assert!(
-                error
-                    .to_string()
-                    .ends_with("(a limit of this version; SACM23-XMI-029 reads it)"),
-                "{row}: {what}: does not name SACM23-XMI-029: {error}"
+            let c1 = element(row, &doc, "c1");
+            let held: Vec<(&str, &str, bool)> = sacm::model::ReferenceEnd::ALL
+                .iter()
+                .filter(|one| one.name() == end)
+                .flat_map(|one| c1.hrefs(*one))
+                .map(|href| (href.as_str(), href.document(), href.is_xpointer()))
+                .collect();
+            assert_eq!(
+                (
+                    held,
+                    target(row, &doc, "c1", end),
+                    c1.has_preserved_content()
+                ),
+                (vec![(value, document, true)], None, false),
+                "{row}: {what}: not read as an XPointer href of the end"
             );
         }
         // An href that names no element (no `#`, an empty fragment, or

@@ -1401,9 +1401,9 @@ fn sacm23_arg_014_create_reports_what_it_holds_and_checks_in_order() {
             operation.parent(),
             operation.id(),
             operation.name(),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (None, None, &named("Braking interface"), "p"),
+        (None, None, &named("Braking interface"), Some("p")),
         "{row}: root()"
     );
     let operation = CreateArgumentPackageInterface::new("p", named("I"), "p").with_id("i");
@@ -1411,9 +1411,9 @@ fn sacm23_arg_014_create_reports_what_it_holds_and_checks_in_order() {
         (
             operation.parent().map(ElementId::as_str),
             operation.id().map(ElementId::as_str),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (Some("p"), Some("i"), "p"),
+        (Some("p"), Some("i"), Some("p")),
         "{row}: new() and with_id()"
     );
     assert_eq!(

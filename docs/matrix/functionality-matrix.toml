@@ -3408,7 +3408,7 @@ tests = [
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_element_naming_an_unknown_id_is_kept_and_reported_by_validate",
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_malformed_reference_element_is_preserved_or_unsupported_at_that_construct",
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_idref_or_an_href_with_white_space_inside_is_preserved",
-  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_xpointer_href_is_unsupported_and_one_naming_no_element_is_preserved",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_xpointer_href_is_read_and_one_naming_no_element_is_preserved",
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_the_cross_document_fixture_reads_its_href_and_never_drops_it",
 ]
 code = ["crates/sacm/src/xmi/roots.rs"]
@@ -4915,13 +4915,51 @@ acceptance = [
 id = "SACM23-XMI-029"
 area = "XMI"
 milestone = "M6"
-title = "Cross-document proxies, expressions, XPointer and XLink links"
-requirement = "`xmi::read` reads in both modes, holds, writes back and compares, never dropping them, the links SACM23-XMI-027 does not read: a role element in reference form carrying an unqualified `href` (a proxy of a contained element, XMI 2.5.1 §7.10.1), typed or untyped, under an abstract or a concrete role; an `href` with a document part as the `expression` of an ExpressionLangString (SACM23-BASE-009); an `href` whose fragment holds `(` or `)` (an XPointer); and `XLink` attributes on a reference element (§7.6.2, §7.10.2). Until then a strict read refuses each as `Unsupported` (Interim: the `CrossDocumentHref` entry of LIB-API-011) and a tolerant read keeps it as preserved content, both with SACM-XMI-007; the entry is removed when this row is verified."
-source = "XMI 2.5.1 formal/15-06-07 §7.10.1 (pp. 22-23) \"Elements act as a union, where they are either a definition or a proxy.\"; §7.10.2 (pp. 23-24); rules 2l, 2m, 2n (p. 64); §7.6.2 (p. 14) \"it is permissible to use them in addition to the attributes defined in the LinkAttribs group\"; D-PRESERVE; ADR 0040"
+title = "Cross-document proxies, `expression` hrefs, XPointer and type-prefixed hrefs"
+requirement = "(a) XPointer. An `href` whose fragment holds `(` or `)` is an XPointer. It is held as an `Href` with `is_xpointer()` true, on any reference end, an `expression` or a proxy. Its document part may be empty. (b) Type prefix (rule 2n). The type is the part before the first run of XML white space in the trimmed value. That part must be a QName, resolved in scope, that names a concrete class in the root's SACM family. The rest is the URI reference, which may hold no white space. It is held as `sacm:<Class> <URI>`, and `Href::kind()` gives the class. A type-prefixed `#id` is the id. A type that names no concrete class, an abstract class, a foreign or unbound prefix, or a URI part with white space is SACM-XMI-003. (c) Cross-file containment proxy. A role element in reference form whose `href` names an element of another document, or an XPointer, is a cross-file containment proxy. It is held in document order as a `Proxy` (its role and its `Href`) of its container, `SacmElement::proxies()`. Its type attribute, if it has one, is held as the href's type. If both are given and differ, or the type, however it is given, is not admitted by the role, it is SACM-XMI-003. It is written after the container's children. It is never resolved, and no rule counts it, but `RejectIfNonEmpty` counts it as contained. (d) Expression href. An `href` with a document part, or an XPointer, as an ExpressionLangString's `expression` is held as `LangString::expression_href()`. It counts as the expression being present. Defects. Each of these is SACM-XMI-003 in both modes: `xmi:id`, `xmi:uuid`, `xmi:label`, a type attribute, an XLink attribute or any other attribute on a reference element; `href` beside `xmi:idref` on a reference element or a proxy. Bookkeeping. `Unread::CrossDocumentHref` is removed, and the list has no `Interim` entry. Kept proxies. A diagnostic about the spelling or the `xsi:type` of a same-file proxy that is kept affects its container, never the id the proxy names (a follow-up of slice 0073a). The SACM-XMI-010 of a kept same-file proxy or of a cross-file proxy is `SACM-XMI-010/xsi-type-on-proxy`, which names the proxy's role, its container and its class (arguments `element`, `holder_class`, `holder_id`, `class`, in sentence order, ADR 0030 amendment 3); a resolved proxy's stays `SACM-XMI-010/xsi-type`, about the root."
+source = "XMI 2.5.1 formal/15-06-07 §7.6.2 (pp. 14-15) \"The link attributes act as a union of two linking mechanisms, any one of which may be used at one time.\"; §7.10.1 (pp. 22-23); §7.10.2 (pp. 23-24) \"The URI reference must be of the form URI#id_value\"; production 2c, rules 2l, 2m, 2n (pp. 62-64) \"A URI Reference, optionally preceded by the type of the object being referenced.\"; rule 4e (p. 48); formal/23-05-08 §8.4 (pp. 18-19); D-PRESERVE; M6 decisions Q4 (the maintainer, 2026-11-19); ADR 0040 amendment 1"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-027", "SACM23-XMI-019"]
-notes = "Split from SACM23-XMI-027 by slice 0068 (ADR 0040). From verification 0051: a role element with both `href` and `xmi:idref` takes the first in document order when typed (`role_metadata`) but prefers `xmi:idref` when untyped under an abstract role (`proxy_link`); pick one rule when this row is built."
+status = "verified"
+verification = "docs/verification/0073b-cross-document-links.md"
+depends_on = ["SACM23-XMI-027", "SACM23-XMI-019", "SACM23-XMI-030", "SACM23-BASE-009"]
+notes = "Split from SACM23-XMI-027 by slice 0068 (ADR 0040). Q4 settled the 0051 note: `href` beside `xmi:idref` is SACM-XMI-003. Slice 0073b; the design brief is target/slice-0073-design.md, items [B]."
+acceptance = [
+  "In `crates/sacm/tests/cross_document_links.rs`: `sacm23_xmi_029_an_xpointer_href_is_held_as_an_href`: `o.xmi#xpointer(id('c'))` on `citedElement`, `metaClaim` and `participantPackage` is held in both modes with no diagnostic. `document()` is `\"o.xmi\"`, `fragment()` is `\"xpointer(id('c'))\"` and `is_xpointer()` is true. `#xpointer((//*[@xmi:uuid='u'])[1])` is held with `document() == \"\"`. Each is written back exactly, in element form.",
+  "`sacm23_xmi_029_a_type_prefixed_href_is_held_with_its_kind`: `sacm:Claim o.xmi#c1` is held as written. `p:Claim\\t\\no.xmi#c1`, with `p` bound to the pinned namespace, is held as `sacm:Claim o.xmi#c1`. An unprefixed `Claim o.xmi#c` is SACM-XMI-003: a reference element is unqualified, so no default namespace can be in scope for it. In each case `kind() == Some(Claim)` and `uri() == \"o.xmi#c1\"`. `sacm:Claim #c1` reads as the id `c1`. `sacm:Assertion o.xmi#c` (abstract), `sacm:Nope o.xmi#c`, `x:Claim o.xmi#c` (with `x` foreign), `q:Claim o.xmi#c` (with `q` unbound) and `sacm:Claim o.xmi#a b` are each SACM-XMI-003, keeping the reference element.",
+  "`sacm23_xmi_029_a_cross_file_containment_proxy_is_held_as_a_proxy`: Golden L1, in both modes, has no diagnostic and writes the L1 output. `case.proxies()` gives `[(\"argumentPackage\", \"arguments.sacm.xmi#args\"), (\"argumentPackage\", \"sacm:ArgumentPackageInterface braking.sacm.xmi#api\")]`. A typed proxy whose type is not admitted by its role, a type attribute and a prefix that disagree, `href=\"o.xmi#c\"` with a child, and `href` with `xmi:uuid` are each `element-kept`. Under the concrete `property` role of an Artifact, the proxy is held.",
+  "`sacm23_xmi_029_an_expression_href_is_held_on_the_lang_string`: in L1, `t1.name().expression_href()` is `glossary.sacm.xmi#blade` and `expression()` is `None`. L1's only SACM-MULT-001 is for `t1`'s missing `value` (SACM23-TERM-003); with a `value` there is none, and with the `expression` element removed `validate` gives `name-without-expression`. A content `\"x\"` beside it gives SACM-EXPR-001. A `value` of a Note's `content` is held the same way.",
+  "`sacm23_xmi_029_identity_and_xlink_attributes_on_a_reference_element_are_sacm_xmi_003`. Each of these attributes keeps the reference element whole with `element-kept` at its `<`, in both modes: `xmi:id`, `xmi:type`, `xsi:type`, `xmi:uuid`, `xmi:label`, `xlink:href` with `xlink:type=\"simple\"` (namespace `http://www.w3.org/1999/xlink`), and the same alongside an `href`. The elements tried are `citedElement`, `expression` (where the whole name is kept) and a group's `argumentElement`.",
+  "`sacm23_xmi_029_href_beside_xmi_idref_is_sacm_xmi_003`: `xmi:idref` and `href` in either order, on a reference element and on a proxy, typed and untyped, under an abstract and a concrete role, are each `element-kept`. This settles the 0051 note.",
+  "`sacm23_xmi_029_no_entry_is_interim` (in `refusal_codes.rs`): The refusal list has no `Interim` entry, and no template id starts with `SACM-XMI-007/`. `Code::XMI_EXTERNAL_HREF` is still `\"SACM-XMI-007\"`. A strict read of every LIB-API-011 sample that gave SACM-XMI-007 now returns `Ok`.",
+  "`sacm23_xmi_029_proxies_are_compared_deleted_copied_and_moved`: Differing proxies give `Difference::Proxies { id, left, right }`, reported right after `Hrefs` for that element. `DeleteElement` with `RejectIfNonEmpty` on an AssuranceCasePackage holding only a proxy is `NotEmpty { contained: 1 }`. `DeleteRecursively` deletes it. Copy and move keep the proxies. `validate` gives the same diagnostics with or without the proxies.",
+  "`sacm23_xmi_029_href_accessors`: `kind()`, `uri()`, `document()`, `fragment()` and `is_xpointer()` are checked for the four held forms: plain, XPointer, same-document XPointer, and typed.",
+  "`sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container`: read tolerantly, `<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:idref=\"nope\"/>` gives `proxy-of-no-root` and its SACM-XMI-013, and an `xsi:type` proxy naming `nope` gives its SACM-XMI-010; each affects the container, and no diagnostic names `nope` as affected.",
+]
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/model/href.rs", "crates/sacm/src/model/lang_string.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "docs/adr/0040-cross-document-references.md"]
+tests = [
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_an_xpointer_href_is_held_as_an_href",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_a_type_prefixed_href_is_held_with_its_kind",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_a_cross_file_containment_proxy_is_held_as_a_proxy",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_an_expression_href_is_held_on_the_lang_string",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_identity_and_xlink_attributes_on_a_reference_element_are_sacm_xmi_003",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_href_beside_xmi_idref_is_sacm_xmi_003",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_proxies_are_compared_deleted_copied_and_moved",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_href_accessors",
+  "crates/sacm/tests/cross_document_links.rs::sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container",
+  "crates/sacm/tests/refusal_codes.rs::sacm23_xmi_029_no_entry_is_interim",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_writing_proxies_and_hrefs_stays_within_the_output_bound",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_proxy_s_type_given_by_its_href_must_be_admitted_by_its_role",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_proxy_carries_at_most_one_type_attribute",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_an_xsi_type_on_a_cross_file_proxy_is_held_with_its_sacm_xmi_010",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_spelled_type_on_a_cross_file_proxy_is_read_tolerantly_and_kept_strictly",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_cross_file_proxy_takes_no_place_among_the_children",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_an_element_holding_only_a_proxy_is_written_with_an_end_tag",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_an_expression_href_is_written_before_the_metadata_of_its_name",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_an_expression_href_is_named_in_messages_and_in_debug",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_proxies_difference_names_each_role_and_href",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_resolved_proxy_s_diagnostics_affect_the_root_or_the_container",
+  "crates/sacm/tests/cross_document_link_details.rs::sacm23_xmi_029_a_proxy_is_written_after_the_placed_and_preserved_children"
+]
 
 [[row]]
 id = "SACM23-TERM-001"
@@ -5221,7 +5259,7 @@ tests = [
   "crates/sacm/tests/expression_lang_string.rs::sacm23_base_009_expressions_follow_write_order_and_a_scrub_keeps_the_others",
   "crates/sacm/tests/expression_lang_string.rs::sacm23_base_009_two_type_attributes_naming_different_classes_keep_the_whole_name",
   "crates/sacm/tests/expression_lang_string.rs::sacm23_base_009_creates_with_ends_check_the_name_expression_in_each_phase",
-  "crates/sacm/tests/expression_lang_string.rs::sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_document_href_is_unsupported",
+  "crates/sacm/tests/expression_lang_string.rs::sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_document_href_is_read",
 ]
 acceptance = [
   "`LangString::new(\"x\").with_lang(\"en\").with_expression(\"blade\")` has `expression() == Some(\"blade\")`, `is_expression_lang_string()`, `lang() == Some(\"en\")` and `content() == Some(\"x\")`. `with_expression(\"lid\")` replaces the expression. `without_expression()` gives a value `==` to `LangString::new(\"x\").with_lang(\"en\")`. A plain value has `expression() == None` and `!is_expression_lang_string()`. With equal `lang` and `content`, plain < an ExpressionLangString with no expression < one with `a` < one with `b`, all pairwise unequal, and equal values hash equally. `Debug` of a plain value is unchanged; an ExpressionLangString's `Debug` starts `ExpressionLangString {` and shows its `expression`.",
@@ -5598,11 +5636,50 @@ id = "LIB-EDIT-020"
 area = "EDIT"
 milestone = "M6"
 title = "Edits create and remove cross-document references"
-requirement = "A public constructor builds a `model::Href` from exactly what SACM23-XMI-027 reads as `document#fragment` (trimmed) and refuses anything else with a typed error. `SetReferences` takes ids and `Href`s and replaces both lists; `AddReference` and `RemoveReference` add or remove one `Href` (every occurrence on remove); the creates of the four interface and four binding kinds accept `Href`s for `implements` and `participantPackage`. Bounds count distinct ids plus distinct `href`s (ADR 0040 D5); an `Href` is never checked for existence or type (D6); with `serde` the operations read and write their `href`s."
-source = "ADR 0040 D7; XMI 2.5.1 §7.10.2; formal/23-05-08 §9.4 (participants external to the containing package); M5 close audit"
+requirement = "`Href::new`. It accepts exactly the values `Href::as_str()` can give and refuses anything else with `HrefError`. Reference edits. `SetReferences::with_hrefs` sets the end's `href`s beside its ids, replacing both lists. `AddReference::href` appends one `Href`. `RemoveReference::href` removes every occurrence of one, and is `EditError::HrefNotHeld` when the end holds none. Creates. The four interface creates take `implements` as an `Href` (`root_href`, `new_href`). The four binding creates take `participantPackage` `Href`s beside their ids (`with_participant_package_hrefs`). Expressions. `LangString::with_expression_href` sets an `expression` `Href`. Bounds and checks. Bounds count distinct ids plus distinct `href`s, and an `Href` is never checked for existence or type. serde. `Href` is a JSON string, checked by `Href::new`. `SetReferences` takes `hrefs`, which defaults to empty and is written only when it is not empty. `AddReference` and `RemoveReference` take exactly one of `id` and `href`. Interface creates take exactly one of `implements` and `implements_href`. Binding creates take `participant_package_hrefs`, which defaults to empty and is written only when it is not empty. An ExpressionLangString's `expression` is an id string, `null`, or `{\"href\": \"…\"}`. Href characters. `Href::new` refuses a character that is not an XML 1.0 `Char` (§2.2) before any other check, as `HrefError::Character`, so no edit or JSON value can hold an href that a write could not represent."
+source = "ADR 0040 amendment 1 (D7); XMI 2.5.1 formal/15-06-07 §7.10.2 (p. 23) \"The URI reference must be of the form URI#id_value\"; formal/23-05-08 §9.4 (p. 25) \"external to Packages to the AssuranceCasePackage that contains this AssuranceCasePackageBinding\"; M6 decisions Q8 (the maintainer, 2026-11-19)"
+kind = "editing"
+status = "verified"
+verification = "docs/verification/0073b-cross-document-links.md"
+depends_on = ["SACM23-XMI-027", "SACM23-XMI-029", "LIB-EDIT-009", "LIB-API-006"]
+notes = "Found at the M5 close: hrefs were read, written, counted and removed, but no operation created one. ADR 0040 amendment 1 gives the API shape. `AddReference::id()`, `RemoveReference::id()` and the interface creates' `implements()` return `Option` (Breaking, 0.4.0; the maintainer, 2026-11-20). Slice 0073b."
+acceptance = [
+  "In `crates/sacm/tests/edit_hrefs.rs`: `lib_edit_020_href_new_accepts_exactly_what_the_reader_holds`: These are `Ok`, and `Href::new(h.as_str()) == Ok(h)` holds for every `Href` read in the XMI-029 tests: `o.xmi#c`, `o.xmi#xpointer(id('c'))`, `#xpointer(id('c'))`, `sacm:Claim o.xmi#c` and `sacm:ArgumentPackageInterface #xpointer(x)`. These fail with the error shown: `\" o.xmi#c\"`, `\"o.xmi#c \"`, `\"sacm:Claim  o.xmi#c\"`, `\"o.xmi#a\\tb\"` give `WhiteSpace`. `\"foo o.xmi#c\"`, `\"x:Claim o.xmi#c\"`, `\"sacm:Assertion o.xmi#c\"` give `Type`. `\"o.xmi\"`, `\"o.xmi#\"`, `\"\"` give `NoFragment`. `\"o.xmi#a#b\"` give `HashInFragment`. `\"#c\"`, `\"sacm:Claim #c\"` give `SameDocument`. The check order is the table's order: `\"x o.xmi\"` is `Type`, not `NoFragment`. The Display texts are those under Public API.",
+  "`lib_edit_020_set_references_with_hrefs_replaces_both_lists`: On binding `b` (ids `[p]`), `SetReferences::new(\"b\", ParticipantPackage, [\"p\"]).with_hrefs([h1])` holds `[p]` and `[h1]`, and `b` is changed. The same set again leaves `b` unchanged. `[h1, h1]` with no ids is `TooFewReferences { given: 1, required: 2 }`. `clear` empties both lists. Hrefs on the derived `expression` end are `DerivedEnd`.",
+  "`lib_edit_020_add_reference_href_appends_and_checks_bounds`: Appending `h2` to `[p]`/`[h1]` holds `[h1, h2]`. A second `implements` href on an interface is `TooManyReferences { given: 2, allowed: 1 }`. An `href` on a `target` that already holds an id is `TooManyReferences`. `href` on `citedElement` of a Claim works, and the end is written in element form.",
+  "`lib_edit_020_remove_reference_href_removes_every_occurrence`: Removing `h1` from `[h1, h1, h2]` leaves `[h2]`. Removing an `href` the end does not hold is `HrefNotHeld { end: \"participantPackage\", href }`, code SACM-CMD-001, Display `the participantPackage holds no href \"o.xmi#x\" to remove`. Removing one that would leave fewer than two distinct participants is `TooFewReferences`.",
+  "`lib_edit_020_interface_and_binding_creates_take_hrefs`: For each of the four kinds, `root_href(name, h)` and `new_href(parent, name, h)` create an interface with `implements` empty and `hrefs(Implements) == [h]`. The accessors give `implements() == None` and `implements_href() == Some(&h)`. A binding `new(parent, name, [\"p\"]).with_participant_package_hrefs([h])` is accepted. One with `[\"p\"]` alone is `TooFewReferences`. An `Href` naming nothing anywhere is accepted.",
+  "`lib_edit_020_an_expression_href_is_never_checked`: `CreateClaim` and `SetName` with `LangString::new(\"x\").with_expression_href(h)` are accepted. A copy keeps it. `with_expression(\"t\")` after it replaces it with the id.",
+  "`lib_edit_020_serde_reads_and_writes_hrefs`: The `operations.json` samples below round-trip. `{\"id\":…,\"href\":…}`, neither key, `{\"implements\":…,\"implements_href\":…}`, and an invalid `href` string are each refused. The `edit-errors.json` `HrefNotHeld` sample round-trips. An ExpressionLangString `expression` of `{\"href\":\"terms.sacm.xmi#blade\"}` round-trips. `{\"href\":\"#t\"}` and `{\"id\":\"t\"}` are refused.",
+  "`lib_edit_020_hrefs_made_by_edits_write_and_read_back`: a document built with every new constructor writes strictly and reads back `==`.",
+]
+code = ["crates/sacm/src/model/href.rs", "crates/sacm/src/edit/references.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit/plan.rs", "crates/sacm/src/edit/record.rs", "crates/sacm/src/model/lang_string.rs", "docs/adr/0040-cross-document-references.md"]
+tests = [
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_href_new_accepts_exactly_what_the_reader_holds",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_set_references_with_hrefs_replaces_both_lists",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_add_reference_href_appends_and_checks_bounds",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_remove_reference_href_removes_every_occurrence",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_interface_and_binding_creates_take_hrefs",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_an_expression_href_is_never_checked",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_serde_reads_and_writes_hrefs",
+  "crates/sacm/tests/edit_hrefs.rs::lib_edit_020_hrefs_made_by_edits_write_and_read_back",
+  "crates/sacm/tests/cross_document_link_details.rs::lib_edit_020_href_new_refuses_white_space_that_follows_no_type",
+  "crates/sacm/tests/cross_document_link_details.rs::lib_edit_020_the_builders_replace_and_the_accessors_give_what_was_given",
+  "crates/sacm/tests/cross_document_link_details.rs::lib_edit_020_a_set_swaps_the_one_value_of_a_single_valued_end",
+  "crates/sacm/tests/cross_document_link_details.rs::lib_edit_020_json_refuses_null_for_a_link_key",
+  "crates/sacm/tests/cross_document_link_details.rs::lib_edit_020_an_expression_href_stays_out_of_the_expression_end"
+]
+
+[[row]]
+id = "LIB-EDIT-021"
+area = "EDIT"
+milestone = "M6"
+title = "Edits create and remove proxies"
+requirement = "An operation adds a cross-file containment proxy (`Proxy`: a role and an `Href`) to an element and removes one, with the bounds and JSON form of the reference edits."
+source = "ADR 0040 amendment 1 (A2); XMI 2.5.1 formal/15-06-07 §7.10.1; slice 0073 design brief"
 kind = "editing"
 status = "candidate"
-notes = "Found at the M5 close: hrefs are read, written, counted and removed, but no operation creates one. Needs an ADR 0040 amendment for the API shape."
+notes = "Proposed by the designer in slice 0073: proxies are read, written, compared, copied and deleted (SACM23-XMI-029), but no operation creates or removes one."
 
 [[row]]
 id = "SACM23-TERM-007"
@@ -6574,7 +6651,7 @@ tests = [
   "xtask/tests/interim_refusals.rs::lib_api_011_every_interim_row_exists_is_open_and_gates_its_compliance_points",
   "xtask/tests/interim_refusals.rs::lib_api_011_every_tolerance_row_exists_and_is_open",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_ignores_rows_in_comments_and_tests",
-  "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_reports_a_list_with_no_interim_rows",
+  "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_accepts_a_list_with_no_interim_rows",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_reports_a_missing_compliance_point",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_reports_a_row_outside_a_compliance_point",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_reports_a_verified_row",
@@ -6594,10 +6671,10 @@ tests = [
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp_002_or_cp_004",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_requires_a_term_row_in_cp_003",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_refused_entries_are_unsupported_in_both_modes",
-  "crates/sacm/tests/unread_content.rs::lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003",
+  "crates/sacm/tests/unread_content.rs::lib_api_011_a_cross_document_href_is_held_and_never_sacm_xmi_007",
   "crates/sacm/tests/unread_content.rs::lib_api_011_each_kept_entry_reads_tolerantly_with_its_code_and_row",
-  "crates/sacm/tests/interim_refusals.rs::lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029",
-  "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_029",
+  "crates/sacm/tests/interim_refusals.rs::lib_api_011_no_cross_document_link_is_refused_as_not_read_yet",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_an_unqualified_href_is_a_proxy_and_no_refusal",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_xmi_idref_is_a_same_file_proxy",
 ]
 notes = "Slice 0055: reworded because Artifact, Resource, Activity and Event are read now (ADR 0034 amendment 1); re-check there. Slice 0062: its unread TerminologyPackage samples became TerminologyPackageInterface; re-check there. Slice 0063: refusals carry codes, templates and arguments (LIB-API-017); re-check there. Slice 0065: its ExpressionLangString test is removed, because SACM23-BASE-009 now reads it; re-check there. Slice 0067: every SACM 2.3 kind and end is read; the unread-kind refusals and their templates are removed (SACM23-TERM-007, -008, SACM23-AC-002, -003); re-check there. Slice 0068: cross-document references (SACM23-XMI-027) count as values of their end and are never SACM-REF findings; the modularity rules (SACM23-VAL-013 to -015, -023) are live; re-check there. Slice 0072: read limits (LIB-SEC-003), other SACM namespaces (LIB-COMPAT-004) and ISO-8859-1 (LIB-COMPAT-016); re-check there. Slice 0073a: XMI metadata (SACM23-XMI-019, ADR 0042) and same-file proxies (SACM23-XMI-030) are read; re-check there."
@@ -7143,8 +7220,8 @@ tests = [
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_a_record_s_display_renders_its_template_not_its_reason",
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_arguments_display_by_name_and_serde_says_what_it_expects",
 
-  "crates/sacm/tests/refusal_codes.rs::lib_api_017_a_cross_document_proxy_in_a_case_is_unsupported_with_its_template_and_arguments",
-  "xtask/tests/message_templates.rs::lib_api_017_template_rs_declares_the_104_refusal_templates",
+  "crates/sacm/tests/refusal_codes.rs::lib_api_017_an_xmi_element_in_no_namespace_is_unsupported_with_its_template_and_arguments",
+  "xtask/tests/message_templates.rs::lib_api_017_template_rs_declares_the_100_refusal_templates",
 ]
 acceptance = [
   "For one input per refusal-list entry, read strictly, `code()` is the code stated, and for every entry a tolerant read keeps, the strict refusal's code equals the code of the tolerant Warning at the same location. `OtherXmiNamespace`, `Encoding` and `Sacm24` give `Unsupported` with SACM-XMI-015, SACM-XML-002 and SACM-XMI-008 in both modes; `OtherSacmNamespace` and `OtherRevision` give it with SACM-XMI-002 and SACM-XMI-008 in strict mode, and a tolerant read reads such a root with a Warning of the same code at the same location. `WriteError` gives SACM-XMI-001 for `NoRoot`, SACM-XML-003 for `UnrepresentableCharacter`, SACM-XMI-016 for `Invalid` and SACM-XMI-006 for `PreservedContent`.",
@@ -7186,10 +7263,10 @@ tests = [
   "xtask/tests/message_templates.rs::lib_api_018_the_crate_builds_diagnostics_only_from_templates",
   "xtask/tests/message_templates.rs::lib_api_018_construction_check_reports_a_diagnostic_built_without_a_template",
 
-  "xtask/tests/message_templates.rs::lib_api_018_template_rs_declares_the_109_diagnostic_templates",
+  "xtask/tests/message_templates.rs::lib_api_018_template_rs_declares_the_106_diagnostic_templates",
 ]
 acceptance = [
-  "A table-driven test (`crates/sacm/tests/diagnostic_templates.rs`) gives one input for each of the 109 diagnostic templates: a tolerant or strict read, or `validate`, of a document built through the public API. It checks `code()`, `severity()`, `requirement_id()`, `clause()`, `template()`, every argument by name, kind and value, and `message()`. It also checks the table against itself: the pattern rendered with the arguments is the message, and the inputs cover the 109 templates once each. The message half runs green on the code before the slice changes it.",
+  "A table-driven test (`crates/sacm/tests/diagnostic_templates.rs`) gives one input for each of the 106 diagnostic templates: a tolerant or strict read, or `validate`, of a document built through the public API. It checks `code()`, `severity()`, `requirement_id()`, `clause()`, `template()`, every argument by name, kind and value, and `message()`. It also checks the table against itself: the pattern rendered with the arguments is the message, and the inputs cover the 106 templates once each. The message half runs green on the code before the slice changes it.",
   "With two descriptions, a Claim `CLM_132` gives a SACM-MULT-001 Warning (SACM23-VAL-011, clause 8.6). Its message is `Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])`, its template `SACM-MULT-001/too-many`, and its arguments `[class: \"Claim\", id: \"CLM_132\", count: 2, property: \"description\", type: \"Description\", multiplicity: \"0..1\"]`. Its `affected()` is `[CLM_132]`.",
   "Every line of `tests/data/golden/messages-0.1.0.txt` is unchanged.",
   "A diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as `template()` and no `arguments()`. In `crates/sacm/src`, no file but `diagnostic.rs` builds a `Diagnostic` other than through a template, and `Diagnostic::create` no longer exists.",
@@ -7766,7 +7843,7 @@ tests = [
   "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_compare_reports_hrefs",
   "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_reference_edits_count_hrefs_and_set_references_replaces_them",
   "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_delete_copy_and_move_keep_hrefs",
-  "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029",
+  "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_the_links_sacm23_xmi_029_reads_are_not_plain_hrefs",
   "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_the_catalog_rows_describe_hrefs",
   "crates/sacm/tests/cross_document_references.rs::sacm23_xmi_027_an_href_is_an_occurrence_of_its_end",
 ]
@@ -7786,7 +7863,7 @@ acceptance = [
   "`sacm23_xmi_027_compare_reports_hrefs`: `Difference::Hrefs{id:\"b\", end:ParticipantPackage, left:[o.xmi#p], right:[]}`, Display `element \"b\" differs in the hrefs of participantPackage: [\"o.xmi#p\"] on the left, [] on the right`. It comes after `ParticipantPackages` and before `Name`, one per end, in `ALL` order. Swapped order gives one difference; `==` holds exactly when there is none.",
   "`sacm23_xmi_027_reference_edits_count_hrefs_and_set_references_replaces_them`: `AddReference(b, ParticipantPackage, \"j\")` onto ids `[i]` and `href`s `[o#p]` succeeds and keeps the `href`. `RemoveReference(b, ParticipantPackage, \"i\")` onto it is `TooFewReferences{end:\"participantPackage\", given:1, required:2}`. `AddReference(e, Implements, \"p\")` onto an `href` `implements` is `TooManyReferences{end:\"implements\", given:2, allowed:1}`. `SetReferences(e, Implements, [\"p\"])` succeeds, `hrefs(Implements)` becomes empty and `changed_ids==[e]`. `SetReferences(b, ParticipantPackage, [\"i\"])` on ids `[i]` and `href`s `[o#p]` is `TooFewReferences{given:1}`.",
   "`sacm23_xmi_027_delete_copy_and_move_keep_hrefs`: Scrub-deleting `i` from ids `[i, j]` with `href`s `[o#p]` leaves the binding with `[j]` and `[o#p]`. From ids `[i]` with `href`s `[o#p]`, the binding is deleted (LIB-EDIT-019). `CopyElements` keeps `href`s. A binding with `href`s `[o#p]` alone is `TooFewReferences{given:1, required:2}`. `MoveElement` changes none. `href`s count as distinct values: with ids `[i]` and `href`s `[o.xmi#p, o.xmi#p]`, scrubbing `i` deletes `[i, b]`, while with `[o.xmi#p, o.xmi#q]` `b` survives with no ids and both `href`s; `RemoveReference(b, ParticipantPackage, \"i\")` on ids `[i]` and `href`s `[o.xmi#p, o.xmi#p]`, and `CopyElements` of a binding with only `[o.xmi#p, o.xmi#p]`, are `TooFewReferences{given:1, required:2}`.",
-  "`sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029`: Inputs: `<argumentElement href=\"o.xmi#c\"/>`, typed and untyped; `<expression href=\"o.xmi#t\"/>` in a name; `#xpointer(id('c'))` and `o.xmi#xpointer(id('c'))` on `citedElement`; an `xlink:href` on a reference element. Each is `Unsupported` with SACM-XMI-007, Display ending `(a limit of this version; SACM23-XMI-029 reads it)`, and is kept with SACM-XMI-007 in tolerant mode.",
+  "`sacm23_xmi_027_the_links_sacm23_xmi_029_reads_are_not_plain_hrefs`: Inputs: `<argumentElement href=\"o.xmi#c\"/>`, typed and untyped; `<expression href=\"o.xmi#t\"/>` in a name; `#xpointer(id('c'))` and `o.xmi#xpointer(id('c'))` on `citedElement`; an `xlink:href` on a reference element. Each is `Unsupported` with SACM-XMI-007, Display ending `(a limit of this version; SACM23-XMI-029 reads it)`, and is kept with SACM-XMI-007 in tolerant mode.",
   "`sacm23_xmi_027_the_catalog_rows_describe_hrefs`: SACM-XMI-007, SACM-REF-001, SACM-REF-002, SACM-REF-003 and SACM-MULT-001.",
 ]
 status = "verified"
@@ -7815,7 +7892,7 @@ id = "LIB-COMPAT-010"
 area = "COMPAT"
 milestone = "M2"
 title = "An untyped child under an abstract role is refused"
-requirement = "An element under a role whose declared type is abstract, with no `xmi:type` or `xsi:type` and not in reference form, is refused in strict mode with the coded refusal SACM-XMI-005 at its start tag (a tolerant read keeps it whole as preserved content of its parent, with SACM-XMI-005 as a Warning, LIB-COMPAT-001): its local name is the role, so no class can be inferred, and none is guessed (ADR 0022). An element in reference form (carrying `xmi:idref` or an unqualified `href`) is not one of these: it is a proxy for an element held elsewhere, a proxy: of a root of the same document, moved into place (SACM23-XMI-030), or of an element of another document, refused as not read yet under SACM23-XMI-029 (the maintainer, 2026-11-16)."
+requirement = "An element under a role whose declared type is abstract, with no `xmi:type` or `xsi:type` and not in reference form, is refused in strict mode with the coded refusal SACM-XMI-005 at its start tag (a tolerant read keeps it whole as preserved content of its parent, with SACM-XMI-005 as a Warning, LIB-COMPAT-001): its local name is the role, so no class can be inferred, and none is guessed (ADR 0022). An element in reference form (carrying `xmi:idref` or an unqualified `href`) is not one of these: it is a proxy for an element held elsewhere: of a root of the same document, moved into place (SACM23-XMI-030), or of an element of another document, held as a cross-file containment proxy (SACM23-XMI-029; the maintainer, 2026-11-16)."
 source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\"; ADR 0022 (its codes table: an untyped child under an abstract role is SACM-XMI-005); the maintainer, 2026-11-15 (a refusal, not an inference); assurance-forge `xmi_reader.cpp:1103-1116` (tries the role name as a class name, then drops the child)"
 kind = "compliance"
 status = "verified"

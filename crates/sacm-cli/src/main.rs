@@ -75,7 +75,7 @@ struct ValidateArgs {
     #[arg(long)]
     strict: bool,
     /// Read in tolerant mode, which also opens a file a strict read refuses
-    /// for a bad value or content not read yet, reporting it as Warnings; it
+    /// for a bad value or an untyped child, reporting it as Warnings; it
     /// still refuses a DOCTYPE, malformed XML, a root outside SACM or in SACM
     /// 2.4, a repeated `xmi:id`, an encoding it cannot decode and input over
     /// the read limits. The summary says

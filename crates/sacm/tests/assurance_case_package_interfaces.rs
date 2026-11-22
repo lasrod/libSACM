@@ -1681,9 +1681,9 @@ fn sacm23_ac_002_create_reports_what_it_holds_and_checks_in_order() {
             operation.parent(),
             operation.id(),
             operation.name(),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (None, None, &named("Braking case interface"), "a"),
+        (None, None, &named("Braking case interface"), Some("a")),
         "{row}: root()"
     );
     let operation = CreateAssuranceCasePackageInterface::new("a", named("I"), "a").with_id("i");
@@ -1691,9 +1691,9 @@ fn sacm23_ac_002_create_reports_what_it_holds_and_checks_in_order() {
         (
             operation.parent().map(ElementId::as_str),
             operation.id().map(ElementId::as_str),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (Some("a"), Some("i"), "a"),
+        (Some("a"), Some("i"), Some("a")),
         "{row}: new() and with_id()"
     );
     assert_eq!(

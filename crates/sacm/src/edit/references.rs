@@ -13,14 +13,18 @@ use crate::model::{Document, ElementId, ElementKind, Href, LangString, Reference
 /// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
 /// §11.2, §11.9, §11.10, §11.12, §11.13), in the order given, repeats
 /// included; [`clear`](Self::clear) empties the end. The end then holds
-/// exactly these ids and no cross-document reference
-/// ([`SacmElement::hrefs`](crate::model::SacmElement::hrefs), ADR 0040 D7).
+/// exactly these ids and the cross-document references given with
+/// [`with_hrefs`](Self::with_hrefs), none unless some are given
+/// ([`SacmElement::hrefs`](crate::model::SacmElement::hrefs); ADR 0040 D7,
+/// amendment 1).
 ///
 /// The ids must fit the end's bounds: `source` needs at least one, `target`
 /// and an interface's `implements` exactly one, a binding's
 /// `participantPackage` at least two distinct ids (ADR 0039 D3), and the
 /// other single-valued ends (`citedElement`, `abstractForm`, `reasoning`,
-/// `structure`, `origin`) hold at most one. Every id the
+/// `structure`, `origin`) hold at most one. An href counts as a value
+/// beside the ids: a lower bound counts the distinct ids plus the distinct
+/// hrefs, and an upper bound every value (ADR 0040 D5). Every id the
 /// end does not already hold must name an element of the document, of a
 /// kind its end admits, so an edit never makes a dangling or wrongly typed
 /// reference; an id the end holds is kept as it is, even if it is dangling
@@ -32,8 +36,8 @@ use crate::model::{Document, ElementId, ElementKind, Href, LangString, Reference
 ///    name and texts hold, as [`EditError::DerivedEnd`] (SACM23-BASE-009);
 /// 3. a kind that does not own the end, as
 ///    [`EditError::FeatureNotApplicable`];
-/// 4. fewer ids than the end needs, as [`EditError::TooFewReferences`];
-/// 5. more ids than it allows, as [`EditError::TooManyReferences`];
+/// 4. fewer values than the end needs, as [`EditError::TooFewReferences`];
+/// 5. more values than it allows, as [`EditError::TooManyReferences`];
 /// 6. then, over the ids the end does not hold, an id holding XML white
 ///    space ([`EditError::InvalidReference`]), then one that names no
 ///    element ([`EditError::ReferenceNotFound`]), then one of a kind the end
@@ -88,6 +92,116 @@ pub struct SetReferences {
     element: ElementId,
     end: ReferenceEnd,
     ids: Vec<ElementId>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
+    hrefs: Vec<Href>,
+}
+
+/// What an operation on one value of a reference end names: an element of
+/// the document by its id, or an element of another document by an href
+/// (ADR 0040 amendment 1, A5).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Link {
+    /// An id of the document.
+    Id(ElementId),
+    /// A cross-document reference.
+    Href(Href),
+}
+
+impl Link {
+    /// The id, or `None` for an href.
+    pub(crate) fn id(&self) -> Option<&ElementId> {
+        match self {
+            Self::Id(id) => Some(id),
+            Self::Href(_) => None,
+        }
+    }
+
+    /// The href, or `None` for an id.
+    pub(crate) fn href(&self) -> Option<&Href> {
+        match self {
+            Self::Id(_) => None,
+            Self::Href(href) => Some(href),
+        }
+    }
+
+    /// The link of a JSON object that gives `id` under the key `id_key` or
+    /// `href` under `href_key`: exactly one of them (ADR 0040 amendment 1,
+    /// A7).
+    #[cfg(feature = "serde")]
+    pub(crate) fn from_json(
+        id: Option<ElementId>,
+        href: Option<Href>,
+        (id_key, href_key): (&str, &str),
+    ) -> Result<Self, String> {
+        match (id, href) {
+            (Some(id), None) => Ok(Self::Id(id)),
+            (None, Some(href)) => Ok(Self::Href(href)),
+            (Some(_), Some(_)) => Err(format!(
+                "both `{id_key}` and `{href_key}` are given: exactly one is needed"
+            )),
+            (None, None) => Err(format!(
+                "neither `{id_key}` nor `{href_key}` is given: exactly one is needed"
+            )),
+        }
+    }
+}
+
+/// Reads a key that, when it is given, holds a value: `null` is refused.
+#[cfg(feature = "serde")]
+pub(super) fn given<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+/// The JSON of an [`AddReference`] or a [`RemoveReference`]: `element`,
+/// `end`, and exactly one of `id` and `href` (ADR 0040 amendment 1, A7).
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct LinkRecord {
+    element: ElementId,
+    end: ReferenceEnd,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "given"
+    )]
+    id: Option<ElementId>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "given"
+    )]
+    href: Option<Href>,
+}
+
+#[cfg(feature = "serde")]
+impl LinkRecord {
+    /// The record of an operation on `link` in the end `end` of `element`.
+    fn new(element: ElementId, end: ReferenceEnd, link: Link) -> Self {
+        let (id, href) = match link {
+            Link::Id(id) => (Some(id), None),
+            Link::Href(href) => (None, Some(href)),
+        };
+        Self {
+            element,
+            end,
+            id,
+            href,
+        }
+    }
+
+    /// The element, the end and the link it gives.
+    fn into_parts(self) -> Result<(ElementId, ReferenceEnd, Link), String> {
+        let link = Link::from_json(self.id, self.href, ("id", "href"))?;
+        Ok((self.element, self.end, link))
+    }
 }
 
 impl SetReferences {
@@ -103,6 +217,7 @@ impl SetReferences {
             element: element.into(),
             end,
             ids: ids.into_iter().map(Into::into).collect(),
+            hrefs: Vec::new(),
         }
     }
 
@@ -114,6 +229,48 @@ impl SetReferences {
             element: element.into(),
             end,
             ids: Vec::new(),
+            hrefs: Vec::new(),
+        }
+    }
+
+    /// These references with `hrefs` as the end's cross-document
+    /// references, in order, repeats included, replacing any given before
+    /// (LIB-EDIT-020; ADR 0040 amendment 1).
+    ///
+    /// The end then holds the ids and these hrefs, and nothing else. Its
+    /// bounds count both: a lower bound the distinct ids plus the distinct
+    /// hrefs, an upper bound every value. An href is never checked: the
+    /// element it names need not exist, and its type is not compared with
+    /// the end's.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackageBinding, CreateArgumentPackageInterface,
+    ///     CreateArgumentPackage, SetReferences};
+    /// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Vehicle")).with_id("vehicle"))?;
+    /// let interface = CreateArgumentPackageInterface::root(name("Vehicle interface"), "vehicle");
+    /// edit::apply(&mut doc, interface.with_id("vehicle_api"))?;
+    /// let remote = Href::new("braking.sacm.xmi#braking_api")?;
+    /// let other = Href::new("steering.sacm.xmi#steering_api")?;
+    /// let binding = CreateArgumentPackageBinding::root(name("Binding"), ["vehicle_api"])
+    ///     .with_participant_package_hrefs([remote.clone()]);
+    /// edit::apply(&mut doc, binding.with_id("binding"))?;
+    ///
+    /// let end = ReferenceEnd::ParticipantPackage;
+    /// let set = SetReferences::new("binding", end, ["vehicle_api"])
+    ///     .with_hrefs([remote.clone(), other.clone()]);
+    /// edit::apply(&mut doc, set)?;
+    /// assert_eq!(doc.get("binding").map(|b| b.hrefs(end)), Some([remote, other].as_slice()));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn with_hrefs(self, hrefs: impl IntoIterator<Item = Href>) -> Self {
+        Self {
+            hrefs: hrefs.into_iter().collect(),
+            ..self
         }
     }
 
@@ -135,23 +292,31 @@ impl SetReferences {
         &self.ids
     }
 
+    /// The cross-document references to set, in order: empty unless
+    /// [`with_hrefs`](Self::with_hrefs) gave some.
+    #[must_use]
+    pub fn hrefs(&self) -> &[Href] {
+        &self.hrefs
+    }
+
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let found = owner(document, &self.element, self.end)?;
         let held = found.references(self.end);
-        // The end then holds these ids and no `href` (ADR 0040 D7).
-        check_bounds(self.end, &self.ids, &[])?;
+        // The end then holds these ids and these `href`s (ADR 0040 D7,
+        // amendment 1 A5); an `href` is never checked (D6).
+        check_bounds(self.end, &self.ids, &self.hrefs)?;
         check_targets(document, found.kind(), &[(self.end, &self.ids, held)])?;
         // Setting the ids held still changes the element if it holds the end
         // as a preserved attribute too, which the set replaces (ADR 0033),
-        // or `href`s, which the set removes.
+        // or other `href`s, which the set replaces.
         let replaces = !self.ids.is_empty()
             && document.has_preserved_attribute(&self.element, self.end.name());
-        let removes = !found.hrefs(self.end).is_empty();
+        let relinks = found.hrefs(self.end) != self.hrefs.as_slice();
         Ok(changing(
             &self.element,
-            held != self.ids.as_slice() || replaces || removes,
-            Value::Replaced(self.end, self.ids.clone()),
+            held != self.ids.as_slice() || replaces || relinks,
+            Value::Replaced(self.end, self.ids.clone(), self.hrefs.clone()),
         ))
     }
 }
@@ -194,16 +359,57 @@ impl SetReferences {
 /// assert_eq!(error.to_string(), "the target is given 2 ids, and SACM allows at most 1");
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
+///
+/// [`AddReference::href`] appends a cross-document reference instead
+/// (LIB-EDIT-020; ADR 0040 amendment 1): the same first three refusals, then
+/// the end's bounds over its ids and its hrefs with the new one. An href is
+/// never checked, so it may name nothing, and one the end holds is appended
+/// again.
+///
+/// ```
+/// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim};
+/// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+///
+/// let remote = Href::new("other.sacm.xmi#m1")?;
+/// let add = AddReference::href("c1", ReferenceEnd::MetaClaim, remote.clone());
+/// assert_eq!((add.id(), add.cross_document()), (None, Some(&remote)));
+/// edit::apply(&mut doc, add)?;
+/// let c1 = doc.get("c1").ok_or("no c1")?;
+/// assert_eq!(c1.hrefs(ReferenceEnd::MetaClaim), [remote]);
+/// assert!(c1.meta_claims().is_empty());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    serde(try_from = "LinkRecord", into = "LinkRecord")
 )]
 pub struct AddReference {
     element: ElementId,
     end: ReferenceEnd,
-    id: ElementId,
+    link: Link,
+}
+
+#[cfg(feature = "serde")]
+impl TryFrom<LinkRecord> for AddReference {
+    type Error = String;
+
+    fn try_from(record: LinkRecord) -> Result<Self, String> {
+        let (element, end, link) = record.into_parts()?;
+        Ok(Self { element, end, link })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<AddReference> for LinkRecord {
+    fn from(operation: AddReference) -> Self {
+        Self::new(operation.element, operation.end, operation.link)
+    }
 }
 
 impl AddReference {
@@ -213,7 +419,19 @@ impl AddReference {
         Self {
             element: element.into(),
             end,
-            id: id.into(),
+            link: Link::Id(id.into()),
+        }
+    }
+
+    /// Appends the cross-document reference `href` to the end `end` of
+    /// `element`, after the hrefs the end holds (LIB-EDIT-020; ADR 0040
+    /// amendment 1).
+    #[must_use]
+    pub fn href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
+        Self {
+            element: element.into(),
+            end,
+            link: Link::Href(href),
         }
     }
 
@@ -229,27 +447,46 @@ impl AddReference {
         self.end
     }
 
-    /// The id to append.
+    /// The id to append, or `None` for an href.
     #[must_use]
-    pub fn id(&self) -> &ElementId {
-        &self.id
+    pub fn id(&self) -> Option<&ElementId> {
+        self.link.id()
+    }
+
+    /// The href to append, or `None` for an id.
+    #[doc(alias = "href")]
+    #[must_use]
+    pub fn cross_document(&self) -> Option<&Href> {
+        self.link.href()
     }
 
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let found = owner(document, &self.element, self.end)?;
         let held = found.references(self.end);
-        let mut ids = held.to_vec();
-        ids.push(self.id.clone());
-        check_bounds(self.end, &ids, found.hrefs(self.end))?;
-        check_targets(
-            document,
-            found.kind(),
-            &[(self.end, slice::from_ref(&self.id), held)],
-        )?;
+        let value = match &self.link {
+            Link::Id(id) => {
+                let mut ids = held.to_vec();
+                ids.push(id.clone());
+                check_bounds(self.end, &ids, found.hrefs(self.end))?;
+                check_targets(
+                    document,
+                    found.kind(),
+                    &[(self.end, slice::from_ref(id), held)],
+                )?;
+                Value::References(self.end, ids)
+            }
+            // An `href` is never checked (ADR 0040 D6): only the bounds.
+            Link::Href(href) => {
+                let mut hrefs = found.hrefs(self.end).to_vec();
+                hrefs.push(href.clone());
+                check_bounds(self.end, held, &hrefs)?;
+                Value::Hrefs(self.end, hrefs)
+            }
+        };
         Ok(Plan::Set {
             element: &self.element,
-            value: Value::References(self.end, ids),
+            value,
         })
     }
 }
@@ -293,16 +530,57 @@ impl AddReference {
 /// assert!(validation::validate(&doc).is_empty());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+///
+/// [`RemoveReference::href`] removes every occurrence of a cross-document
+/// reference instead (LIB-EDIT-020; ADR 0040 amendment 1): the same first
+/// three refusals, then an href the end does not hold
+/// ([`EditError::HrefNotHeld`]; hrefs are compared as strings), then the
+/// end's bounds over what is left.
+///
+/// ```
+/// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim, RemoveReference};
+/// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+/// let remote = Href::new("other.sacm.xmi#m1")?;
+/// let end = ReferenceEnd::MetaClaim;
+/// edit::apply(&mut doc, AddReference::href("c1", end, remote.clone()))?;
+///
+/// let remove = RemoveReference::href("c1", end, remote.clone());
+/// assert_eq!((remove.id(), remove.cross_document()), (None, Some(&remote)));
+/// edit::apply(&mut doc, remove)?;
+/// assert!(doc.get("c1").is_some_and(|c1| c1.hrefs(end).is_empty()));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    serde(try_from = "LinkRecord", into = "LinkRecord")
 )]
 pub struct RemoveReference {
     element: ElementId,
     end: ReferenceEnd,
-    id: ElementId,
+    link: Link,
+}
+
+#[cfg(feature = "serde")]
+impl TryFrom<LinkRecord> for RemoveReference {
+    type Error = String;
+
+    fn try_from(record: LinkRecord) -> Result<Self, String> {
+        let (element, end, link) = record.into_parts()?;
+        Ok(Self { element, end, link })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<RemoveReference> for LinkRecord {
+    fn from(operation: RemoveReference) -> Self {
+        Self::new(operation.element, operation.end, operation.link)
+    }
 }
 
 impl RemoveReference {
@@ -312,7 +590,18 @@ impl RemoveReference {
         Self {
             element: element.into(),
             end,
-            id: id.into(),
+            link: Link::Id(id.into()),
+        }
+    }
+
+    /// Removes every occurrence of the cross-document reference `href` from
+    /// the end `end` of `element` (LIB-EDIT-020; ADR 0040 amendment 1).
+    #[must_use]
+    pub fn href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
+        Self {
+            element: element.into(),
+            end,
+            link: Link::Href(href),
         }
     }
 
@@ -328,27 +617,55 @@ impl RemoveReference {
         self.end
     }
 
-    /// The id to remove.
+    /// The id to remove, or `None` for an href.
     #[must_use]
-    pub fn id(&self) -> &ElementId {
-        &self.id
+    pub fn id(&self) -> Option<&ElementId> {
+        self.link.id()
+    }
+
+    /// The href to remove, or `None` for an id.
+    #[doc(alias = "href")]
+    #[must_use]
+    pub fn cross_document(&self) -> Option<&Href> {
+        self.link.href()
     }
 
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let found = owner(document, &self.element, self.end)?;
         let held = found.references(self.end);
-        if !held.contains(&self.id) {
-            return Err(EditError::ReferenceNotHeld {
-                end: self.end.name(),
-                id: self.id.clone(),
-            });
-        }
-        let ids: Vec<ElementId> = held.iter().filter(|id| **id != self.id).cloned().collect();
-        check_bounds(self.end, &ids, found.hrefs(self.end))?;
+        let held_hrefs = found.hrefs(self.end);
+        let value = match &self.link {
+            Link::Id(id) => {
+                if !held.contains(id) {
+                    return Err(EditError::ReferenceNotHeld {
+                        end: self.end.name(),
+                        id: id.clone(),
+                    });
+                }
+                let ids: Vec<ElementId> = held.iter().filter(|one| *one != id).cloned().collect();
+                check_bounds(self.end, &ids, held_hrefs)?;
+                Value::References(self.end, ids)
+            }
+            Link::Href(href) => {
+                if !held_hrefs.contains(href) {
+                    return Err(EditError::HrefNotHeld {
+                        end: self.end.name(),
+                        href: href.clone(),
+                    });
+                }
+                let hrefs: Vec<Href> = held_hrefs
+                    .iter()
+                    .filter(|one| *one != href)
+                    .cloned()
+                    .collect();
+                check_bounds(self.end, held, &hrefs)?;
+                Value::Hrefs(self.end, hrefs)
+            }
+        };
         Ok(Plan::Set {
             element: &self.element,
-            value: Value::References(self.end, ids),
+            value,
         })
     }
 }
@@ -384,6 +701,11 @@ pub(super) fn expression_ids<'v>(
     let mut ids = Vec::new();
     for value in values {
         if !value.is_expression_lang_string() {
+            continue;
+        }
+        // An href counts as the expression being present, and is never
+        // checked (ADR 0040 amendment 1, A4).
+        if value.expression_href().is_some() {
             continue;
         }
         let Some(expression) = value.expression() else {

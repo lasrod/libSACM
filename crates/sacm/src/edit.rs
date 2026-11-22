@@ -127,9 +127,9 @@
 //! | [`SetEndTime`] | the `endTime` of an `Activity` (§12.11) | [`new`](SetEndTime::new), [`remove`](SetEndTime::remove) |
 //! | [`SetValue`] | the `value` of a `Term` or an `Expression` (§10.9) | [`new`](SetValue::new) |
 //! | [`SetExternalReference`] | the `externalReference` of a `Term` (§10.11) | [`new`](SetExternalReference::new), [`remove`](SetExternalReference::remove) |
-//! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
-//! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id appended | [`new`](AddReference::new) |
-//! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id removed | [`new`](RemoveReference::new) |
+//! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim`, and its cross-document references ([`Href`]) | [`new`](SetReferences::new), [`clear`](SetReferences::clear), [`with_hrefs`](SetReferences::with_hrefs) |
+//! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id or one href appended | [`new`](AddReference::new), [`href`](AddReference::href) |
+//! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id or of one href removed | [`new`](RemoveReference::new), [`href`](RemoveReference::href) |
 //! | [`ReorderElements`] | the order of an element's children, or of the roots | [`new`](ReorderElements::new), [`roots`](ReorderElements::roots) |
 //!
 //! Each names the element it changes by id, and replaces one feature
@@ -409,15 +409,17 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
-//! | 3. for [`RemoveReference`] only: the end holds the id | [`EditError::ReferenceNotHeld`] | SACM-CMD-001 |
-//! | 4. the end would hold at least the distinct ids it needs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
-//! | 5. the end would hold at most the ids it allows: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
+//! | 3. for [`RemoveReference`] only: the end holds the id, or, for [`RemoveReference::href`], the href | [`EditError::ReferenceNotHeld`], [`EditError::HrefNotHeld`] | SACM-CMD-001 |
+//! | 4. the end would hold at least the distinct values it needs, ids plus hrefs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+//! | 5. the end would hold at most the values it allows, ids plus hrefs: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
 //! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
 //! | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
 //! | 8. every new id names an element of a kind the end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
 //!
 //! A new id is one the end does not hold already; checks 6 to 8 each run
-//! over the new ids in list order, as the creates' checks 6 to 8 do.
+//! over the new ids in list order, as the creates' checks 6 to 8 do. An
+//! href is never checked: it names an element of another document, which
+//! no edit opens (LIB-EDIT-020; ADR 0040 D6, amendment 1).
 //!
 //! [`ReorderElements`] checks, after the parent (check 1;
 //! [`ReorderElements::roots`] has no parent, so it skips check 1):
@@ -545,7 +547,7 @@ pub use utility::{
 };
 
 use crate::diagnostic::Code;
-use crate::model::{Document, ElementId, ElementKind, Revision};
+use crate::model::{Document, ElementId, ElementKind, Href, Revision};
 use plan::{Features, Outcome, Plan};
 
 /// Checks `operation` against `document` and applies it, or refuses it and
@@ -1933,6 +1935,30 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
+    /// [`RemoveReference::href`] names an href the end does not hold
+    /// (SACM-CMD-001); hrefs are compared as strings.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, RemoveReference};
+    /// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let href = Href::new("o.xmi#m1")?;
+    /// let remove = RemoveReference::href("c1", ReferenceEnd::MetaClaim, href);
+    /// let error = edit::apply(&mut doc, remove).unwrap_err();
+    /// assert!(matches!(error, EditError::HrefNotHeld { end: "metaClaim", .. }));
+    /// assert_eq!(error.to_string(), "the metaClaim holds no href \"o.xmi#m1\" to remove");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    HrefNotHeld {
+        /// The end, by its XMI name, such as `participantPackage`.
+        end: &'static str,
+        /// The href, as given.
+        href: Href,
+    },
     /// [`ReorderElements`] names an id that is not a direct child of the
     /// parent, or, for [`ReorderElements::roots`], not a root
     /// (SACM-CMD-001): a grandchild, another element's child, the parent
@@ -2179,7 +2205,8 @@ impl EditError {
     /// [`ReferenceNotFound`](Self::ReferenceNotFound), SACM-REF-002 for
     /// [`WrongReferenceType`](Self::WrongReferenceType), SACM-CMD-001 for
     /// [`ElementNotFound`](Self::ElementNotFound),
-    /// [`ReferenceNotHeld`](Self::ReferenceNotHeld) and
+    /// [`ReferenceNotHeld`](Self::ReferenceNotHeld),
+    /// [`HrefNotHeld`](Self::HrefNotHeld) and
     /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
     /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and
     /// [`DerivedEnd`](Self::DerivedEnd), SACM-CMD-009
@@ -2198,6 +2225,7 @@ impl EditError {
             | Self::ReferenceNotFound { .. }
             | Self::ElementNotFound { .. }
             | Self::ReferenceNotHeld { .. }
+            | Self::HrefNotHeld { .. }
             | Self::ChildNotFound { .. } => Code::CMD_TARGET_NOT_FOUND,
             Self::InvalidParent { .. }
             | Self::InvalidRoot { .. }
@@ -2306,6 +2334,9 @@ impl fmt::Display for EditError {
             ),
             Self::ReferenceNotHeld { end, id } => {
                 write!(f, "the {end} holds no id {:?} to remove", id.as_str())
+            }
+            Self::HrefNotHeld { end, href } => {
+                write!(f, "the {end} holds no href {:?} to remove", href.as_str())
             }
             Self::ChildNotFound {
                 parent: Some(parent),

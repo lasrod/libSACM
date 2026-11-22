@@ -278,8 +278,7 @@ catalog! {
     pub const XMI_UNKNOWN_CONTENT: Code = Code::from_static("SACM-XMI-003");
 
     /// SACM-XMI-006: a strict [`xmi::write`](crate::xmi::write) refuses a
-    /// document that holds preserved content (SACM-XMI-003, SACM-XMI-007),
-    /// because it cannot show that content it did not read
+    /// document that holds preserved content (SACM-XMI-003), because it cannot show that content it did not read
     /// is schema-valid. The code of
     /// [`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)
     /// (SACM23-XMI-008, ADR 0033, ADR 0035). Fix: write it in tolerant mode,
@@ -288,19 +287,18 @@ catalog! {
     /// in tolerant mode in this release.
     pub const XMI_STRICT_SAVE_REFUSED: Code = Code::from_static("SACM-XMI-006");
 
-    /// SACM-XMI-007: a cross-document link this release does not read: a
-    /// role element in reference form with an `href` (a proxy), an `href`
-    /// with a document part as an `expression`, an `href` whose fragment holds
-    /// `(` or `)` (an `XPointer`), or `XLink` attributes on a reference element.
-    /// A tolerant [`xmi::read`](crate::xmi::read) keeps the reference
-    /// element, or the role element in reference form, whole as preserved
-    /// content, with one Warning; the reference end stays empty. A strict
-    /// read refuses it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
-    /// this code (LIB-API-011, LIB-API-017, ADR 0035, ADR 0040; SACM23-XMI-029
-    /// reads it). It is never SACM-XMI-003: such a link conforms. An `href`
-    /// with a document part on any other reference end is read
-    /// (SACM23-XMI-027).
+    /// SACM-XMI-007: a cross-document link the library did not read, up to
+    /// 0.3.0: a role element in reference form with an `href` (a proxy), an
+    /// `href` as an `expression`, or an `href` whose fragment is an
+    /// `XPointer`.
+    ///
+    /// No input gives this code since 0.4.0 (slice 0073): every such link is
+    /// read and held (SACM23-XMI-029, ADR 0040 amendment 1), as a
+    /// [`Proxy`](crate::model::Proxy), a
+    /// [`LangString::expression_href`](crate::model::LangString::expression_href)
+    /// or an [`Href`](crate::model::Href), and `XLink` attributes on a
+    /// reference element are SACM-XMI-003. The constant stays, and the code
+    /// is never reused.
     pub const XMI_EXTERNAL_HREF: Code = Code::from_static("SACM-XMI-007");
 
     /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule

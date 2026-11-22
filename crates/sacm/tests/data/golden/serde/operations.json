@@ -1219,5 +1219,66 @@
     "reference_policy": "ScrubReferences",
     "package_policy": "DeleteRecursively",
     "cross_package_policy": "ApplyReferencePolicy"
+  },
+  {
+    "type": "SetReferences",
+    "element": "binding",
+    "end": "participantPackage",
+    "ids": [
+      "vehicle_api"
+    ],
+    "hrefs": [
+      "braking.sacm.xmi#braking_api"
+    ]
+  },
+  {
+    "type": "AddReference",
+    "element": "binding",
+    "end": "participantPackage",
+    "href": "braking.sacm.xmi#braking_api"
+  },
+  {
+    "type": "RemoveReference",
+    "element": "binding",
+    "end": "participantPackage",
+    "href": "braking.sacm.xmi#braking_api"
+  },
+  {
+    "type": "CreateArgumentPackageInterface",
+    "parent": null,
+    "id": "braking_api",
+    "name": {
+      "lang": "en",
+      "content": "Braking interface"
+    },
+    "implements_href": "braking.sacm.xmi#braking"
+  },
+  {
+    "type": "CreateArgumentPackageBinding",
+    "parent": null,
+    "id": "binding",
+    "name": {
+      "lang": "en",
+      "content": "Braking supports the vehicle"
+    },
+    "participant_packages": [
+      "vehicle_api"
+    ],
+    "participant_package_hrefs": [
+      "braking.sacm.xmi#braking_api"
+    ]
+  },
+  {
+    "type": "CreateClaim",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "type": "ExpressionLangString",
+      "lang": null,
+      "content": "x",
+      "expression": {
+        "href": "terms.sacm.xmi#blade"
+      }
+    }
   }
 ]

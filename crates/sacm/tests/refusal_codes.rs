@@ -52,11 +52,12 @@ const NEW_LIVE: [(&str, &str); 6] = [
 ];
 
 /// The live codes whose rows gain the refusal that carries them. Since
-/// slice 0073a no input gives SACM-XMI-014 (SACM23-XMI-019, ADR 0042 D9).
-const REFUSAL_USES: [(&str, &str); 3] = [
+/// slice 0073a no input gives SACM-XMI-014 (SACM23-XMI-019, ADR 0042 D9),
+/// and since slice 0073b none gives SACM-XMI-007 (SACM23-XMI-029, ADR 0040
+/// amendment 1, A8).
+const REFUSAL_USES: [(&str, &str); 2] = [
     ("SACM-XMI-001", "`WriteError::NoRoot`"),
     ("SACM-XMI-003", "`ReadError::Unsupported`"),
-    ("SACM-XMI-007", "`ReadError::Unsupported`"),
 ];
 
 fn catalog() -> String {
@@ -238,6 +239,192 @@ fn sacm23_xmi_019_no_input_gives_sacm_xmi_014() {
     );
 }
 
+/// Since slice 0073b reads every cross-document link (SACM23-XMI-029, ADR
+/// 0040 amendment 1, A8), the refusal list has no `Interim` entry, and no
+/// template of SACM-XMI-007 is left, in the crate or in the catalog; the
+/// code's constant stays, and the code is never reused. Every input that a
+/// LIB-API-011, LIB-API-017 or SACM23-XMI-027 test gave to get SACM-XMI-007
+/// reads in strict mode.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the samples of one acceptance item read best as one list"
+)]
+fn sacm23_xmi_029_no_entry_is_interim() {
+    use sacm::diagnostic::Code;
+    use sacm::model::SacmElement;
+    use sacm::xmi::{self, Mode, ReadOptions};
+
+    const XMI_029: &str = "SACM23-XMI-029";
+    const NS: &str = concat!(
+        " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    );
+    let list = repository_file("crates/sacm/src/xmi/refusal.rs");
+    let entries: Vec<&str> = list
+        .lines()
+        .filter(|line| line.contains("Interim(\""))
+        .collect();
+    assert!(
+        entries.is_empty(),
+        "{XMI_029}: the refusal list still has an Interim entry: {entries:#?}"
+    );
+    assert!(
+        !list.contains("CrossDocumentHref"),
+        "{XMI_029}: the refusal list still has the entry CrossDocumentHref"
+    );
+    let templates = repository_file("crates/sacm/src/diagnostic/template.rs");
+    assert!(
+        !templates.contains("\"SACM-XMI-007/"),
+        "{XMI_029}: template.rs still declares a template of SACM-XMI-007"
+    );
+    let catalog = catalog();
+    let listed: Vec<&str> = catalog
+        .lines()
+        .filter(|line| line.trim_start().starts_with("| `SACM-XMI-007/"))
+        .collect();
+    assert!(
+        listed.is_empty(),
+        "{XMI_029}: {CATALOG} still lists templates of SACM-XMI-007: {listed:#?}"
+    );
+    assert_eq!(
+        Code::XMI_EXTERNAL_HREF.as_str(),
+        "SACM-XMI-007",
+        "{XMI_029}: Code::XMI_EXTERNAL_HREF"
+    );
+
+    // The samples: (what, the input, how many diagnostics a read gives, each
+    // of them SACM-XMI-003).
+    let package = |body: &str| {
+        format!(
+            "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
+        )
+    };
+    let claim = |id: &str, attributes: &str, body: &str| {
+        format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}>\
+             <name content=\"{id}\"/>{body}</argumentElement>"
+        )
+    };
+    let samples = [
+        // LIB-API-011 (`interim_refusals.rs`) and the `CrossDocumentHref`
+        // entry of LIB-API-017 (this file).
+        (
+            "an XPointer href to another document",
+            package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+            )),
+            0_usize,
+        ),
+        (
+            "XLink attributes on a reference element",
+            package(&format!(
+                "{}{}",
+                claim(
+                    "c1",
+                    "",
+                    "<metaClaim href=\"#c2\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:type=\"simple\"/>"
+                ),
+                claim("c2", "", "")
+            )),
+            1,
+        ),
+        // LIB-API-017 acceptance 1 (this file).
+        (
+            "a cross-document proxy in a case",
+            format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
+                 <argumentPackage href=\"o.xmi#ap\"/>\n</sacm:AssuranceCasePackage>"
+            ),
+            0,
+        ),
+        // SACM23-XMI-027 acceptance 15 (`cross_document_references.rs`).
+        (
+            "an untyped argumentElement href",
+            package("<argumentElement href=\"o.xmi#c\"/>"),
+            0,
+        ),
+        (
+            "a typed argumentElement href",
+            package("<argumentElement xmi:type=\"sacm:Claim\" href=\"o.xmi#c\"/>"),
+            0,
+        ),
+        (
+            "an expression href in a name",
+            package(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\
+                 <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\">\
+                 <expression href=\"o.xmi#t\"/></name></argumentElement>",
+            ),
+            0,
+        ),
+        (
+            "an XPointer href",
+            package(&claim(
+                "c1",
+                " isCitation=\"true\"",
+                "<citedElement href=\"#xpointer(id('c'))\"/>",
+            )),
+            0,
+        ),
+        (
+            "a cross-document XPointer href",
+            package(&claim(
+                "c1",
+                " isCitation=\"true\"",
+                "<citedElement href=\"o.xmi#xpointer(id('c'))\"/>",
+            )),
+            0,
+        ),
+        (
+            "an xlink:href on a reference element",
+            package(&claim(
+                "c1",
+                " isCitation=\"true\"",
+                "<citedElement xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"o.xmi#c\"/>",
+            )),
+            1,
+        ),
+    ];
+    for (what, input, count) in samples {
+        let mut documents = Vec::new();
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
+            {
+                Ok(output) => output,
+                Err(error) => {
+                    panic!("{XMI_029}: {what}: a {mode:?} read refuses it: {error} ({error:?})")
+                }
+            };
+            let codes: Vec<&str> = output
+                .diagnostics()
+                .iter()
+                .map(|found| found.code().as_str())
+                .collect();
+            assert_eq!(
+                codes,
+                vec!["SACM-XMI-003"; count],
+                "{XMI_029}: {what}: the codes of a {mode:?} read"
+            );
+            assert_eq!(
+                output
+                    .document()
+                    .elements()
+                    .any(SacmElement::has_preserved_content),
+                count > 0,
+                "{XMI_029}: {what}: what a {mode:?} read keeps as preserved content"
+            );
+            documents.push(output.into_document());
+        }
+        assert!(
+            documents[0] == documents[1],
+            "{XMI_029}: {what}: the modes read different documents"
+        );
+    }
+}
+
 mod api {
     use super::ROW;
     use sacm::diagnostic::{ArgumentValue, Code, Severity};
@@ -260,12 +447,6 @@ mod api {
     fn package(body: &str) -> String {
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
-        )
-    }
-
-    fn claim(id: &str, attributes: &str, body: &str) -> String {
-        format!(
-            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}><name content=\"{id}\"/>{body}</argumentElement>"
         )
     }
 
@@ -292,21 +473,12 @@ mod api {
     fn kept_entries() -> Vec<(&'static str, String, Code)> {
         // No element kind is refused as not read yet since slice 0067, which
         // reads the last four interface and binding kinds (ADR 0035
-        // amendment 1), and no XMI metadata since slice 0073a, which reads
-        // it (SACM23-XMI-019, ADR 0042).
+        // amendment 1), no XMI metadata since slice 0073a, which reads
+        // it (SACM23-XMI-019, ADR 0042), and no cross-document link since
+        // slice 0073b, which reads them: the list has no `CrossDocumentHref`
+        // entry (SACM23-XMI-029; `sacm23_xmi_029_no_entry_is_interim` reads
+        // the input this list gave for it).
         vec![
-            // A cross-document link not read yet (SACM23-XMI-029): an XPointer,
-            // since slice 0068 reads an href with a document part
-            // (SACM23-XMI-027).
-            (
-                "CrossDocumentHref",
-                package(&claim(
-                    "c1",
-                    "",
-                    "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
-                )),
-                Code::XMI_EXTERNAL_HREF,
-            ),
             (
                 "WrapperContent",
                 wrapper(" foo=\"bar\""),
@@ -603,30 +775,28 @@ mod api {
     }
 
     #[test]
-    fn lib_api_017_a_cross_document_proxy_in_a_case_is_unsupported_with_its_template_and_arguments()
-    {
+    fn lib_api_017_an_xmi_element_in_no_namespace_is_unsupported_with_its_template_and_arguments() {
         // Until slice 0067 this sampled a TerminologyPackageInterface in the
-        // case, which that slice reads (SACM23-TERM-007), and until slice
-        // 0073a an `<xmi:Extension/>`, which that slice reads as XMI metadata
-        // (SACM23-XMI-019): since, a cross-document proxy SACM23-XMI-029 is to
-        // read (the design brief of slice 0073, LIB-API-017 acceptance 1).
-        let input = format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
-             <argumentPackage href=\"o.xmi#ap\"/>\n</sacm:AssuranceCasePackage>"
+        // case, which that slice reads (SACM23-TERM-007), until slice 0073a an
+        // `<xmi:Extension/>`, which that slice reads as XMI metadata
+        // (SACM23-XMI-019), and until slice 0073b a cross-document proxy,
+        // which that slice holds (SACM23-XMI-029): since, an `XMI` element in
+        // no namespace (the design brief of slice 0073, LIB-API-017
+        // acceptance 1).
+        let unqualified = format!(
+            "<XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+             <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></XMI>"
         );
-        let error = strict_unsupported("a cross-document proxy", input.as_bytes());
+        let error = strict_unsupported("an XMI element in no namespace", unqualified.as_bytes());
         assert_eq!(
             error.location().map(|at| (at.line(), at.column())),
-            Some((3, 20)),
+            Some((1, 1)),
             "{ROW}: location()"
         );
-        assert_eq!(error.code(), Code::XMI_EXTERNAL_HREF, "{ROW}: code()");
-        // Under the concrete role `argumentPackage` the proxy is refused at
-        // its `href` (the design brief named `/proxy-child-of-root`, which
-        // the abstract role `argumentElement` gives).
+        assert_eq!(error.code().as_str(), "SACM-XMI-015", "{ROW}: code()");
         assert_eq!(
             error.template(),
-            "SACM-XMI-007/unread-attribute",
+            "SACM-XMI-015/not-xmi-namespace",
             "{ROW}: template()"
         );
         let arguments: Vec<(&str, ArgumentValue)> = error
@@ -637,20 +807,49 @@ mod api {
         let text = |value: &str| ArgumentValue::Text(value.to_owned());
         assert_eq!(
             arguments,
-            [
-                ("attribute", text("href")),
-                ("element", text("argumentPackage")),
-                ("row", text("SACM23-XMI-029")),
-            ],
+            [("element", text("XMI")), ("row", text("LIB-COMPAT-002"))],
             "{ROW}: arguments()"
         );
         assert_eq!(
             error.to_string(),
-            "the reader cannot represent the input at line 3, column 20: the attribute \"href\" \
-             of the element \"argumentPackage\" is not read in this release (a limit of this \
-             version; SACM23-XMI-029 reads it)",
+            "the reader cannot represent the input at line 1, column 1: the element \"XMI\" is \
+             not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read \
+             as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in \
+             tolerant mode)",
             "{ROW}: Display"
         );
+        // The cross-document proxy it sampled until slice 0073b is held, in
+        // both modes, with no diagnostic (SACM23-XMI-029).
+        let input = format!(
+            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
+             <argumentPackage href=\"o.xmi#ap\"/>\n</sacm:AssuranceCasePackage>"
+        );
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+                Ok(output) => {
+                    let held: Vec<(&str, &str)> = output
+                        .document()
+                        .get("case")
+                        .map(|case| {
+                            case.proxies()
+                                .iter()
+                                .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    assert_eq!(
+                        (output.diagnostics().len(), held),
+                        (0, vec![("argumentPackage", "o.xmi#ap")]),
+                        "{ROW}: a cross-document proxy: a {mode:?} read does not hold it with \
+                         no diagnostic: {:?}",
+                        output.diagnostics()
+                    );
+                }
+                Err(error) => {
+                    panic!("{ROW}: a cross-document proxy: a {mode:?} read refuses it: {error}")
+                }
+            }
+        }
         // The `<xmi:Extension/>` it sampled until slice 0073a is read as XMI
         // metadata, in both modes, with no diagnostic (SACM23-XMI-019).
         let metadata = input.replace("<argumentPackage href=\"o.xmi#ap\"/>", "<xmi:Extension/>");

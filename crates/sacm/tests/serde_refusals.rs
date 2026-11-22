@@ -3,9 +3,10 @@
 //!
 //! - `tests/data/golden/serde/read-errors.json` and `write-errors.json` hold
 //!   one value per variant, and `Unsupported` once per code an input
-//!   reaches: SACM-XMI-007, -003, -002, -008 (slice 0072), -015 and
-//!   SACM-XML-002 (SACM-SEC-002 has no input of a test's size here, and
-//!   SACM-XMI-014 none since slice 0073a, which retires it;
+//!   reaches: SACM-XMI-003, -002, -008 (slice 0072), -015 and
+//!   SACM-XML-002 (SACM-SEC-002 has no input of a test's size here,
+//!   SACM-XMI-014 none since slice 0073a, which retires it, and
+//!   SACM-XMI-007 none since slice 0073b, which reads its links;
 //!   LIB-SEC-003 reaches `/namespaces`), and `LimitExceeded` last (LIB-SEC-003,
 //!   acceptance 14). The samples are real
 //!   refusals of `xmi::read` and `xmi::write`, because the variants are
@@ -137,16 +138,12 @@ fn read_samples() -> Vec<ReadError> {
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>\n</sacm:ArgumentPackage>"
         ),
-        // Unsupported: SACM-XMI-007, -003, -002, -008, -015, SACM-XML-002.
+        // Unsupported: SACM-XMI-003, -002, -008, -015, SACM-XML-002.
         // The SACM-XMI-014 sample is gone since slice 0073a read XMI metadata
-        // (SACM23-XMI-019, ADR 0042 D9); until slice 0067 a
+        // (SACM23-XMI-019, ADR 0042 D9), and the SACM-XMI-007 sample, an
+        // XPointer `href` on a metaClaim, since slice 0073b reads it
+        // (SACM23-XMI-029, ADR 0040 amendment 1); until slice 0067 a
         // TerminologyPackageInterface in the case was refused.
-        format!(
-            "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
-             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n    \
-             <metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>\n  </argumentElement>\n\
-             </sacm:ArgumentPackage>"
-        ),
         format!(
             "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" foo=\"bar\">\n  \
              <sacm:ArgumentPackage xmi:id=\"p\"/>\n</xmi:XMI>"
@@ -284,7 +281,6 @@ fn lib_api_017_read_errors_json_holds_one_value_per_variant_and_reads_back() {
             ("NoPackage", "SACM-XMI-001"),
             ("DuplicateId", "SACM-ID-001"),
             ("InvalidId", "SACM-ID-002"),
-            ("Unsupported", "SACM-XMI-007"),
             ("Unsupported", "SACM-XMI-003"),
             ("Unsupported", "SACM-XMI-002"),
             ("Unsupported", "SACM-XMI-008"),
@@ -409,9 +405,17 @@ fn lib_api_017_a_refusal_whose_code_is_not_its_variant_s_and_its_template_s_is_r
         r#""code":"SACM-XML-001""#,
         r#""code":"SACM-XMI-001""#,
     );
-    // SACM-XMI-007 is a code of Unsupported, but not of this template.
+    // SACM-XMI-003 is a code of Unsupported, but not of this template
+    // (SACM-XMI-007 was the example until slice 0073b retired its templates).
     assert_refused::<ReadError>(
         "a code of the variant that is not the template's",
+        UNSUPPORTED,
+        r#""code":"SACM-XMI-015""#,
+        r#""code":"SACM-XMI-003""#,
+    );
+    // A retired code is the code of no template.
+    assert_refused::<ReadError>(
+        "a retired code",
         UNSUPPORTED,
         r#""code":"SACM-XMI-015""#,
         r#""code":"SACM-XMI-007""#,

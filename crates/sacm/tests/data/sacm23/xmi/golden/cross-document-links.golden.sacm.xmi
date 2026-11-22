@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case" />
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="b">
+    <name content="Binding" />
+    <participantPackage href="braking.sacm.xmi#xpointer(id('api'))" />
+    <participantPackage href="sacm:ArgumentPackageInterface vehicle.sacm.xmi#api" />
+  </argumentPackage>
+  <terminologyPackage xmi:id="terms">
+    <name content="Terms" />
+    <terminologyElement xmi:type="sacm:Term" xmi:id="t1">
+      <name xmi:type="sacm:ExpressionLangString" lang="en">
+        <expression href="glossary.sacm.xmi#blade" />
+      </name>
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage href="arguments.sacm.xmi#args" />
+  <argumentPackage href="sacm:ArgumentPackageInterface braking.sacm.xmi#api" />
+</sacm:AssuranceCasePackage>

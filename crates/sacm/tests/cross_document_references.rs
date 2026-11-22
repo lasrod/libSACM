@@ -36,8 +36,6 @@ use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, Writ
 use sacm::compare::Difference;
 use sacm::model::Href;
 
-mod common;
-
 const ROW: &str = "SACM23-XMI-027";
 
 /// Both modes, strict first.
@@ -63,9 +61,6 @@ const GOLDEN: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/data/sacm23/xmi/golden/cross-document-references.golden.sacm.xmi"
 );
-
-/// The label of an `Unsupported` refusal of a link SACM23-XMI-029 reads.
-const XMI_029_LABEL: &str = "(a limit of this version; SACM23-XMI-029 reads it)";
 
 /// The `href` of the samples.
 const OTHER: &str = "other.sacm.xmi#x";
@@ -1922,16 +1917,35 @@ fn sacm23_xmi_027_delete_copy_and_move_keep_hrefs() {
 // What SACM23-XMI-029 reads
 // =================================================================================
 
+/// What a link SACM23-XMI-029 reads is held as.
+enum Held {
+    /// A proxy of `p`: its role and its href.
+    Proxy(&'static str, &'static str),
+    /// The expression href of the name of `c1`.
+    Expression(&'static str),
+    /// The one href of the `citedElement` of `c1`.
+    Cited(&'static str),
+    /// Not held: the reference element is kept whole in `c1`, with one
+    /// SACM-XMI-003.
+    Kept,
+}
+
 #[test]
-fn sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029() {
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn sacm23_xmi_027_the_links_sacm23_xmi_029_reads_are_not_plain_hrefs() {
     let inputs = [
         (
             "an untyped argumentElement href",
             in_p("<argumentElement href=\"o.xmi#c\"/>"),
+            Held::Proxy("argumentElement", "o.xmi#c"),
         ),
         (
             "a typed argumentElement href",
             in_p("<argumentElement xmi:type=\"sacm:Claim\" href=\"o.xmi#c\"/>"),
+            Held::Proxy("argumentElement", "sacm:Claim o.xmi#c"),
         ),
         (
             "an expression href in a name",
@@ -1940,6 +1954,7 @@ fn sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029() {
                  <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\">\
                  <expression href=\"o.xmi#t\"/></name></argumentElement>",
             ),
+            Held::Expression("o.xmi#t"),
         ),
         (
             "an XPointer href",
@@ -1948,6 +1963,7 @@ fn sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029() {
                 " isCitation=\"true\"",
                 "<citedElement href=\"#xpointer(id('c'))\"/>",
             )),
+            Held::Cited("#xpointer(id('c'))"),
         ),
         (
             "a cross-document XPointer href",
@@ -1956,6 +1972,7 @@ fn sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029() {
                 " isCitation=\"true\"",
                 "<citedElement href=\"o.xmi#xpointer(id('c'))\"/>",
             )),
+            Held::Cited("o.xmi#xpointer(id('c'))"),
         ),
         (
             "an xlink:href on a reference element",
@@ -1964,45 +1981,94 @@ fn sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029() {
                 " isCitation=\"true\"",
                 "<citedElement xlink:href=\"o.xmi#c\"/>",
             )),
+            Held::Kept,
         ),
     ];
-    for (what, input) in inputs {
-        let error = refused(what, &input);
-        assert!(
-            matches!(error, ReadError::Unsupported { .. })
-                && error.code() == Code::XMI_EXTERNAL_HREF
-                && error.to_string().ends_with(XMI_029_LABEL),
-            "{ROW}: {what}: not Unsupported with SACM-XMI-007 naming SACM23-XMI-029: {error}"
-        );
-        assert_eq!(
-            error.code().as_str(),
-            common::unsupported_code(&error.to_string()),
-            "{ROW}: {what}: the label's code"
-        );
-        let output = tolerant(what, &input);
-        assert_eq!(
-            output
-                .diagnostics()
-                .iter()
-                .map(|one| (one.code(), one.severity(), one.location()))
-                .collect::<Vec<_>>(),
-            [(Code::XMI_EXTERNAL_HREF, Severity::Warning, error.location())],
-            "{ROW}: {what}: a tolerant read does not keep it with one SACM-XMI-007 Warning"
-        );
-        assert!(
-            output.diagnostics()[0]
-                .message()
-                .ends_with("; SACM23-XMI-029 reads it"),
-            "{ROW}: {what}: the tolerant Warning does not name SACM23-XMI-029: {}",
-            output.diagnostics()[0].message()
-        );
-        assert!(
-            output
-                .document()
-                .elements()
-                .any(SacmElement::has_preserved_content),
-            "{ROW}: {what}: it is not kept"
-        );
+    // None is `Unsupported`, and none is SACM-XMI-007: each is held as
+    // SACM23-XMI-029 states, in both modes.
+    for (what, input, held) in inputs {
+        for mode in MODES {
+            let output = match read(mode, &input) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refused it: {error}"),
+            };
+            assert!(
+                output
+                    .diagnostics()
+                    .iter()
+                    .all(|one| one.code() != Code::XMI_EXTERNAL_HREF),
+                "{ROW}: {what}: SACM-XMI-007 in {mode:?} mode"
+            );
+            let doc = output.document();
+            let c1 = doc.get("c1");
+            let kept = doc.elements().any(SacmElement::has_preserved_content);
+            match held {
+                Held::Proxy(role, href) => assert_eq!(
+                    (
+                        doc.get("p").map(|p| p
+                            .proxies()
+                            .iter()
+                            .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                            .collect::<Vec<_>>()),
+                        output.diagnostics().len(),
+                        kept
+                    ),
+                    (Some(vec![(role, href)]), 0, false),
+                    "{ROW}: {what}, {mode:?}: not held as a proxy of p, with no diagnostic"
+                ),
+                Held::Expression(href) => assert_eq!(
+                    (
+                        c1.and_then(SacmElement::name)
+                            .and_then(|name| name.expression_href())
+                            .map(Href::as_str),
+                        output.diagnostics().len(),
+                        kept
+                    ),
+                    (Some(href), 0, false),
+                    "{ROW}: {what}, {mode:?}: not held as the name's expression href"
+                ),
+                Held::Cited(href) => assert_eq!(
+                    (
+                        c1.map(|c1| c1
+                            .hrefs(ReferenceEnd::CitedElement)
+                            .iter()
+                            .map(Href::as_str)
+                            .collect::<Vec<_>>()),
+                        output.diagnostics().len(),
+                        kept
+                    ),
+                    (Some(vec![href]), 0, false),
+                    "{ROW}: {what}, {mode:?}: not held as an href of citedElement"
+                ),
+                Held::Kept => {
+                    let severity = if mode == Mode::Strict {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    };
+                    assert_eq!(
+                        output
+                            .diagnostics()
+                            .iter()
+                            .map(|one| (one.code(), one.severity(), one.template()))
+                            .collect::<Vec<_>>(),
+                        [(
+                            Code::XMI_UNKNOWN_CONTENT,
+                            severity,
+                            "SACM-XMI-003/element-kept"
+                        )],
+                        "{ROW}: {what}, {mode:?}: the reference element is not kept with one \
+                         SACM-XMI-003"
+                    );
+                    assert!(
+                        c1.is_some_and(|c1| c1.has_preserved_content()
+                            && c1.hrefs(ReferenceEnd::CitedElement).is_empty()
+                            && c1.cited_element().is_none()),
+                        "{ROW}: {what}, {mode:?}: it is not kept in c1, or it is also read"
+                    );
+                }
+            }
+        }
     }
 }
 

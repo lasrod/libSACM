@@ -1712,11 +1712,23 @@ fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
         Operation::SetReferences(set) => {
             set_references_answer(doc, set.element(), set.end(), set.ids())
         }
+        // The operations here name ids; the href forms are LIB-EDIT-020's
+        // (`edit_hrefs.rs`).
         Operation::AddReference(add) => {
-            add_reference_answer(doc, add.element(), add.end(), add.id())
+            let Some(id) = add.id() else {
+                panic!(
+                    "{EDIT_002}: {operation:?} appends an href, which this model does not answer"
+                );
+            };
+            add_reference_answer(doc, add.element(), add.end(), id)
         }
         Operation::RemoveReference(remove) => {
-            remove_reference_answer(doc, remove.element(), remove.end(), remove.id())
+            let Some(id) = remove.id() else {
+                panic!(
+                    "{EDIT_002}: {operation:?} removes an href, which this model does not answer"
+                );
+            };
+            remove_reference_answer(doc, remove.element(), remove.end(), id)
         }
         Operation::ReorderElements(reorder) => {
             reorder_answer(doc, reorder.parent(), reorder.order())
@@ -1830,10 +1842,16 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
         Operation::CreateAssertedArtifactContext(create) => relationship!(create),
         // The creates of slice 0066 (ADR 0039 D4).
         Operation::CreateArgumentPackageInterface(create) => {
-            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+            vec![(
+                ReferenceEnd::Implements,
+                create.implements().into_iter().collect(),
+            )]
         }
         Operation::CreateArtifactPackageInterface(create) => {
-            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+            vec![(
+                ReferenceEnd::Implements,
+                create.implements().into_iter().collect(),
+            )]
         }
         Operation::CreateArgumentPackageBinding(create) => vec![(
             ReferenceEnd::ParticipantPackage,
@@ -1857,10 +1875,16 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
         ],
         // The creates of slice 0067 (ADR 0039 D4).
         Operation::CreateAssuranceCasePackageInterface(create) => {
-            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+            vec![(
+                ReferenceEnd::Implements,
+                create.implements().into_iter().collect(),
+            )]
         }
         Operation::CreateTerminologyPackageInterface(create) => {
-            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+            vec![(
+                ReferenceEnd::Implements,
+                create.implements().into_iter().collect(),
+            )]
         }
         Operation::CreateAssuranceCasePackageBinding(create) => vec![(
             ReferenceEnd::ParticipantPackage,

@@ -66,11 +66,6 @@ const LABEL_OPENINGS: [&str; 3] = [
     "(a defect in the input",
 ];
 
-/// The label of `Interim(row)`.
-fn interim(row: &str) -> String {
-    format!("(a limit of this version; {row} reads it)")
-}
-
 /// The label of `Tolerance(row)`.
 fn tolerance(row: &str) -> String {
     format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
@@ -181,14 +176,15 @@ fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
 }
 
-// --- Interim: cross-document links not read yet (SACM23-XMI-029) -------------------
+// --- Interim: none since slice 0073b reads the cross-document links (SACM23-XMI-029) -
 
 #[test]
-fn lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029() {
+fn lib_api_011_no_cross_document_link_is_refused_as_not_read_yet() {
     // SACM23-XMI-027 reads an `href` with a document part on a reference
-    // element (slice 0068); an XPointer fragment and XLink attributes stay
-    // SACM23-XMI-029's (ADR 0040).
-    let label = interim("SACM23-XMI-029");
+    // element (slice 0068), and SACM23-XMI-029 an XPointer fragment (slice
+    // 0073b; ADR 0040 amendment 1): the list has no `Interim` entry left.
+    // XLink attributes on a reference element do not conform: the element is
+    // kept with SACM-XMI-003, which is no refusal.
     let cases = [
         (
             "an XPointer href to another document",
@@ -197,6 +193,7 @@ fn lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029() {
                 "",
                 "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
             )),
+            None,
         ),
         (
             "XLink attributes on a reference element",
@@ -209,10 +206,55 @@ fn lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029() {
                 ),
                 claim("c2", "", "")
             )),
+            Some("SACM-XMI-003/element-kept"),
         ),
     ];
-    for (what, input) in cases {
-        assert_text_refused_with("CrossDocumentHref", what, &input, &label);
+    for (what, input, kept) in cases {
+        for mode in MODES {
+            let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
+            {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refuses it: {error}"),
+            };
+            let severity = if mode == Mode::Strict {
+                Severity::Error
+            } else {
+                Severity::Warning
+            };
+            let expected: Vec<(Severity, &str)> =
+                kept.map(|kept| (severity, kept)).into_iter().collect();
+            assert_eq!(
+                output
+                    .diagnostics()
+                    .iter()
+                    .map(|one| (one.severity(), one.template()))
+                    .collect::<Vec<_>>(),
+                expected,
+                "{ROW}: {what}: the diagnostics of a {mode:?} read"
+            );
+            let c1 = output.document().get("c1");
+            let hrefs: Vec<&str> = c1
+                .map(|c1| {
+                    c1.hrefs(sacm::model::ReferenceEnd::MetaClaim)
+                        .iter()
+                        .map(sacm::model::Href::as_str)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let expected: Vec<&str> = if kept.is_some() {
+                Vec::new()
+            } else {
+                vec!["other.sacm.xmi#xpointer(id('c'))"]
+            };
+            assert_eq!(
+                (
+                    hrefs,
+                    c1.map(sacm::model::SacmElement::has_preserved_content)
+                ),
+                (expected, Some(kept.is_some())),
+                "{ROW}: {what}: what a {mode:?} read holds in c1"
+            );
+        }
     }
 }
 

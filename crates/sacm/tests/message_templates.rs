@@ -13,10 +13,10 @@
 //!   rendered with the arguments, is the variable part of the `Display`;
 //!   every placeholder names an argument of the right kind; the arguments
 //!   come in the order the pattern first names them, `row` last and only on
-//!   the `Unsupported` templates of SACM-XMI-007, -002 and -015 and on
+//!   the `Unsupported` templates of SACM-XMI-002 and -015 and on
 //!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
 //!   of their code; and the inputs and the templates no input reaches
-//!   together are the 104 refusal templates, once each.
+//!   together are the 100 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
@@ -60,6 +60,11 @@
 //! any more, and adds `SACM-XMI-001/xmi-namespace-root` and
 //! `SACM-XMI-003/wrapper-element`, which gives 104.
 //!
+//! Slice 0073b reads the cross-document links left (SACM23-XMI-029, ADR 0040
+//! amendment 1): it removes the four `Unsupported` templates of
+//! SACM-XMI-007, whose code no input gives any more, which gives 100. Their
+//! inputs read: `refusal_codes.rs::sacm23_xmi_029_no_entry_is_interim`.
+//!
 //! Slice 0072 also changes the English of the three `SACM-XML-002` templates, which
 //! name ISO-8859-1 now, and the label of SACM-XMI-002 and SACM-XMI-008 with
 //! a row, `(strict mode never reads it; ROW reads it in tolerant mode)`
@@ -90,8 +95,10 @@ const NS: &str = concat!(
 /// 0072 adds eleven and removes `SACM-XMI-002/no-namespace`, and 104 once
 /// slice 0073a removes the seven `Unsupported` templates of SACM-XMI-014
 /// and adds `SACM-XMI-001/xmi-namespace-root` and
-/// `SACM-XMI-003/wrapper-element` (SACM23-XMI-019, ADR 0042).
-const REFUSAL_TEMPLATES: usize = 104;
+/// `SACM-XMI-003/wrapper-element` (SACM23-XMI-019, ADR 0042), and 100 once
+/// slice 0073b removes the four `Unsupported` templates of SACM-XMI-007,
+/// whose links it reads (SACM23-XMI-029, ADR 0040 amendment 1).
+const REFUSAL_TEMPLATES: usize = 100;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -231,16 +238,6 @@ fn named_package(name: &str) -> String {
 fn claim(id: &str, attributes: &str, body: &str) -> String {
     format!(
         "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}><name content=\"{id}\"/>{body}</argumentElement>"
-    )
-}
-
-/// A root AssuranceCasePackage `case` holding the ArgumentPackage `ap`,
-/// which holds `body`: an element that is not a root.
-fn nested(body: &str) -> String {
-    format!(
-        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-         <argumentPackage xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"ap\"><name content=\"ap\"/>{body}\
-         </argumentPackage></sacm:AssuranceCasePackage>"
     )
 }
 
@@ -532,65 +529,6 @@ fn cases() -> Vec<Case> {
             &[],
             "the document cannot be written in strict mode: the document holds preserved content outside its elements",
             "the document cannot be written in strict mode: the document holds preserved content outside its elements",
-        ),
-        // --- ReadError::Unsupported, SACM-XMI-007 --------------------------------------
-        read(
-            "SACM-XMI-007/unread-attribute",
-            package(&format!(
-                "{}{}",
-                claim(
-                    "c1",
-                    "",
-                    "<metaClaim href=\"#c2\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:type=\"simple\"/>"
-                ),
-                claim("c2", "", "")
-            )),
-            &[
-                ("attribute", t("xlink:type")),
-                ("element", t("metaClaim")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            "the attribute {attribute:?} of the element {element:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 289: the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
-        ),
-        read(
-            "SACM-XMI-007/proxy-child",
-            nested("<argumentElement href=\"other.sacm.xmi#c\"/>"),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("argumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-            "the reader cannot represent the input at line 1, column 245: the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
-        ),
-        read(
-            "SACM-XMI-007/proxy-child-of-root",
-            package("<argumentElement href=\"other.sacm.xmi#c\"/>"),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-            "the reader cannot represent the input at line 1, column 153: the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
-        ),
-        read(
-            "SACM-XMI-007/href",
-            package(&claim(
-                "c1",
-                "",
-                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
-            )),
-            &[
-                ("href", t("other.sacm.xmi#xpointer(id('c'))")),
-                ("element", t("metaClaim")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            "the href {href:?} of the reference element {element:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 235: the href \"other.sacm.xmi#xpointer(id('c'))\" of the reference element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         ),
         // --- ReadError::LegacyShape, SACM-XMI-012 --------------------------------------
         read(
@@ -1286,7 +1224,6 @@ fn render(template: &str, english: &str, arguments: &[(&str, Value)]) -> String 
 /// one of an `Unsupported` refusal, given its `row` argument.
 fn label(code: &str, row: Option<&str>) -> Option<String> {
     match (code, row) {
-        ("SACM-XMI-007", Some(row)) => Some(format!("(a limit of this version; {row} reads it)")),
         // Since slice 0072 a tolerant read reads them (ADR 0041 D6).
         ("SACM-XMI-002" | "SACM-XMI-008", Some(row)) => Some(format!(
             "(strict mode never reads it; {row} reads it in tolerant mode)"
@@ -1308,8 +1245,7 @@ fn label(code: &str, row: Option<&str>) -> Option<String> {
 fn is_unsupported(template: &str) -> bool {
     matches!(
         code_of(template),
-        "SACM-XMI-007"
-            | "SACM-XMI-002"
+        "SACM-XMI-002"
             | "SACM-XMI-008"
             | "SACM-XMI-015"
             | "SACM-XML-002"
@@ -1320,7 +1256,8 @@ fn is_unsupported(template: &str) -> bool {
 
 /// Checks the table row of `case` against itself: the placeholders and the
 /// arguments agree in names, kinds and order, and `row` is last exactly on
-/// the `Unsupported` templates of SACM-XMI-007, -002 and -015.
+/// the `Unsupported` templates of SACM-XMI-002 and -015, and on
+/// `SACM-XMI-008/other-revision-root`.
 fn check_row(case: &Case) {
     let template = case.template;
     let mut first_seen: Vec<&str> = Vec::new();
@@ -1353,10 +1290,8 @@ fn check_row(case: &Case) {
     );
     // Of SACM-XMI-008, only a root of an older revision names its row; a
     // SACM 2.4 root is a limit (slice 0072).
-    let takes_row = matches!(
-        code_of(template),
-        "SACM-XMI-007" | "SACM-XMI-002" | "SACM-XMI-015"
-    ) || template == "SACM-XMI-008/other-revision-root";
+    let takes_row = matches!(code_of(template), "SACM-XMI-002" | "SACM-XMI-015")
+        || template == "SACM-XMI-008/other-revision-root";
     if takes_row {
         assert_eq!(
             declared.last(),
@@ -1371,8 +1306,8 @@ fn check_row(case: &Case) {
     } else {
         assert!(
             !declared.contains(&"row"),
-            "{ROW}: {template}: only the Unsupported templates of SACM-XMI-007, -002 and -015, \
-             and SACM-XMI-008/other-revision-root, take row"
+            "{ROW}: {template}: only the Unsupported templates of SACM-XMI-002 and -015, and \
+             SACM-XMI-008/other-revision-root, take row"
         );
     }
 }
@@ -1380,7 +1315,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 104, once each.
+    // The inputs and the templates without one are the 100, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

@@ -1244,11 +1244,11 @@ fn sacm23_base_009_an_expression_attribute_on_a_claim_is_a_preserved_attribute()
 }
 
 // ---------------------------------------------------------------------------
-// SACM23-BASE-009 acceptance 7: what stays Unsupported
+// SACM23-BASE-009 acceptance 7: what is kept, and what SACM23-XMI-029 reads
 // ---------------------------------------------------------------------------
 
 #[test]
-fn sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_document_href_is_unsupported()
+fn sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_document_href_is_read()
  {
     let in_name = |inside: &str| {
         case(
@@ -1301,33 +1301,34 @@ fn sacm23_base_009_an_identity_attribute_on_expression_is_preserved_and_a_cross_
             "{BASE_009}: {what}: the name is read"
         );
     }
+    // An `href` to another document is read as the name's `expression_href`
+    // since slice 0073b, in both modes, with no diagnostic (SACM23-XMI-029;
+    // ADR 0040 amendment 1): `Unsupported` naming SACM23-XMI-029 until then.
     let href = in_name("<expression href=\"other.xmi#t1\"/>");
-    let error = strict_refusal(BASE_009, "a cross-document href", &href);
-    assert!(
-        matches!(error, ReadError::Unsupported { .. })
-            && error
-                .to_string()
-                .ends_with("(a limit of this version; SACM23-XMI-029 reads it)"),
-        "{BASE_009}: a cross-document href on an expression element is not Unsupported naming \
-         SACM23-XMI-029 (ADR 0040): {error}"
-    );
-    let output = read_ok(BASE_009, "a cross-document href", Mode::Tolerant, &href);
-    assert_eq!(
-        output
-            .diagnostics()
-            .iter()
-            .map(|one| (one.code(), one.severity(), one.location()))
-            .collect::<Vec<_>>(),
-        [(Code::XMI_EXTERNAL_HREF, Severity::Warning, error.location())],
-        "{BASE_009}: a tolerant read does not keep the href with one SACM-XMI-007 Warning"
-    );
-    assert!(
-        output
-            .document()
-            .elements()
-            .any(SacmElement::has_preserved_content),
-        "{BASE_009}: the cross-document href is not kept"
-    );
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        let what = format!("a cross-document href, {mode:?}");
+        let output = read_ok(BASE_009, &what, mode, &href);
+        assert_eq!(
+            output.diagnostics(),
+            [],
+            "{BASE_009}: {what}: the read gives diagnostics"
+        );
+        let name = element(BASE_009, output.document(), "c1").name();
+        assert_eq!(
+            (
+                name.and_then(|name| name.expression_href())
+                    .map(sacm::model::Href::as_str),
+                name.and_then(|name| name.expression()),
+                name.map(sacm::model::LangString::is_expression_lang_string),
+                output
+                    .document()
+                    .elements()
+                    .any(SacmElement::has_preserved_content)
+            ),
+            (Some("other.xmi#t1"), None, Some(true), false),
+            "{BASE_009}: {what}: the href is not read as the name's expression_href"
+        );
+    }
 }
 
 #[test]

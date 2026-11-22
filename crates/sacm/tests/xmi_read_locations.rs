@@ -436,18 +436,21 @@ fn root_rows() -> Vec<Row> {
                 "{MARK}<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),
         ),
-        // A cross-document link this version does not read yet
-        // (SACM23-XMI-029): a proxy of another document under the abstract
-        // role `argumentElement`, at its start tag. (An `xmi:uuid` on the
-        // root until slice 0073a read it as XMI metadata, SACM23-XMI-019.)
-        // An unqualified id, or another attribute the class lacks, is
-        // preserved instead (ADR 0033): `preserved_rows`.
+        // An attribute whose prefix `sacm` a child binds to another
+        // namespace, which the written start tag could not keep (ADR 0035),
+        // at the attribute's name. (An `xmi:uuid` on the root until slice
+        // 0073a read it as XMI metadata, SACM23-XMI-019, and a proxy of
+        // another document under the abstract role `argumentElement` until
+        // slice 0073b held it, SACM23-XMI-029.) An unqualified id, or another
+        // attribute the class lacks, is preserved instead (ADR 0033):
+        // `preserved_rows`.
         row(
-            "a proxy of another document in a root",
+            "an attribute with the prefix sacm bound elsewhere, on a child of a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\">{MARK}<argumentElement href=\"o.xmi#c\"/>\
-                 </sacm:ArgumentPackage>"
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\"><argumentElement \
+                 xmlns:s=\"http://www.omg.org/spec/SACM/20220301\" xmlns:sacm=\"urn:example:other\" \
+                 xmi:type=\"s:Claim\" xmi:id=\"c\" {MARK}sacm:extra=\"1\"/></sacm:ArgumentPackage>"
             )),
         ),
         row(
@@ -465,14 +468,16 @@ fn root_rows() -> Vec<Row> {
         ),
         // SACM23-XMI-025: an id with white space around an NCName is read
         // trimmed, so it is no refusal.
-        // A proxy of another document under a concrete role, at its `href`
-        // (SACM23-XMI-029). (An `xmi:label` on the root until slice 0073a
-        // read it as XMI metadata, SACM23-XMI-019.)
+        // The same under a concrete role, at the attribute's name. (An
+        // `xmi:label` on the root until slice 0073a read it as XMI metadata,
+        // SACM23-XMI-019, and a proxy of another document under a concrete
+        // role until slice 0073b held it, SACM23-XMI-029.)
         row(
-            "a proxy of another document under a concrete role of a root",
+            "an attribute with the prefix sacm bound elsewhere, under a concrete role of a root",
             Unsupported,
             led(&format!(
-                "<sacm:AssuranceCasePackage{NS} xmi:id=\"a\"><argumentPackage {MARK}href=\"o.xmi#ap\"/>\
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"a\"><argumentPackage \
+                 xmlns:sacm=\"urn:example:other\" {MARK}sacm:extra=\"1\"/>\
                  </sacm:AssuranceCasePackage>"
             )),
         ),
@@ -872,8 +877,7 @@ fn flag_rows() -> Vec<Row> {
 /// attribute form (SACM23-XMI-005) and the element form (SACM23-XMI-015;
 /// ADR 0026).
 fn reference_rows() -> Vec<Row> {
-    use Variant::{RepeatedValue, Unsupported as U};
-    let link = |element: &str| claim_x("", element);
+    use Variant::RepeatedValue;
     vec![
         // Two ids on a single-valued end: at the second id, its own column
         // in the value.
@@ -901,23 +905,12 @@ fn reference_rows() -> Vec<Row> {
         // Malformed reference elements: since slice 0073a an identity or a
         // type attribute keeps the whole element (production 2c, rule 4e;
         // SACM23-XMI-019), in `preserved_rows`.
-        // An XPointer href (SACM23-XMI-029): at the attribute's name. Since
-        // slice 0068 an href with a document part is read (SACM23-XMI-027),
-        // and one that names no element is preserved content (SACM-XMI-003).
-        row(
-            "an XPointer href",
-            U,
-            link(&format!(
-                "<citedElement {MARK}href=\"#xpointer(id('c'))\"/>"
-            )),
-        ),
-        row(
-            "a cross-document XPointer href",
-            U,
-            link(&format!(
-                "<abstractForm {MARK}href=\"other.xmi#xpointer(id('c'))\"/>"
-            )),
-        ),
+        // An XPointer href, `<citedElement href="#xpointer(id('c'))"/>` or
+        // `<abstractForm href="other.xmi#xpointer(id('c'))"/>`, is no refusal
+        // since slice 0073b reads it (SACM23-XMI-029;
+        // `cross_document_links.rs`). Since slice 0068 an href with a
+        // document part is read (SACM23-XMI-027), and one that names no
+        // element is preserved content (SACM-XMI-003).
     ]
 }
 

@@ -30,8 +30,6 @@ use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, ElementKind, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
-mod common;
-
 const ROW: &str = "LIB-COMPAT-010";
 
 /// Both modes, strict first.
@@ -225,11 +223,11 @@ fn lib_compat_010_a_reference_form_element_under_an_abstract_role_is_not_missing
     // class is missing, so it is no SACM-XMI-005. Since slice 0073a a proxy
     // of the same document (`xmi:idref`, or `href="#c1"`) whose id names no
     // root is kept with `SACM-XMI-003/proxy-of-no-root` at its start tag, in
-    // both modes (SACM23-XMI-030); one of another document is not read yet:
-    // `Unsupported` at its start tag naming SACM23-XMI-029 (ADR 0040). Until
-    // slice 0073a an `xmi:idref` named SACM23-XMI-019, and `href="#c1"`
-    // SACM23-XMI-029.
-    const HREF: &str = "(a limit of this version; SACM23-XMI-029 reads it)";
+    // both modes (SACM23-XMI-030); one of another document is held as a
+    // proxy of its container since slice 0073b, with no diagnostic
+    // (SACM23-XMI-029; ADR 0040 amendment 1). Until slice 0073a an
+    // `xmi:idref` named SACM23-XMI-019, and until slice 0073b an `href` to
+    // another document was `Unsupported` naming SACM23-XMI-029.
     let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n  ";
     let kept = [
         (
@@ -254,13 +252,11 @@ fn lib_compat_010_a_reference_form_element_under_an_abstract_role_is_not_missing
     for (what, template, holder) in &kept {
         assert_proxy_of_no_root_at_mark(ROW, what, template, holder);
     }
-    assert_unsupported_at_mark(
+    assert_held_as_proxy(
         ROW,
         "an argumentElement href to another document in an ArgumentPackage",
-        &ap(&format!(
-            "{claim}{MARK}<argumentElement href=\"o.xmi#c1\"/>"
-        )),
-        HREF,
+        &ap(&format!("{claim}<argumentElement href=\"o.xmi#c1\"/>")),
+        ("p", "argumentElement", "o.xmi#c1"),
     );
 }
 
@@ -308,92 +304,118 @@ fn assert_proxy_of_no_root_at_mark(row: &str, what: &str, template: &str, holder
     }
 }
 
-/// Reads `template` without its one mark in strict mode and asserts that it
-/// is `Unsupported`, with no code, at the mark, its one-line reason ending
-/// with `label`; `row` names the row in the messages. A tolerant read keeps
-/// it (ADR 0035).
-fn assert_unsupported_at_mark(row: &str, what: &str, template: &str, label: &str) {
+/// Reads `template` in both modes and asserts that it is read, holding the
+/// role element in reference form as a cross-file proxy of the element
+/// `holder`: `held` is the holder's id and the one proxy's role and href
+/// (SACM23-XMI-029; ADR 0040 amendment 1). It gives no diagnostic, or, if
+/// `template` marks an `xsi:type`, one SACM-XMI-010 at the mark affecting the
+/// holder (an Error strict, a Warning tolerant); never SACM-XMI-005, and
+/// nothing is kept as preserved content. `row` names the row in the messages.
+fn assert_held_as_proxy(row: &str, what: &str, template: &str, held: (&str, &str, &str)) {
+    let (holder, role, href) = held;
     let (input, marks) = marked(template);
-    assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-    {
-        let mode = Mode::Strict;
-        let error = match read(mode, &input) {
-            Ok(output) => panic!(
-                "{row}: {what}: a {mode:?} read returned a document of {} elements",
-                output.document().element_count()
+    assert!(
+        marks.len() <= 1,
+        "{row}: setup: {what} has more than one mark"
+    );
+    for (mode, severity) in [
+        (Mode::Strict, Severity::Error),
+        (Mode::Tolerant, Severity::Warning),
+    ] {
+        let output = match read(mode, &input) {
+            Ok(output) => output,
+            Err(error) => panic!("{row}: {what}: a {mode:?} read refused it: {error:?} ({error})"),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .map(|found| {
+                (
+                    found.code().as_str(),
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        let expected: Vec<_> = marks
+            .iter()
+            .map(|mark| {
+                (
+                    "SACM-XMI-010",
+                    severity,
+                    Some(*mark),
+                    vec![ElementId::from(holder)],
+                )
+            })
+            .collect();
+        assert_eq!(
+            found, expected,
+            "{row}: {what}: the diagnostics of a {mode:?} read"
+        );
+        let doc = output.document();
+        assert_eq!(
+            (
+                doc.get(holder).map(|holder| holder
+                    .proxies()
+                    .iter()
+                    .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                    .collect::<Vec<_>>()),
+                doc.has_preserved_content()
             ),
-            Err(error) => error,
-        };
-        let ReadError::Unsupported {
-            location, reason, ..
-        } = &error
-        else {
-            panic!("{row}: {what}: {mode:?}: not Unsupported: {error:?} ({error})");
-        };
-        assert!(
-            error.code().as_str() == crate::common::unsupported_code(&error.to_string())
-                && *location == Some(marks[0])
-                && reason.ends_with(label)
-                && !reason.contains('\n'),
-            "{row}: {what}: {mode:?}: not Unsupported at {} ending {label:?}: {error:?}",
-            marks[0]
+            (Some(vec![(role, href)]), false),
+            "{row}: {what}: a {mode:?} read does not hold it as a proxy of {holder:?}"
         );
     }
 }
 
-/// The label of a refusal of input the row `row` is to read.
-fn interim(row: &str) -> String {
-    format!("(a limit of this version; {row} reads it)")
-}
-
 #[test]
-fn lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_029() {
+fn lib_api_011_a_role_element_with_an_unqualified_href_is_a_proxy_and_no_refusal() {
     // A role element carrying an unqualified `href` is the reference form of
     // a composite held in another document (XMI 2.5.1 §7.10.1, §7.10.2), a
     // proxy, whether it is typed or untyped and whether its role's declared
-    // type is abstract or concrete: SACM23-XMI-029 reads it, so until then
-    // it names that row, not SACM23-XMI-019 (the maintainer, 2026-11-16;
-    // split from SACM23-XMI-027 by slice 0068, ADR 0040).
-    // A typed element, and one under a concrete role, is refused at the
-    // attribute's name, as an object's XMI attribute is today; an untyped
-    // one under an abstract role at its start tag, as LIB-COMPAT-010 pins.
+    // type is abstract or concrete: SACM23-XMI-029 reads it since slice
+    // 0073b, so it is no refusal any more (it was `Unsupported` naming that
+    // row; the maintainer, 2026-11-16; split from SACM23-XMI-027 by slice
+    // 0068, ADR 0040, and read under its amendment 1). Its type, by
+    // `xmi:type` or `xsi:type` (with its SACM-XMI-010, at the attribute), is
+    // held as the href's type.
     // A qualified `xlink:href` or `xmi:href` is not `href` (XMI.xsd
     // LinkAttribs) and makes no proxy: the next test pins that it is
     // preserved, and the one after it that an untyped element carrying it
     // under an abstract role is still SACM-XMI-005.
     const API_011: &str = "LIB-API-011";
-    const XMI_029: &str = "SACM23-XMI-029";
-    let label = interim(XMI_029);
     let cases = [
         (
             "a typed argumentElement href to another document in an ArgumentPackage",
-            ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}href=\"o.xmi#c1\"/>"
-            )),
+            ap("<argumentElement xmi:type=\"sacm:Claim\" href=\"o.xmi#c1\"/>"),
+            ("p", "argumentElement", "sacm:Claim o.xmi#c1"),
         ),
         (
             "an xsi-typed argumentElement href to another document in an ArgumentPackage",
             ap(&format!(
-                "<argumentElement xsi:type=\"sacm:Claim\" {MARK}href=\"o.xmi#c1\"/>"
+                "<argumentElement {MARK}xsi:type=\"sacm:Claim\" href=\"o.xmi#c1\"/>"
             )),
+            ("p", "argumentElement", "sacm:Claim o.xmi#c1"),
         ),
         (
             "an untyped argumentPackage href in an AssuranceCasePackage (a concrete role)",
-            acp(&format!("<argumentPackage {MARK}href=\"o.xmi#p1\"/>")),
+            acp("<argumentPackage href=\"o.xmi#p1\"/>"),
+            ("case", "argumentPackage", "o.xmi#p1"),
         ),
         (
             "a typed argumentPackage href in an AssuranceCasePackage",
-            acp(&format!(
-                "<argumentPackage xmi:type=\"sacm:ArgumentPackage\" {MARK}href=\"o.xmi#p1\"/>"
-            )),
+            acp("<argumentPackage xmi:type=\"sacm:ArgumentPackage\" href=\"o.xmi#p1\"/>"),
+            ("case", "argumentPackage", "sacm:ArgumentPackage o.xmi#p1"),
         ),
         (
             "an untyped argumentElement href in an ArgumentPackage",
-            ap(&format!("{MARK}<argumentElement href=\"o.xmi#c1\"/>")),
+            ap("<argumentElement href=\"o.xmi#c1\"/>"),
+            ("p", "argumentElement", "o.xmi#c1"),
         ),
     ];
-    for (what, template) in &cases {
-        assert_unsupported_at_mark(API_011, what, template, &label);
+    for (what, template, held) in &cases {
+        assert_held_as_proxy(API_011, what, template, *held);
     }
     // `href="#c1"` names an element of this document: since slice 0073a a
     // same-file proxy (SACM23-XMI-030), kept at its start tag, as `c1` is no

@@ -64,19 +64,27 @@
 //!   reference element whose `href` names an element of another document,
 //!   such as `other.sacm.xmi#c1`, is held as a [`model::Href`] in the end's
 //!   [`hrefs`](model::SacmElement::hrefs), written back and counted toward
-//!   the end's bounds, but never resolved; no edit creates one yet.
+//!   the end's bounds, but never resolved; its fragment may be an
+//!   `XPointer`, and a type may stand before it
+//!   ([`Href::kind`](model::Href::kind)). A child held in another document,
+//!   such as `<argumentPackage href="arguments.sacm.xmi#args"/>`, is held
+//!   as a [`model::Proxy`] of its container
+//!   ([`proxies`](model::SacmElement::proxies); see
+//!   [Cross-file proxies](xmi::read#cross-file-proxies)).
 //!   A `name`, or a value of a `content`, `key` or `location`, may be an
 //!   `ExpressionLangString` (§8.4) that links an `ExpressionElement`
 //!   ([`LangString::expression`](model::LangString::expression),
-//!   [`expressions`](model::SacmElement::expressions)).
+//!   [`expressions`](model::SacmElement::expressions)), or one of another
+//!   document
+//!   ([`LangString::expression_href`](model::LangString::expression_href)).
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
 //!   see [Preserved content](xmi::read#preserved-content)). A tolerant read,
 //!   the default, opens every well-formed file with SACM 2.3 package roots:
-//!   what a strict read refuses, such as a value that is no literal or
-//!   conforming content not read yet, it keeps as preserved content with a
-//!   Warning, never dropped (see [Modes](xmi#modes)). An element
+//!   what a strict read refuses, such as a value that is no literal or an
+//!   untyped child under an abstract role, it keeps as preserved content
+//!   with a Warning, never dropped (see [Modes](xmi#modes)). An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
 //!   `write` saves; see [Ids](xmi::read#ids). XMI metadata, such as
 //!   `xmi:uuid` ([`uuid`](model::SacmElement::uuid)) or an

@@ -1242,9 +1242,9 @@ fn sacm23_art_012_create_reports_what_it_holds_and_checks_in_order() {
             operation.parent(),
             operation.id(),
             operation.name(),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (None, None, &named("Brake tests interface"), "t"),
+        (None, None, &named("Brake tests interface"), Some("t")),
         "{row}: root()"
     );
     let operation = CreateArtifactPackageInterface::new("t", named("I"), "t").with_id("i");

@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use super::ElementId;
+use super::{ElementId, Href};
 
 /// Text with an optional language tag, where the text may also be absent:
 /// SACM's `LangString` (SACM 2.3 §8.3).
@@ -34,7 +34,8 @@ use super::ElementId;
 /// on the value.
 ///
 /// [`Ord`] compares `lang` first, then `content`, with absent before present,
-/// then the form: plain before an `ExpressionLangString`.
+/// then the form: plain before an `ExpressionLangString`, and among those
+/// one with no expression, then one with an id, then one with an href.
 ///
 /// # `ExpressionLangString`
 ///
@@ -48,7 +49,11 @@ use super::ElementId;
 /// a file may hold one without, which reads with `expression() == None` and
 /// which [`validate`](crate::validation::validate) reports (SACM-MULT-001).
 /// The ids an element's name and texts link are its
-/// [`expressions`](crate::model::SacmElement::expressions).
+/// [`expressions`](crate::model::SacmElement::expressions). The expression
+/// may instead be an element of another document, named by an
+/// [`Href`]: [`expression_href`](Self::expression_href) and
+/// [`with_expression_href`](Self::with_expression_href) (ADR 0040 amendment
+/// 1). It then counts as present, and is never resolved or checked.
 ///
 /// ```
 /// use sacm::model::{ElementId, LangString};
@@ -87,12 +92,21 @@ pub struct LangString {
 }
 
 /// Whether a [`LangString`] is plain or an `ExpressionLangString` (§8.4),
-/// with the id of its `expression` if it has one. Plain sorts first.
+/// with its `expression` if it has one. Plain sorts first.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Form {
     #[default]
     Plain,
-    Expression(Option<ElementId>),
+    Expression(Option<Link>),
+}
+
+/// What the `expression` of an `ExpressionLangString` names (ADR 0040
+/// amendment 1, A2): an element of this document by its id, or one of
+/// another document by an href. An id sorts before an href.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Link {
+    Id(ElementId),
+    Href(Href),
 }
 
 impl LangString {
@@ -171,8 +185,10 @@ impl LangString {
     }
 
     /// The `expression` of an `ExpressionLangString` (SACM 2.3 §8.4): the id of
-    /// the `ExpressionElement` it links to. `None` for a plain `LangString`, and
-    /// for an `ExpressionLangString` read without one.
+    /// the `ExpressionElement` it links to. `None` for a plain `LangString`,
+    /// for an `ExpressionLangString` read without one, and for one whose
+    /// expression is in another document
+    /// ([`expression_href`](Self::expression_href)).
     ///
     /// ```
     /// use sacm::model::{ElementId, LangString};
@@ -184,9 +200,43 @@ impl LangString {
     #[must_use]
     pub fn expression(&self) -> Option<&ElementId> {
         match &self.form {
-            Form::Expression(expression) => expression.as_ref(),
-            Form::Plain => None,
+            Form::Expression(Some(Link::Id(expression))) => Some(expression),
+            Form::Expression(_) | Form::Plain => None,
         }
+    }
+
+    /// The `expression` of an `ExpressionLangString` that is an element of
+    /// another document, or an `XPointer`: the [`Href`] that names it, never
+    /// resolved or checked (SACM23-XMI-029, ADR 0040 amendment 1). `None`
+    /// for a plain `LangString`, and for an `ExpressionLangString` whose
+    /// expression is an id or absent.
+    ///
+    /// It counts as the expression being present (§8.4 `expression[1]`),
+    /// and it is not among the ids of
+    /// [`SacmElement::expressions`](crate::model::SacmElement::expressions).
+    ///
+    /// ```
+    /// use sacm::model::{Href, LangString};
+    ///
+    /// let href = Href::new("terms.sacm.xmi#blade")?;
+    /// let name = LangString::new("x").with_expression_href(href.clone());
+    /// assert_eq!(name.expression_href(), Some(&href));
+    /// assert_eq!(name.expression(), None);
+    /// assert_eq!(LangString::new("x").with_expression("blade").expression_href(), None);
+    /// # Ok::<(), sacm::model::HrefError>(())
+    /// ```
+    #[must_use]
+    pub fn expression_href(&self) -> Option<&Href> {
+        match &self.form {
+            Form::Expression(Some(Link::Href(href))) => Some(href),
+            Form::Expression(_) | Form::Plain => None,
+        }
+    }
+
+    /// Whether this is an `ExpressionLangString` with no `expression`,
+    /// neither an id nor an href (§8.4 `expression[1]`).
+    pub(crate) fn lacks_expression(&self) -> bool {
+        matches!(self.form, Form::Expression(None))
     }
 
     /// Whether this is an `ExpressionLangString` (§8.4), with or without an
@@ -221,7 +271,34 @@ impl LangString {
     /// ```
     #[must_use]
     pub fn with_expression(mut self, expression: impl Into<ElementId>) -> Self {
-        self.form = Form::Expression(Some(expression.into()));
+        self.form = Form::Expression(Some(Link::Id(expression.into())));
+        self
+    }
+
+    /// This value as an `ExpressionLangString` whose `expression` is the
+    /// element of another document that `href` names, keeping `lang` and
+    /// `content` and replacing any earlier expression (LIB-EDIT-020, ADR
+    /// 0040 amendment 1).
+    ///
+    /// No edit checks the href: the element it names need not exist.
+    ///
+    /// ```
+    /// use sacm::model::{ElementId, Href, LangString};
+    ///
+    /// let href = Href::new("terms.sacm.xmi#blade")?;
+    /// let name = LangString::new("x").with_lang("en").with_expression_href(href.clone());
+    /// assert!(name.is_expression_lang_string());
+    /// assert_eq!(name.expression_href(), Some(&href));
+    /// assert_eq!((name.lang(), name.content()), (Some("en"), Some("x")));
+    /// // An id replaces it.
+    /// let local = name.with_expression("blade");
+    /// assert_eq!(local.expression(), Some(&ElementId::from("blade")));
+    /// assert_eq!(local.expression_href(), None);
+    /// # Ok::<(), sacm::model::HrefError>(())
+    /// ```
+    #[must_use]
+    pub fn with_expression_href(mut self, href: Href) -> Self {
+        self.form = Form::Expression(Some(Link::Href(href)));
         self
     }
 
@@ -250,9 +327,9 @@ impl LangString {
     /// has one: a copy's link to a copied element.
     pub(crate) fn map_expression(&self, map: impl FnOnce(&ElementId) -> Option<ElementId>) -> Self {
         let mut value = self.clone();
-        if let Form::Expression(Some(expression)) = &self.form {
+        if let Form::Expression(Some(Link::Id(expression))) = &self.form {
             if let Some(mapped) = map(expression) {
-                value.form = Form::Expression(Some(mapped));
+                value.form = Form::Expression(Some(Link::Id(mapped)));
             }
         }
         value
@@ -262,7 +339,7 @@ impl LangString {
 impl fmt::Debug for LangString {
     /// A plain value as `LangString { lang, content }`; an
     /// `ExpressionLangString` as `ExpressionLangString { lang, content,
-    /// expression }`.
+    /// expression }`, the expression as its id, its href or `None`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.form {
             Form::Plain => f
@@ -270,12 +347,17 @@ impl fmt::Debug for LangString {
                 .field("lang", &self.lang)
                 .field("content", &self.content)
                 .finish(),
-            Form::Expression(expression) => f
-                .debug_struct("ExpressionLangString")
-                .field("lang", &self.lang)
-                .field("content", &self.content)
-                .field("expression", expression)
-                .finish(),
+            Form::Expression(expression) => {
+                let mut out = f.debug_struct("ExpressionLangString");
+                out.field("lang", &self.lang)
+                    .field("content", &self.content);
+                match expression {
+                    Some(Link::Id(id)) => out.field("expression", &Some(id)),
+                    Some(Link::Href(href)) => out.field("expression", &Some(href)),
+                    None => out.field("expression", &None::<ElementId>),
+                };
+                out.finish()
+            }
         }
     }
 }
@@ -288,7 +370,9 @@ const EXPRESSION_LANG_STRING: &str = "ExpressionLangString";
 /// The JSON of a `LangString` (ADR 0030 R6 and amendment 4): a plain one is
 /// `{"lang", "content"}`; an `ExpressionLangString` is
 /// `{"type": "ExpressionLangString", "lang", "content", "expression"}`, keys
-/// in that order, `expression` `null` when it has none.
+/// in that order, `expression` the id as a string, `{"href": "…"}` for an
+/// element of another document (ADR 0040 amendment 1, A7), or `null` when
+/// it has none.
 #[cfg(feature = "serde")]
 impl serde::Serialize for LangString {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -305,10 +389,64 @@ impl serde::Serialize for LangString {
                 out.serialize_field("type", EXPRESSION_LANG_STRING)?;
                 out.serialize_field("lang", &self.lang)?;
                 out.serialize_field("content", &self.content)?;
-                out.serialize_field("expression", expression)?;
+                match expression {
+                    Some(Link::Id(id)) => out.serialize_field("expression", &Some(id))?,
+                    Some(Link::Href(href)) => {
+                        out.serialize_field("expression", &JsonHref { href: href.clone() })?;
+                    }
+                    None => out.serialize_field("expression", &None::<ElementId>)?,
+                }
                 out.end()
             }
         }
+    }
+}
+
+/// The JSON of an expression that is an href: `{"href": "…"}`, and no other
+/// key.
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JsonHref {
+    href: Href,
+}
+
+/// The JSON of an `expression`: an id string, `null`, or [`JsonHref`].
+#[cfg(feature = "serde")]
+struct JsonExpression(Option<Link>);
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for JsonExpression {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ExpressionVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ExpressionVisitor {
+            type Value = JsonExpression;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an id, null, or {\"href\": \"…\"}")
+            }
+
+            fn visit_unit<E: serde::de::Error>(self) -> Result<JsonExpression, E> {
+                Ok(JsonExpression(None))
+            }
+
+            fn visit_str<E: serde::de::Error>(self, id: &str) -> Result<JsonExpression, E> {
+                Ok(JsonExpression(Some(Link::Id(ElementId::new(id)))))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                map: A,
+            ) -> Result<JsonExpression, A::Error> {
+                use serde::Deserialize;
+                let json =
+                    JsonHref::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+                Ok(JsonExpression(Some(Link::Href(json.href))))
+            }
+        }
+
+        deserializer.deserialize_any(ExpressionVisitor)
     }
 }
 
@@ -344,7 +482,7 @@ impl<'de> serde::de::Visitor<'de> for LangStringVisitor {
         let mut tag: Option<String> = None;
         let mut lang: Option<Option<String>> = None;
         let mut content: Option<Option<String>> = None;
-        let mut expression: Option<Option<ElementId>> = None;
+        let mut expression: Option<JsonExpression> = None;
         while let Some(key) = map.next_key::<String>()? {
             let repeated = match key.as_str() {
                 "type" => tag.replace(map.next_value()?).is_some(),
@@ -365,7 +503,7 @@ impl<'de> serde::de::Visitor<'de> for LangStringVisitor {
                     &"\"ExpressionLangString\"",
                 ));
             }
-            (Some(_), Some(expression)) => Form::Expression(expression),
+            (Some(_), Some(JsonExpression(expression))) => Form::Expression(expression),
             (Some(_), None) => return Err(A::Error::missing_field("expression")),
             (None, Some(_)) => {
                 return Err(A::Error::custom(

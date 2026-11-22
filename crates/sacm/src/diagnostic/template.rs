@@ -211,18 +211,6 @@ templates! {
     XMI_006_OUTSIDE_ELEMENTS = XMI_STRICT_SAVE_REFUSED, Write("PreservedContent"), "SACM-XMI-006/outside-elements",
         [],
         "the document cannot be written in strict mode: the document holds preserved content outside its elements";
-    XMI_007_UNREAD_ATTRIBUTE = XMI_EXTERNAL_HREF, Unread, "SACM-XMI-007/unread-attribute",
-        [Text("attribute"), Text("element"), Text("row")],
-        "the attribute {attribute:?} of the element {element:?} is not read in this release";
-    XMI_007_PROXY_CHILD = XMI_EXTERNAL_HREF, Unread, "SACM-XMI-007/proxy-child",
-        [Text("element"), Text("container"), Text("class"), Text("row")],
-        "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release";
-    XMI_007_PROXY_CHILD_OF_ROOT = XMI_EXTERNAL_HREF, Unread, "SACM-XMI-007/proxy-child-of-root",
-        [Text("element"), Text("container"), Text("class"), Text("row")],
-        "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release";
-    XMI_007_HREF = XMI_EXTERNAL_HREF, Unread, "SACM-XMI-007/href",
-        [Text("href"), Text("element"), Text("row")],
-        "the href {href:?} of the reference element {element:?} is not read in this release";
     XMI_012_NAME_ATTRIBUTE = XMI_LEGACY_SHAPE, Read("LegacyShape"), "SACM-XMI-012/name-attribute",
         [Text("class"), Text("id")],
         "the name of the {class} {id:?} is given as the attribute \"name\"";
@@ -570,6 +558,9 @@ templates! {
     XMI_010_XSI_TYPE_ON_NAME_VALUE = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-name-value",
         [Text("class"), Text("id")],
         "the value in the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_PROXY = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-proxy",
+        [Text("element"), Text("holder_class"), Text("holder_id"), Text("class")],
+        "the proxy {element:?} in the {holder_class} {holder_id:?} is typed {class} with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
     XMI_011_VERSION_ON_XMI_ELEMENT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-xmi-element",
         [Text("value")],
         "the xmi:version {value:?} of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
@@ -708,18 +699,6 @@ templates! {
     XMI_013_MODEL_TYPE_IN_ROOT_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/model-type-in-root-kept",
         [Text("element"), Text("container")],
         "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship";
-    XMI_007_UNREAD_ATTRIBUTE_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/unread-attribute-kept",
-        [Text("attribute"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the attribute {attribute:?} of the element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_007_PROXY_CHILD_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/proxy-child-kept",
-        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_007_PROXY_CHILD_OF_ROOT_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/proxy-child-of-root-kept",
-        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_007_HREF_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/href-kept",
-        [Text("href"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the href {href:?} of the reference element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
     XMI_005_MISSING_TYPE_KEPT = XMI_MISSING_TYPE, Diagnostic, "SACM-XMI-005/missing-type-kept",
         [Text("element"), Text("container"), Text("role"), Text("type"), Text("holder_class"), Text("holder_id")],
         "the element {element:?} in the element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
@@ -840,10 +819,7 @@ mod tests {
     /// its row.
     fn takes_row(template: &Template) -> bool {
         template.carrier == Carrier::Unread
-            && matches!(
-                template.code.as_str(),
-                "SACM-XMI-007" | "SACM-XMI-002" | "SACM-XMI-015"
-            )
+            && matches!(template.code.as_str(), "SACM-XMI-002" | "SACM-XMI-015")
             || template.id == "SACM-XMI-008/other-revision-root"
     }
 
@@ -880,13 +856,16 @@ mod tests {
         // LIB-COMPAT-016); slice 0073a removed the seven refusals and eight
         // kept forms of SACM-XMI-014 and added two refusal and seven
         // diagnostic templates (SACM23-XMI-019, SACM23-XMI-030; ADR 0042),
-        // and, in its fix round, SACM-XMI-003/proxy-of-linked-root.
-        assert_eq!(count, 213, "LIB-API-017: the number of templates");
+        // and, in its fix round, SACM-XMI-003/proxy-of-linked-root; slice
+        // 0073b removed the four refusals and four kept forms of
+        // SACM-XMI-007 (SACM23-XMI-029; ADR 0040 amendment 1), and, in its
+        // fix round, added SACM-XMI-010/xsi-type-on-proxy.
+        assert_eq!(count, 206, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 109, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 106, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));
@@ -978,7 +957,7 @@ mod tests {
                 } else {
                     assert_eq!(
                         rows, 0,
-                        "LIB-API-017: {id}: only the Unsupported templates of SACM-XMI-014, -007, -002 and -015 take row"
+                        "LIB-API-017: {id}: only the Unsupported templates of SACM-XMI-002, -008 (other-revision-root) and -015 take row"
                     );
                 }
                 continue;

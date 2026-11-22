@@ -2,8 +2,11 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
-//! that a tolerant or a strict read, or a strict write, gives (slice 0073a
+//! `## Message templates` table, 106 in all: 38 that `validate` gives and 68
+//! that a tolerant or a strict read, or a strict write, gives (slice 0073b
+//! removes the four kept forms of SACM-XMI-007, whose links SACM23-XMI-029
+//! reads, and adds `SACM-XMI-010/xsi-type-on-proxy`, ADR 0040 amendment 1;
+//! slice 0073a
 //! removes the eight kept forms of SACM-XMI-014 and adds eight of XMI
 //! metadata and same-file proxies, ADR 0042; slice 0072 adds the three of a
 //! root in another SACM namespace, LIB-COMPAT-004; slice 0068 adds the eight of the
@@ -23,7 +26,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 109 templates,
+//!   pattern names it, and then last; and the inputs are the 106 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -54,13 +57,15 @@ const NS: &str = concat!(
 );
 
 /// The number of diagnostic templates (acceptance 1): 38 from validation and
-/// 71 from the reader and the writer, once slice 0067 removes the four kept
+/// 68 from the reader and the writer, once slice 0067 removes the four kept
 /// forms of unread kinds and ends (ADR 0035 amendment 1), slice 0068 adds
 /// eight to validation (SACM23-VAL-013, -014, -015, -023), slice 0072 adds
 /// three to the reader (LIB-COMPAT-004), and slice 0073a removes the eight
 /// kept forms of SACM-XMI-014 and adds eight (SACM23-XMI-019,
-/// SACM23-XMI-030; ADR 0042).
-const DIAGNOSTIC_TEMPLATES: usize = 109;
+/// SACM23-XMI-030; ADR 0042), and slice 0073b removes the four kept forms of
+/// SACM-XMI-007 and adds `SACM-XMI-010/xsi-type-on-proxy` (SACM23-XMI-029;
+/// ADR 0040 amendment 1).
+const DIAGNOSTIC_TEMPLATES: usize = 106;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -81,13 +86,6 @@ macro_rules! kd {
     () => {
         ", so it is kept as preserved content of the document, which a tolerant write writes \
          back and a strict write refuses"
-    };
-}
-
-/// ‹R›: the row that reads it; `row` comes last.
-macro_rules! reads {
-    () => {
-        "; {row} reads it"
     };
 }
 
@@ -996,7 +994,7 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 71 templates a read, or a strict write's check of XMI metadata, gives,
+/// The 68 templates a read, or a strict write's check of XMI metadata, gives,
 /// in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
@@ -1348,6 +1346,23 @@ fn plain_reader_cases() -> Vec<Case> {
             &[("class", t("Claim")), ("id", t("c1"))],
             concat!("the value in the name of the {class} {id:?}", xsi!()),
             "the value in the name of the Claim \"c1\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type-on-proxy",
+            tolerant(format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+                 <argumentPackage xsi:type=\"sacm:ArgumentPackageInterface\" href=\"b.xmi#api\"/>\
+                 </sacm:AssuranceCasePackage>"
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[
+                ("element", t("argumentPackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+                ("class", t("ArgumentPackageInterface")),
+            ],
+            "the proxy {element:?} in the {holder_class} {holder_id:?} is typed {class} with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+            "the proxy \"argumentPackage\" in the AssuranceCasePackage \"case\" is typed ArgumentPackageInterface with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
         ),
         case(
             "SACM-XMI-011/version-on-xmi-element",
@@ -1900,104 +1915,18 @@ fn spelling_cases() -> Vec<Case> {
     ]
 }
 
-/// The 10 forms of content a tolerant read keeps where a strict read
-/// refuses it, but the three of SACM-XMI-003 above: 4 of SACM-XMI-007, and
-/// the kept forms of SACM-XMI-005, SACM-ENUM-001 and SACM-MULT-001. Slice
-/// 0073a removes the eight of SACM-XMI-014, whose code no input gives any
-/// more (SACM23-XMI-019, ADR 0042).
+/// The 6 forms of content a tolerant read keeps where a strict read
+/// refuses it, but the three of SACM-XMI-003 above: the kept forms of
+/// SACM-XMI-005, SACM-ENUM-001 and SACM-MULT-001. Slice 0073a removes the
+/// eight of SACM-XMI-014 and slice 0073b the four of SACM-XMI-007, whose
+/// codes no input gives any more (SACM23-XMI-019, ADR 0042; SACM23-XMI-029,
+/// ADR 0040 amendment 1).
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per template, reads best whole"
 )]
 fn kept_cases() -> Vec<Case> {
     vec![
-        // --- SACM-XMI-007 --------------------------------------------------------------
-        case(
-            "SACM-XMI-007/unread-attribute-kept",
-            tolerant(package(&format!(
-                "{}{}",
-                claim(
-                    "c1",
-                    "",
-                    "<metaClaim href=\"#c2\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:type=\"simple\"/>"
-                ),
-                claim("c2", "", "")
-            ))),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("attribute", t("xlink:type")),
-                ("element", t("metaClaim")),
-                ("holder_class", t("Claim")),
-                ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            concat!(
-                "the attribute {attribute:?} of the element {element:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
-        ),
-        case(
-            "SACM-XMI-007/proxy-child-kept",
-            tolerant(nested("<argumentElement href=\"other.sacm.xmi#c\"/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("argumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("ap")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            concat!(
-                "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
-        ),
-        case(
-            "SACM-XMI-007/proxy-child-of-root-kept",
-            tolerant(package("<argumentElement href=\"other.sacm.xmi#c\"/>")),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("argumentElement")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("class", t("ArgumentationElement")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("p")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            concat!(
-                "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
-        ),
-        case(
-            "SACM-XMI-007/href-kept",
-            tolerant(package(&claim(
-                "c1",
-                "",
-                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
-            ))),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("href", t("other.sacm.xmi#xpointer(id('c'))")),
-                ("element", t("metaClaim")),
-                ("holder_class", t("Claim")),
-                ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-029")),
-            ],
-            concat!(
-                "the href {href:?} of the reference element {element:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the href \"other.sacm.xmi#xpointer(id('c'))\" of the reference element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
-        ),
         // --- SACM-XMI-005 --------------------------------------------------------------
         case(
             "SACM-XMI-005/missing-type-kept",
@@ -2116,7 +2045,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 109.
+/// as a case of the table is, but not counted among the 106.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2236,6 +2165,25 @@ fn sites() -> Vec<Case> {
             &[("class", t("ArgumentPackage")), ("id", t("p"))],
             concat!("the {class} {id:?}", xsi!()),
             "the ArgumentPackage \"p\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        // SACM-XMI-010/xsi-type-on-proxy: a same-file proxy that is kept, a
+        // strict read: an Error.
+        case(
+            "SACM-XMI-010/xsi-type-on-proxy",
+            strict(format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+                 <argumentPackage xsi:type=\"sacm:ArgumentPackage\" xmi:idref=\"nope\"/>\
+                 </sacm:AssuranceCasePackage>"
+            )),
+            (ERROR, "LIB-COMPAT-001", Some("9.5.2")),
+            &[
+                ("element", t("argumentPackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+                ("class", t("ArgumentPackage")),
+            ],
+            "the proxy {element:?} in the {holder_class} {holder_id:?} is typed {class} with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+            "the proxy \"argumentPackage\" in the AssuranceCasePackage \"case\" is typed ArgumentPackage with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
         ),
         // SACM-XMI-010/xsi-type, a strict read: an Error.
         case(
@@ -2506,7 +2454,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 109 templates, once each.
+    // The inputs are the 106 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();

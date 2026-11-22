@@ -959,23 +959,28 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
             preview(input.as_bytes())
         );
     }
-    // A child the reader cannot read, inside a readable root, after each
-    // line ending: the refusal is at the child's `href`, 17 characters after
-    // its start tag (`<argumentPackage `).
+    // A child the reader cannot represent, inside a readable root, after
+    // each line ending: the refusal is at the attribute whose prefix `sacm`
+    // the child binds to another namespace, 48 characters after its start
+    // tag (`<argumentPackage xmlns:sacm="urn:example:other" `).
     let children: [(&str, u32, u32); 4] = [
-        ("\r", 2, 18),
-        ("\r\n", 2, 18),
-        ("\r\r\n  ", 3, 20),
-        ("\n\r", 3, 18),
+        ("\r", 2, 49),
+        ("\r\n", 2, 49),
+        ("\r\r\n  ", 3, 51),
+        ("\n\r", 3, 49),
     ];
     for (before, line, column) in children {
         let input = sacm_document(
             "",
-            // A proxy of an element of another document (SACM23-XMI-029): a
+            // An attribute whose prefix `sacm` is bound to another namespace,
+            // which the written start tag could not keep (ADR 0035): a
             // TerminologyPackageInterface until slice 0067 read it
-            // (SACM23-TERM-007), and an xmi:Extension until slice 0073a read
-            // it (SACM23-XMI-019).
-            &format!("{before}<argumentPackage href=\"o.xmi#ap\"/>"),
+            // (SACM23-TERM-007), an xmi:Extension until slice 0073a read
+            // it (SACM23-XMI-019), and a proxy of an element of another
+            // document until slice 0073b held it (SACM23-XMI-029).
+            &format!(
+                "{before}<argumentPackage xmlns:sacm=\"urn:example:other\" sacm:extra=\"1\"/>"
+            ),
         );
         let error = assert_unsupported(row, &input);
         assert_eq!(
@@ -1251,39 +1256,66 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 #[test]
 fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    // A readable root whose child is a proxy of an element of another
-    // document under a concrete role, which no verified row reads yet
-    // (SACM23-XMI-029): refused at its `href`, on line 4. `  <argumentPackage `
-    // is 19 characters. (Until slice 0073a this was an `xmi:uuid` on the
-    // name, which SACM23-XMI-019 reads. Content that does not conform, such
-    // as an element in a value element, is preserved instead, ADR 0033.)
-    let href_child = sacm_document(
+    // A readable root whose child carries an attribute whose prefix `sacm`
+    // the child binds to another namespace, which the written start tag
+    // could not keep (ADR 0035): refused at the attribute, on line 4.
+    // `  <argumentPackage xmi:id="a" xmlns:sacm="urn:example:other" ` is 61
+    // characters. (Until slice 0073a this was an `xmi:uuid` on the name,
+    // which SACM23-XMI-019 reads, and until slice 0073b a proxy of an
+    // element of another document, which SACM23-XMI-029 holds. Content that
+    // does not conform, such as an element in a value element, is preserved
+    // instead, ADR 0033.)
+    let unwritable = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <argumentPackage href=\"o.xmi#ap\"/>\n",
+        "\n  <argumentPackage xmi:id=\"a\" xmlns:sacm=\"urn:example:other\" sacm:extra=\"1\"/>\n",
     );
-    let error = assert_unsupported(row, &href_child);
+    let error = assert_unsupported(row, &unwritable);
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 20)),
-        "{row}: the refusal is not located at the `href` of the proxy"
+        Some(loc(row, 4, 62)),
+        "{row}: the refusal is not located at the attribute"
     );
-    // An AssuranceCasePackage root with an ArgumentPackage child that holds
-    // such a proxy under the abstract role `argumentElement` (an
-    // `xmi:Extension` child until slice 0073a read it, and a
-    // `terminologyPackage` child typed `sacm:TerminologyPackageInterface`
-    // until slice 0067 read it): `Unsupported`, with no document, at
-    // `<argumentElement` (line 5, column 3).
-    let unread_child = sacm_document(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <argumentPackage xmi:id=\"a\"><name content=\"A\"/>\n  \
-         <argumentElement href=\"o.xmi#c\"/></argumentPackage>\n",
-    );
-    let error = assert_unsupported(row, &unread_child);
-    assert_eq!(
-        error.location(),
-        Some(loc(row, 5, 3)),
-        "{row}: the refusal is not located at the start tag of the proxy"
-    );
+    // The proxies this test sampled until slice 0073b are read, with no
+    // document refused: one under the concrete role `argumentPackage` of the
+    // root, and one under the abstract role `argumentElement` of an
+    // ArgumentPackage child (SACM23-XMI-029).
+    for (content, holder, role, href) in [
+        (
+            "\n  <argumentPackage href=\"o.xmi#ap\"/>\n",
+            "case_1",
+            "argumentPackage",
+            "o.xmi#ap",
+        ),
+        (
+            "\n  <argumentPackage xmi:id=\"a\"><name content=\"A\"/>\n  \
+             <argumentElement href=\"o.xmi#c\"/></argumentPackage>\n",
+            "a",
+            "argumentElement",
+            "o.xmi#c",
+        ),
+    ] {
+        let input = sacm_document(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
+            content,
+        );
+        let output = match xmi::read(&input, &ReadOptions::default().with_mode(Mode::Strict)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: a strict read refuses {}: {error:?}",
+                preview(&input)
+            ),
+        };
+        assert_eq!(
+            output.document().get(holder).map(|holder| holder
+                .proxies()
+                .iter()
+                .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                .collect::<Vec<_>>()),
+            Some(vec![(role, href)]),
+            "{row}: the proxy of {} is not held by {holder:?}",
+            preview(&input)
+        );
+    }
     // A document element that is recognised but not read yet: refused at its
     // start tag, on line 3.
     let unread_root =
@@ -1303,16 +1335,35 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 1, 32)),
         "{row}: the refusal is not located at the root element's start tag"
     );
-    // The full sample, too. Its `argumentPackage` child is read
-    // (SACM23-XMI-016), so the first content it cannot read is the proxy of
-    // `c_1` in another document, refused at its start tag: line 5, column 5.
-    // (It was `isCitation` until SACM23-BASE-007 read it, and an `xmi:uuid`
-    // on `c_1` at column 57 until SACM23-XMI-019 read it in slice 0073a.)
-    let error = assert_unsupported(row, SAMPLE.as_bytes());
+    // The full sample holds nothing the reader cannot represent any more.
+    // Its `argumentPackage` child is read (SACM23-XMI-016), and the proxy of
+    // `c_1` in another document, the last content of it a strict read
+    // refused as `Unsupported` (at line 5, column 5), is held since slice
+    // 0073b (SACM23-XMI-029). (It was `isCitation` until SACM23-BASE-007
+    // read it, and an `xmi:uuid` on `c_1` at column 57 until SACM23-XMI-019
+    // read it in slice 0073a.) A strict read refuses the sample for the C++
+    // shape of its description alone (LIB-COMPAT-008), and a tolerant read
+    // returns it.
+    let strict = xmi::read(
+        SAMPLE.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Strict),
+    );
+    assert!(
+        matches!(strict, Err(ReadError::LegacyShape { .. })),
+        "{row}: a strict read of the sample is not LegacyShape: {strict:?}"
+    );
+    let tolerant = match xmi::read(SAMPLE.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output,
+        Err(error) => panic!("{row}: a tolerant read refuses the sample: {error:?}"),
+    };
     assert_eq!(
-        error.location(),
-        Some(loc(row, 5, 5)),
-        "{row}: the sample is not refused at the proxy of `c_1`"
+        tolerant.document().get("arg_1").map(|arg_1| arg_1
+            .proxies()
+            .iter()
+            .map(|proxy| (proxy.role(), proxy.href().as_str()))
+            .collect::<Vec<_>>()),
+        Some(vec![("argumentElement", "other.sacm.xmi#c_1")]),
+        "{row}: the sample's proxy of `c_1` is not held by `arg_1`"
     );
 }
 

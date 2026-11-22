@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-029: Golden L1 of slice 0073b (ADR 0040 amendment 1). The AssuranceCasePackage case holds two cross-file containment proxies in its argumentPackage role, one untyped and one typed sacm:ArgumentPackageInterface; the ArgumentPackageBinding b names its participants by an XPointer href and by a type-prefixed href (XMI 2.5.1 rule 2n); the name of the Term t1 is an ExpressionLangString whose expression is an href. All are held, none is resolved, and a write writes the proxies after the children of case, the typed one with its type before the URI reference. The Term has no value, so validate reports its SACM-MULT-001 (SACM23-TERM-003). Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case"/>
+  <argumentPackage href="arguments.sacm.xmi#args"/>
+  <argumentPackage xmi:type="sacm:ArgumentPackageInterface" href="braking.sacm.xmi#api"/>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="b">
+    <name content="Binding"/>
+    <participantPackage href="braking.sacm.xmi#xpointer(id('api'))"/>
+    <participantPackage href="sacm:ArgumentPackageInterface vehicle.sacm.xmi#api"/>
+  </argumentPackage>
+  <terminologyPackage xmi:id="terms">
+    <name content="Terms"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="t1">
+      <name xmi:type="sacm:ExpressionLangString" lang="en"><expression href="glossary.sacm.xmi#blade"/></name>
+    </terminologyElement>
+  </terminologyPackage>
+</sacm:AssuranceCasePackage>

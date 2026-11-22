@@ -9,8 +9,10 @@ use std::slice;
 use super::EditError;
 use super::create::checked_place;
 use super::plan::{Features, NewElement, Plan};
+#[cfg(feature = "serde")]
+use super::references::Link;
 use super::references::{check_bounds, check_targets, expression_ids};
-use crate::model::{Document, ElementId, ElementKind, Flag, LangString, ReferenceEnd};
+use crate::model::{Document, ElementId, ElementKind, Flag, Href, LangString, ReferenceEnd};
 
 /// Creates an `ArgumentReasoning` (SACM 2.3 §11.12) as the last child of an
 /// element whose class can hold one, such as an `ArgumentPackage`: a
@@ -528,18 +530,45 @@ macro_rules! interface_operation {
         #[cfg_attr(
             feature = "serde",
             derive(serde::Serialize, serde::Deserialize),
-            serde(deny_unknown_fields)
+            serde(
+                try_from = "crate::edit::argumentation::InterfaceRecord",
+                into = "crate::edit::argumentation::InterfaceRecord"
+            )
         )]
         pub struct $name {
-            #[cfg_attr(
-                feature = "serde",
-                serde(deserialize_with = "serde::Deserialize::deserialize")
-            )]
             parent: Option<ElementId>,
-            #[cfg_attr(feature = "serde", serde(default))]
             id: Option<ElementId>,
             name: LangString,
-            implements: ElementId,
+            implements: $crate::edit::references::Link,
+        }
+
+        #[cfg(feature = "serde")]
+        impl TryFrom<$crate::edit::argumentation::InterfaceRecord> for $name {
+            type Error = String;
+
+            fn try_from(
+                record: $crate::edit::argumentation::InterfaceRecord,
+            ) -> Result<Self, String> {
+                let (parent, id, name, implements) = record.into_parts()?;
+                Ok(Self {
+                    parent,
+                    id,
+                    name,
+                    implements,
+                })
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl From<$name> for $crate::edit::argumentation::InterfaceRecord {
+            fn from(operation: $name) -> Self {
+                Self::new(
+                    operation.parent,
+                    operation.id,
+                    operation.name,
+                    operation.implements,
+                )
+            }
         }
 
         impl $name {
@@ -553,7 +582,43 @@ macro_rules! interface_operation {
                     parent: None,
                     id: None,
                     name,
-                    implements: implements.into(),
+                    implements: $crate::edit::references::Link::Id(implements.into()),
+                }
+            }
+
+            #[doc = concat!(
+                "Creates a root `", stringify!($kind), "` named `name`, after the document's ",
+                "last root, declaring the `", $package, "` of another document that the ",
+                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1). The href is ",
+                "never checked: the package need not exist."
+            )]
+            #[must_use]
+            pub fn root_href(name: LangString, implements: $crate::model::Href) -> Self {
+                Self {
+                    parent: None,
+                    id: None,
+                    name,
+                    implements: $crate::edit::references::Link::Href(implements),
+                }
+            }
+
+            #[doc = concat!(
+                "Creates a `", stringify!($kind), "` named `name` as the last child of ",
+                "`parent`, declaring the `", $package, "` of another document that the ",
+                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1). The href is ",
+                "never checked: the package need not exist."
+            )]
+            #[must_use]
+            pub fn new_href(
+                parent: impl Into<ElementId>,
+                name: LangString,
+                implements: $crate::model::Href,
+            ) -> Self {
+                Self {
+                    parent: Some(parent.into()),
+                    id: None,
+                    name,
+                    implements: $crate::edit::references::Link::Href(implements),
                 }
             }
 
@@ -571,7 +636,7 @@ macro_rules! interface_operation {
                     parent: Some(parent.into()),
                     id: None,
                     name,
-                    implements: implements.into(),
+                    implements: $crate::edit::references::Link::Id(implements.into()),
                 }
             }
 
@@ -608,10 +673,19 @@ macro_rules! interface_operation {
             }
 
             /// The id of the package the interface declares, its
-            /// `implements`.
+            /// `implements`, or `None` when an href names it
+            /// ([`implements_href`](Self::implements_href)).
             #[must_use]
-            pub fn implements(&self) -> &ElementId {
-                &self.implements
+            pub fn implements(&self) -> Option<&ElementId> {
+                self.implements.id()
+            }
+
+            /// The href that names the package the interface declares, in
+            /// another document, or `None` when an id names it
+            /// ([`implements`](Self::implements)).
+            #[must_use]
+            pub fn implements_href(&self) -> Option<&$crate::model::Href> {
+                self.implements.href()
             }
 
             /// Runs every check of the operation, and returns what it
@@ -620,17 +694,21 @@ macro_rules! interface_operation {
                 &'o self,
                 document: &Document,
             ) -> Result<Plan<'o>, EditError> {
-                plan_referencing(
+                let end = ReferenceEnd::Implements;
+                let (ids, hrefs) = match &self.implements {
+                    $crate::edit::references::Link::Id(id) => (std::slice::from_ref(id), None),
+                    $crate::edit::references::Link::Href(href) => {
+                        (&[][..], Some((end, std::slice::from_ref(href))))
+                    }
+                };
+                $crate::edit::argumentation::plan_linking(
                     document,
                     ElementKind::$kind,
-                    self.parent.as_ref(),
-                    self.id.as_ref(),
+                    (self.parent.as_ref(), self.id.as_ref()),
                     &self.name,
                     &[],
-                    &[(
-                        ReferenceEnd::Implements,
-                        std::slice::from_ref(&self.implements),
-                    )],
+                    &[(end, ids)],
+                    hrefs,
                 )
             }
         }
@@ -641,6 +719,67 @@ macro_rules! interface_operation {
             }
         }
     };
+}
+
+/// The JSON of an interface create: `parent` (required, `null` for a root),
+/// `id`, `name`, and exactly one of `implements`, an id, and
+/// `implements_href` (ADR 0030; ADR 0040 amendment 1, A7).
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InterfaceRecord {
+    #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+    parent: Option<ElementId>,
+    #[serde(default)]
+    id: Option<ElementId>,
+    name: LangString,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::references::given"
+    )]
+    implements: Option<ElementId>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::references::given"
+    )]
+    implements_href: Option<Href>,
+}
+
+#[cfg(feature = "serde")]
+impl InterfaceRecord {
+    /// The record of an interface create.
+    pub(crate) fn new(
+        parent: Option<ElementId>,
+        id: Option<ElementId>,
+        name: LangString,
+        implements: Link,
+    ) -> Self {
+        let (implements, implements_href) = match implements {
+            Link::Id(id) => (Some(id), None),
+            Link::Href(href) => (None, Some(href)),
+        };
+        Self {
+            parent,
+            id,
+            name,
+            implements,
+            implements_href,
+        }
+    }
+
+    /// The parent, the id, the name and what `implements` names.
+    pub(crate) fn into_parts(
+        self,
+    ) -> Result<(Option<ElementId>, Option<ElementId>, LangString, Link), String> {
+        let implements = Link::from_json(
+            self.implements,
+            self.implements_href,
+            ("implements", "implements_href"),
+        )?;
+        Ok((self.parent, self.id, self.name, implements))
+    }
 }
 
 /// Defines the create operation of one package binding kind (ADR 0039 D4):
@@ -668,6 +807,11 @@ macro_rules! binding_operation {
             id: Option<ElementId>,
             name: LangString,
             participant_packages: Vec<ElementId>,
+            #[cfg_attr(
+                feature = "serde",
+                serde(default, skip_serializing_if = "Vec::is_empty")
+            )]
+            participant_package_hrefs: Vec<$crate::model::Href>,
         }
 
         impl $name {
@@ -686,6 +830,7 @@ macro_rules! binding_operation {
                     id: None,
                     name,
                     participant_packages: participant_packages.into_iter().map(Into::into).collect(),
+                    participant_package_hrefs: Vec::new(),
                 }
             }
 
@@ -705,6 +850,24 @@ macro_rules! binding_operation {
                     id: None,
                     name,
                     participant_packages: participant_packages.into_iter().map(Into::into).collect(),
+                    participant_package_hrefs: Vec::new(),
+                }
+            }
+
+            /// This binding with `hrefs` as the cross-document references of
+            /// its `participantPackage`, beside its ids, in order, repeats
+            /// included, replacing any given before (LIB-EDIT-020; ADR 0040
+            /// amendment 1): each names a package of another document, which
+            /// is never checked. The two distinct participants a binding
+            /// needs count the distinct ids plus the distinct hrefs.
+            #[must_use]
+            pub fn with_participant_package_hrefs(
+                self,
+                hrefs: impl IntoIterator<Item = $crate::model::Href>,
+            ) -> Self {
+                Self {
+                    participant_package_hrefs: hrefs.into_iter().collect(),
+                    ..self
                 }
             }
 
@@ -748,20 +911,31 @@ macro_rules! binding_operation {
                 &self.participant_packages
             }
 
+            /// The cross-document references of the binding's
+            /// `participantPackage`, in the order given: empty unless
+            /// [`with_participant_package_hrefs`](Self::with_participant_package_hrefs)
+            /// gave some.
+            #[doc(alias = "participantPackage")]
+            #[must_use]
+            pub fn participant_package_hrefs(&self) -> &[$crate::model::Href] {
+                &self.participant_package_hrefs
+            }
+
             /// Runs every check of the operation, and returns what it
             /// creates.
             pub(super) fn plan<'o>(
                 &'o self,
                 document: &Document,
             ) -> Result<Plan<'o>, EditError> {
-                plan_referencing(
+                let end = ReferenceEnd::ParticipantPackage;
+                $crate::edit::argumentation::plan_linking(
                     document,
                     ElementKind::$kind,
-                    self.parent.as_ref(),
-                    self.id.as_ref(),
+                    (self.parent.as_ref(), self.id.as_ref()),
                     &self.name,
                     &[],
-                    &[(ReferenceEnd::ParticipantPackage, &self.participant_packages)],
+                    &[(end, &self.participant_packages)],
+                    Some((end, self.participant_package_hrefs.as_slice())),
                 )
             }
         }
@@ -1194,9 +1368,32 @@ pub(super) fn plan_referencing<'o>(
     flags: &[(Flag, bool)],
     references: &[(ReferenceEnd, &'o [ElementId])],
 ) -> Result<Plan<'o>, EditError> {
+    plan_linking(document, kind, (parent, id), name, flags, references, None)
+}
+
+/// [`plan_referencing`], for an element at `place`, its parent and its id,
+/// one of whose ends of `references` also holds the cross-document
+/// references `hrefs` (LIB-EDIT-020; ADR 0040 amendment 1, A5). The end's
+/// bounds count them beside its ids, a lower bound the distinct values and
+/// an upper bound every value (ADR 0040 D5); an `Href` is never checked
+/// (D6).
+pub(super) fn plan_linking<'o>(
+    document: &Document,
+    kind: ElementKind,
+    place: (Option<&'o ElementId>, Option<&ElementId>),
+    name: &'o LangString,
+    flags: &[(Flag, bool)],
+    references: &[(ReferenceEnd, &'o [ElementId])],
+    hrefs: Option<(ReferenceEnd, &'o [Href])>,
+) -> Result<Plan<'o>, EditError> {
+    let (parent, id) = place;
     let (id, generated) = checked_place(document, kind, parent, id)?;
     for &(end, targets) in references {
-        check_bounds(end, targets, &[])?;
+        let beside = match hrefs {
+            Some((linked, hrefs)) if linked == end => hrefs,
+            _ => &[],
+        };
+        check_bounds(end, targets, beside)?;
     }
     // The name's expression comes after the element's own ends, in each
     // check (SACM23-BASE-009).
@@ -1216,6 +1413,7 @@ pub(super) fn plan_referencing<'o>(
             name,
             flags: flags.to_vec(),
             references: references.to_vec(),
+            hrefs,
         },
     }))
 }
