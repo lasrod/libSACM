@@ -465,6 +465,52 @@ fn sacm23_xmi_029_an_xsi_type_on_a_cross_file_proxy_is_held_with_its_sacm_xmi_01
             "{ROW}: {proxy}: a {mode:?} write does not write the proxy with its type\n{text}"
         );
     }
+    xsi_type_on_a_proxy_under_a_spelled_role();
+}
+
+/// A role spelled as the package's (SACM23-XMI-009), read tolerantly: the
+/// SACM-XMI-010 names the role as written, not the role it resolves to.
+fn xsi_type_on_a_proxy_under_a_spelled_role() {
+    let proxy = "<argumentationElement xsi:type=\"sacm:Claim\" href=\"o.xmi#c\"/>";
+    let input = root("ArgumentPackage", "p", XSI, proxy);
+    let tolerant = read(proxy, Mode::Tolerant, &input);
+    let diagnostics: Vec<Found> = tolerant.diagnostics().iter().map(found).collect();
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|(code, severity, template, affected, _)| (*code, *severity, *template, affected))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "SACM-XMI-013",
+                Severity::Warning,
+                "SACM-XMI-013/package-role-in-root-read",
+                &vec!["p".to_owned()]
+            ),
+            (
+                "SACM-XMI-010",
+                Severity::Warning,
+                "SACM-XMI-010/xsi-type-on-proxy",
+                &vec!["p".to_owned()]
+            ),
+        ],
+        "{ROW}: {proxy}, Tolerant: not a SACM-XMI-013 then a SACM-XMI-010, both affecting the package"
+    );
+    assert_eq!(
+        diagnostics[1].4,
+        [
+            ("element", "argumentationElement".to_owned()),
+            ("holder_class", "ArgumentPackage".to_owned()),
+            ("holder_id", "p".to_owned()),
+            ("class", "Claim".to_owned()),
+        ],
+        "{ROW}: {proxy}, Tolerant: the SACM-XMI-010 does not name the role as written"
+    );
+    assert_eq!(
+        proxies(tolerant.document(), "p"),
+        [("argumentElement", "sacm:Claim o.xmi#c".to_owned())],
+        "{ROW}: {proxy}, Tolerant: the proxy is not held under the resolved role with its type"
+    );
 }
 
 #[test]
