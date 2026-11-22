@@ -22,14 +22,18 @@ A point is claimed only while its row and every row it depends on are `verified`
 > entire specification. The top object of the Assurance Case package as a unit of
 > interchange shall be the SACM::AssuranceCasePackage element." (§2.4)
 
-The other three points say the same for their package and the Base elements.
+The other three points say the same of their own unit: §2.2 and §2.3 of the Argumentation
+and Artifact subpackages, "including the common elements defined in the Common and
+Predefined diagrams", with ArgumentPackage and ArtifactPackage as top object; §2.5, by a
+slip, of "this entire specification" (spec defect D29), with TerminologyPackage as top
+object.
 
 ## What the claim means
 
 For each claimed point, with the unit's package (or its interface or binding) as root:
 
-- **Import.** A strict read reads every document that is valid against the SACM XML Schema
-  without loss.
+- **Import.** A strict read reads without loss every document that is valid against the
+  SACM XML Schema, except as the limits below say.
 - **Export.** A strict write gives a document that is valid against the SACM XML Schema.
 - **Round trip.** Read, write, read gives an equal document, and writing the same document
   always gives the same bytes.
@@ -79,21 +83,38 @@ standard leaves a gap:
   contains `sacm`, is read in tolerant mode as SACM 2.3, with a SACM-XMI-008 or
   SACM-XMI-002 Warning (LIB-COMPAT-004). A SACM 2.4 root, and a root in any other
   namespace or none, is refused in both modes.
-- **Not expressible in the schema.** The default schema ignores multiplicities, types
-  Booleans as strings and accepts a contained object with no `xmi:type` where its
-  property's type is abstract. A strict read refuses a value given twice for a
-  single-valued property, a Boolean that is no `xsd:boolean` and such an untyped object; a
-  tolerant read keeps them.
+- **What the schema does not check.** The generated schema ignores multiplicities, types
+  Booleans as strings, and accepts under a property any `xmi:type` with the attributes and
+  children of every class the property admits (ADR 0043 S4 and S8), so some documents
+  valid against it are not read as they stand. A strict read refuses, and a tolerant read
+  keeps as preserved content with a Warning: a value given twice for a single-valued
+  property, or a multi-valued property given both as an attribute and as elements
+  (SACM-MULT-001); a Boolean that is no `xsd:boolean` (SACM-ENUM-001); a contained object
+  with no `xmi:type` where its property's type is abstract (SACM-XMI-005). A strict read
+  keeps as preserved content with an Error, so that a strict write refuses the document
+  (SACM-XMI-006), and a tolerant read keeps with a Warning: an `xmi:type` that names no
+  concrete class the property admits, or a root's `xmi:type` that names another class; an
+  attribute or child that the object's class lacks but another class of the property has,
+  such as `isCounter` on a Claim; an `href` or `xmi:idref` on an element that also has
+  content, both on one reference element, or a same-file proxy that names no root (each
+  SACM-XMI-003). The model's spelling `ArtifactAssertedRelationship` as an `xmi:type` is
+  kept by a strict read with a SACM-XMI-013 Error, and read as `ArtifactAssetRelationship`
+  by a tolerant read (SACM23-XMI-009).
 - **XMI metadata** (documentation, extensions, differences, `xmi:uuid`, `xmi:label`) is
   written back exactly as read. A strict write checks only its ids and IDREFs; if it was
   otherwise not valid against XMI.xsd when read, it is not valid when written (ADR 0043
   S7). Differences are never applied.
 - **Links to other files** are held and written back, never resolved.
+- **Comments and processing instructions** carry no model content and are not kept: a read
+  drops them and a write writes none (ADR 0033).
 - **Size.** A read refuses, in both modes, input over its limits (by default 32 MiB, depth
   256, 1,000,000 XML nodes and 256 namespace bindings in scope at an element);
   `ReadOptions::with_limits` raises them (LIB-SEC-003).
 - **DOCTYPE.** A document with a DOCTYPE declaration is refused in both modes
   (LIB-SEC-001).
+- **Encoding.** A read decodes UTF-8 (and so ASCII), UTF-16 with a byte order mark and
+  ISO-8859-1 (LIB-COMPAT-016); a document in any other encoding, such as windows-1252, is
+  refused in both modes (SACM-XML-002). XML 1.0 §4.3.3 requires only UTF-8 and UTF-16.
 - **Embedded XMI.** SACM packages inside a non-SACM root element are not read: a document
   element that is neither a SACM package nor `xmi:XMI`, or an element outside SACM and XMI
   among the roots under `xmi:XMI`, is refused in both modes (SACM-XMI-001).

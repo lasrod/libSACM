@@ -6133,7 +6133,7 @@ id = "SACM23-CP-002"
 area = "CP"
 milestone = "M6"
 title = "Argumentation Model compliance point"
-requirement = "The Argumentation Model compliance point of SACM 2.3 §2.2 is claimed. A strict read reads without loss every document whose root is an ArgumentPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 11. The unit document `argumentation-unit.sacm.xmi` holds every concrete class and every property that the Argumentation and Base packages of ptc/22-03-13 declare (with the recorded corrections) and every AssertionDeclaration literal; it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md."
+requirement = "The Argumentation Model compliance point of SACM 2.3 §2.2 is claimed. A strict read reads without loss every document whose root is an ArgumentPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 11. The unit document `argumentation-unit.sacm.xmi` holds every concrete class and every property that the Argumentation and Base packages of ptc/22-03-13 declare (with the recorded corrections) and every AssertionDeclaration literal (asserted, the default, by an Assertion that gives none); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md."
 source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
 code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/argumentation-unit.sacm.xmi"]
@@ -6224,6 +6224,7 @@ depends_on = [
   "SACM23-VAL-012",
   "SACM23-VAL-016",
   "SACM23-VAL-019",
+  "LIB-RT-003",
 ]
 acceptance = [
   "`crates/sacm/tests/compliance_points.rs::sacm23_cp_002_the_argumentation_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/argumentation-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `ArgumentPackage`.",
@@ -6320,6 +6321,7 @@ depends_on = [
   "SACM23-ART-012",
   "SACM23-ART-013",
   "SACM23-XMI-009",
+  "LIB-RT-003",
 ]
 acceptance = [
   "`crates/sacm/tests/compliance_points.rs::sacm23_cp_003_the_artifact_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/artifact-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `ArtifactPackage`.",
@@ -6333,7 +6335,7 @@ id = "SACM23-CP-004"
 area = "CP"
 milestone = "M6"
 title = "Terminology Model compliance point"
-requirement = "The Terminology Model compliance point of SACM 2.3 §2.5 is claimed. A strict read reads without loss every document whose root is an TerminologyPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 10. The unit document `terminology-unit.sacm.xmi` holds every concrete class and every property that the Terminology and Base packages of ptc/22-03-13 declare (with the recorded corrections); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md. §2.5 says 'this entire specification', copied from §2.4 (spec defect D29); the unit is the TerminologyPackage."
+requirement = "The Terminology Model compliance point of SACM 2.3 §2.5 is claimed. A strict read reads without loss every document whose root is a TerminologyPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 10. The unit document `terminology-unit.sacm.xmi` holds every concrete class and every property that the Terminology and Base packages of ptc/22-03-13 declare (with the recorded corrections); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md. §2.5 says 'this entire specification', copied from §2.4 (spec defect D29); the unit is the TerminologyPackage."
 source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
 code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/terminology-unit.sacm.xmi"]
@@ -6412,9 +6414,10 @@ depends_on = [
   "SACM23-TERM-008",
   "SACM23-XMI-028",
   "SACM23-VAL-017",
+  "LIB-RT-003",
 ]
 acceptance = [
-  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_004_the_terminology_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/terminology-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `TerminologyPackage`.",
+  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_004_the_terminology_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/terminology-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is a `TerminologyPackage`.",
   "`xtask/tests/compliance.rs::sacm23_cp_004_the_terminology_unit_document_holds_every_class_and_property_of_the_model`: the completeness walk of the design brief over packages {Terminology, Base}: 7 + 7 concrete classes seen; every property declared by a class of those packages seen. Skipped without the spec, as the corpus test is.",
   "CI's `SACM XML Schema` job prints `ok outputs/cp__terminology-unit.sacm.xmi`.",
   "`docs/sacm/compliance-points.md` is the conformance statement of section 5 of the design brief.",

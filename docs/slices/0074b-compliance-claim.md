@@ -53,3 +53,7 @@ Left out: the SACM UML Profile point (D-SCOPE).
 
   It also added the namespace-binding limit, and ADR 0043's S6 and S7 to the schema departures.
   - The lead's ruling: the design's dependency lists broke two of the maintainer's rules, which LIB-API-011's test enforces (2026-11-15: every point depends directly on SACM23-XMI-027; 2026-11-16: LIB-COMPAT-004, a Tolerated row, is in no point's closure). The rules win: XMI-027 is added to CP-001, and LIB-COMPAT-004 is dropped from CP-002 to CP-004. The statement still names LIB-COMPAT-004 as a limit.
+- 2026-11-22 verify round 1 (9355c7b): FAIL for all four rows, on one wording defect. The statement said a strict read accepts every schema-valid document, but the generated schema accepts more than a strict read does (ADR 0043 S4, S8). The verifier listed the cases. Everything else passes: unit documents, tests, the closure, CI, README and CHANGELOG.
+  - Fix round, docs only:
+    - the builder applies the verifier's statement text (Import, what the schema does not check, Encoding, comments and processing instructions, the other points' wording), the crate claim paragraph and two catalog entries;
+    - the lead corrects the CP-004 article, CP-002's literal wording and D-STRICT, adds LIB-RT-003 to CP-002 to CP-004, and logs the no-proxy follow-up.
