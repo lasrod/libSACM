@@ -400,7 +400,8 @@ fn sacm23_xmi_029_a_proxy_carries_at_most_one_type_attribute() {
 #[test]
 fn sacm23_xmi_029_an_xsi_type_on_a_cross_file_proxy_is_held_with_its_sacm_xmi_010() {
     // The proxy is held, its type as the href's; its SACM-XMI-010 affects the
-    // container and names the container's id (ADR 0040 amendment 1, A9).
+    // container and names the proxy, its container and the class (ADR 0040
+    // amendment 1, A9).
     let proxy = "<argumentPackage xsi:type=\"sacm:ArgumentPackageInterface\" href=\"o.xmi#api\"/>";
     let input = root("AssuranceCasePackage", "case", XSI, proxy);
     let mut documents = Vec::new();
@@ -416,11 +417,13 @@ fn sacm23_xmi_029_an_xsi_type_on_a_cross_file_proxy_is_held_with_its_sacm_xmi_01
             [(
                 "SACM-XMI-010",
                 severity,
-                "SACM-XMI-010/xsi-type",
+                "SACM-XMI-010/xsi-type-on-proxy",
                 vec!["case".to_owned()],
                 vec![
+                    ("element", "argumentPackage".to_owned()),
+                    ("holder_class", "AssuranceCasePackage".to_owned()),
+                    ("holder_id", "case".to_owned()),
                     ("class", "ArgumentPackageInterface".to_owned()),
-                    ("id", "case".to_owned()),
                 ]
             )],
             "{ROW}: {proxy}, {mode:?}: not one SACM-XMI-010 affecting the container"
@@ -624,6 +627,75 @@ fn sacm23_xmi_029_an_element_holding_only_a_proxy_is_written_with_an_end_tag() {
         assert!(
             back == doc,
             "{ROW}: {what}: the {mode:?} output read back is not =="
+        );
+    }
+}
+
+#[test]
+fn sacm23_xmi_029_a_proxy_is_written_after_the_placed_and_preserved_children() {
+    // A child, then XMI metadata, then the proxy, and in tolerant mode
+    // preserved content after it: the proxy is written last, before the
+    // container's end tag, wherever the input had it.
+    for mode in MODES {
+        let trailing = if mode == Mode::Tolerant {
+            "<v:x xmlns:v=\"urn:v\"/>"
+        } else {
+            ""
+        };
+        let input = format!(
+            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name/>\
+             <argumentPackage xmi:id=\"args\"><name content=\"args\"/></argumentPackage>\
+             <xmi:Extension extender=\"t\"/>\
+             <argumentPackage href=\"o.xmi#a\"/>{trailing}\
+             </sacm:AssuranceCasePackage>"
+        );
+        let what = format!("a proxy between the metadata and preserved content, {mode:?}");
+        let output = read(&what, mode, &input);
+        if mode == Mode::Strict {
+            assert_eq!(
+                output.diagnostics(),
+                [],
+                "{ROW}: {what}: a strict read gives diagnostics"
+            );
+        }
+        let doc = output.into_document();
+        assert_eq!(
+            proxies(&doc, "case"),
+            [("argumentPackage", "o.xmi#a".to_owned())],
+            "{ROW}: {what}: the proxy of case"
+        );
+        let text = written(&what, &doc, mode);
+        let lines: Vec<&str> = text.lines().map(str::trim).collect();
+        let extension = lines
+            .iter()
+            .position(|line| line.starts_with("<xmi:Extension "))
+            .unwrap_or_else(|| panic!("{ROW}: {what}: no extension is written\n{text}"));
+        let rest = &lines[extension + 1..];
+        let preserved = usize::from(mode == Mode::Tolerant);
+        assert_eq!(
+            rest.len(),
+            preserved + 2,
+            "{ROW}: {what}: not the proxy and the end tag after the extension\n{text}"
+        );
+        if mode == Mode::Tolerant {
+            assert!(
+                rest[0].starts_with("<v:x") && rest[0].ends_with("/>"),
+                "{ROW}: {what}: the preserved element is not written right after the \
+                 extension\n{text}"
+            );
+        }
+        assert_eq!(
+            &rest[preserved..],
+            [
+                "<argumentPackage href=\"o.xmi#a\" />",
+                "</sacm:AssuranceCasePackage>"
+            ],
+            "{ROW}: {what}: the proxy is not written after the placed and preserved \
+             children\n{text}"
+        );
+        assert!(
+            lines[..extension].contains(&"</argumentPackage>"),
+            "{ROW}: {what}: the child package is not written before the extension\n{text}"
         );
     }
 }

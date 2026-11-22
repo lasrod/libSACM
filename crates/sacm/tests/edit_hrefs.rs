@@ -405,6 +405,13 @@ fn lib_edit_020_href_new_accepts_exactly_what_the_reader_holds() {
 
     // What it refuses, with the first problem in the order of the variants.
     let refused = [
+        // Character: what is no XML 1.0 Char (XML 1.0 §2.2), anywhere.
+        ("o.xmi#a\u{1}", HrefError::Character),
+        ("o.xmi#a\u{FFFE}", HrefError::Character),
+        ("o\u{0}.xmi#a", HrefError::Character),
+        ("sacm:Claim o.xmi#\u{1}", HrefError::Character),
+        // Character comes before WhiteSpace.
+        (" o.xmi#a\u{1}", HrefError::Character),
         // WhiteSpace: any XML white space but the one space after a type.
         (" o.xmi#c", HrefError::WhiteSpace),
         ("o.xmi#c ", HrefError::WhiteSpace),
@@ -463,6 +470,7 @@ fn lib_edit_020_href_new_accepts_exactly_what_the_reader_holds() {
     // The Display texts.
     assert_eq!(
         [
+            HrefError::Character,
             HrefError::WhiteSpace,
             HrefError::Type,
             HrefError::NoFragment,
@@ -471,6 +479,7 @@ fn lib_edit_020_href_new_accepts_exactly_what_the_reader_holds() {
         ]
         .map(|error| error.to_string()),
         [
+            "the href holds a character that XML 1.0 cannot represent",
             "the href holds XML white space other than the one space after its type",
             "the type before the href's URI reference is not \"sacm:\" followed by the name of a \
              concrete SACM 2.3 class",
@@ -1689,6 +1698,13 @@ fn lib_edit_020_serde_reads_and_writes_hrefs() {
                 "{ROW}: {json} is refused, but not with the Display of HrefError::SameDocument: {why}"
             );
         }
+        // A character XML 1.0 cannot represent, which no file could hold.
+        let json = r#"{"type":"AddReference","element":"b","end":"participantPackage","href":"o.xmi#a\u0001"}"#;
+        let why = refused::<Operation>(json);
+        assert!(
+            why.contains(&HrefError::Character.to_string()),
+            "{ROW}: {json} is refused, but not with the Display of HrefError::Character: {why}"
+        );
 
         // An Href is a JSON string, checked by Href::new.
         assert_eq!(
@@ -1792,6 +1808,13 @@ fn lib_edit_020_serde_reads_and_writes_hrefs() {
             why.contains(&same_document),
             "{ROW}: an expression href of \"#t\" is refused, but not with the Display of \
              HrefError::SameDocument: {why}"
+        );
+        // An expression of another JSON type: the error says what it may be.
+        let json = r#"{"type":"CreateClaim","parent":"arguments","id":null,"name":{"type":"ExpressionLangString","lang":null,"content":"x","expression":5}}"#;
+        let why = refused::<Operation>(json);
+        assert!(
+            why.contains(r#"expected an id, null, or {"href": "…"}"#),
+            "{ROW}: {json} is refused, but not saying what an expression may be: {why}"
         );
     }
 }

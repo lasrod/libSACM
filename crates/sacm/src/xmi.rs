@@ -581,9 +581,11 @@ pub use limits::{Limit, Limits};
 /// [`Proxy`](crate::model::Proxy) of its container
 /// ([`SacmElement::proxies`](crate::model::SacmElement::proxies)): its role
 /// and its [`Href`](crate::model::Href). It is never resolved, and no file
-/// is opened. Its type, given by `xmi:type` (or `xsi:type`, with its
-/// SACM-XMI-010) or before the URI reference (rule 2n), is held as the
-/// href's type; the role must admit it, and the two must agree if both are
+/// is opened. An `XPointer` is never evaluated, so
+/// `href="#xpointer(id('args'))"` is held as a proxy even when it names a
+/// root of this document, which then stays a root. Its type, given by
+/// `xmi:type` (or `xsi:type`, with its SACM-XMI-010) or before the URI
+/// reference (rule 2n), is held as the href's type; the role must admit it, and the two must agree if both are
 /// given. A write writes each proxy as `<role href="…" />`, after the
 /// container's children. A role element with a link attribute and anything
 /// else, such as an `xmi:id`, an `xmi:uuid`, another attribute or content,

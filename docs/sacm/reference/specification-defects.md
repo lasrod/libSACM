@@ -492,6 +492,16 @@ formal/23-05-08 §9.3 (p. 24) says an AssuranceCasePackageInterface is "only all
 
 **Suggested resolution.** Rewrite the sentence.
 
+## D28 — XMI 2.5.1 allows XLink and identity attributes on a reference element in prose, but not in its grammar or schema
+
+*Found by libSACM (M6 design, 2026-11-19).*
+
+§7.6.2 (p. 15) says of the XLink attributes "it is permissible to use them in addition to the attributes defined in the LinkAttribs group", and §7.10.2 (pp. 23-24) shows `<mgr xmi:id="mgr_1" href="Co.xml#emp_2"/>` and `<mgr xmi:id="mgr_1" xlink:href="Co.xml#emp_2" xlink:type="simple"/>`. Production 2c (p. 62) gives a reference element only `2l:LinkAttribs`, and rule 4e (p. 48) gives its schema element only `linkAttribs`.
+
+**This crate** follows the grammar and the schema: an identity attribute, a type, an XLink attribute or any other attribute on a reference element is SACM-XMI-003, and the element is kept whole as preserved content (M6 decisions Q4; SACM23-XMI-029).
+
+**Suggested resolution.** Say whether the §7.6.2 and §7.10.2 forms conform, and align production 2c and rule 4e with the answer.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

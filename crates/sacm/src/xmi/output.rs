@@ -30,7 +30,7 @@ use super::{Mode, WriteAttribute, WriteError};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
     Event, Flag, Fragment, Href, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd,
-    SacmElement, StringAttribute, Text, TextRole,
+    SacmElement, StringAttribute, Text, TextRole, is_xml_char,
 };
 use crate::validation;
 
@@ -570,9 +570,10 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 /// `content`. The ids of a name, `content`, `key`, `location` or `value`
 /// are not checked: only
 /// [`xmi::read`](crate::xmi::read) gives them, and what it reads is
-/// representable. Nor are the ids a reference holds: they are element ids,
-/// which `xmi::read` or a checked `with_id` gave, or ids `xmi::read` read
-/// from a reference, and each of those is representable.
+/// representable. Nor are the ids or hrefs a reference holds: `Href::new`
+/// refuses a character XML 1.0 cannot represent, and the ids are element
+/// ids, which `xmi::read` or a checked `with_id` gave, or ids `xmi::read`
+/// read from a reference, and each of those is representable.
 fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
     let name = element.name();
     let fields = [
@@ -625,15 +626,6 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
                 .and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
                 .map(|character| (attribute, character))
         })
-}
-
-/// Whether `c` is an XML 1.0 `Char` (§2.2). A Rust `char` is never a
-/// surrogate.
-fn is_xml_char(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n' | '\r' | ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
-    )
 }
 
 /// Writes the flags of `element`, its `declaration` and its references as

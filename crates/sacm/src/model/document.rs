@@ -3473,7 +3473,8 @@ impl<'a> SacmElement<'a> {
     /// along, and
     /// [`PackageDeletePolicy::RejectIfNonEmpty`](crate::edit::PackageDeletePolicy::RejectIfNonEmpty)
     /// counts each as contained. Only [`xmi::read`](crate::xmi::read) gives
-    /// one; no edit creates or removes a proxy yet.
+    /// an element proxies, and a copy copies them; no edit adds a proxy to
+    /// an element or removes one from it yet.
     ///
     /// ```
     /// use sacm::model::ElementKind;

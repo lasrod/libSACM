@@ -2310,6 +2310,45 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
             );
         }
     };
+    // SACM-XMI-010 on a kept proxy: the proxy's role, its container and the
+    // class its xsi:type names; never the id the proxy names.
+    let typed = |mode: Mode,
+                 at: (u32, u32),
+                 role: &str,
+                 class: &str,
+                 holder_class: &str,
+                 holder: &str|
+     -> Found {
+        (
+            "SACM-XMI-010",
+            kept_severity(mode),
+            "SACM-XMI-010/xsi-type-on-proxy",
+            Some(at),
+            vec![holder.to_owned()],
+            vec![
+                ("element", role.to_owned()),
+                ("holder_class", holder_class.to_owned()),
+                ("holder_id", holder.to_owned()),
+                ("class", class.to_owned()),
+            ],
+        )
+    };
+    // Only the target of the SACM-XMI-003 that keeps the proxy names the id
+    // the proxy names.
+    let assert_no_argument_names = |what: &str, output: &ReadOutput, id: &str| {
+        for diagnostic in output.diagnostics() {
+            for argument in diagnostic.arguments() {
+                let target_of_kept =
+                    diagnostic.code().as_str() == "SACM-XMI-003" && argument.name() == "target";
+                assert!(
+                    target_of_kept || *argument.value() != ArgumentValue::Text(id.to_owned()),
+                    "{ROW}: {what}: the argument {} of {} is {id:?}",
+                    argument.name(),
+                    diagnostic.template()
+                );
+            }
+        }
+    };
 
     // The model's spelling of ArtifactAssetRelationship as the proxy's type,
     // read tolerantly (SACM23-XMI-009): the proxy names no root and is kept.
@@ -2357,7 +2396,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
     // A proxy typed with xsi:type that names no root: its SACM-XMI-010, at
     // the attribute, affects the container too, in both modes; under a
     // concrete and an abstract role.
-    for (about, input, role, holder_class, holder) in [
+    for (about, input, role, class, holder_class, holder) in [
         (
             "an xsi:type proxy of nope under argumentPackage",
             in_case(
@@ -2367,6 +2406,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                 ),
             ),
             "argumentPackage",
+            "ArgumentPackage",
             "AssuranceCasePackage",
             "case",
         ),
@@ -2379,6 +2419,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                 ),
             ),
             "argumentElement",
+            "Claim",
             "ArgumentPackage",
             "p",
         ),
@@ -2391,6 +2432,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                 ),
             ),
             "argumentPackage",
+            "ArgumentPackage",
             "AssuranceCasePackage",
             "case",
         ),
@@ -2407,7 +2449,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                     (
                         "SACM-XMI-010",
                         kept_severity(mode),
-                        "SACM-XMI-010/xsi-type",
+                        "SACM-XMI-010/xsi-type-on-proxy",
                         Some(marks[1]),
                         vec![holder.to_owned()],
                     ),
@@ -2419,7 +2461,13 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                 no_root(mode, marks[0], role, "nope", holder_class, holder),
                 "{ROW}: {what}: the proxy-of-no-root"
             );
+            assert_eq!(
+                found[1],
+                typed(mode, marks[1], role, class, holder_class, holder),
+                "{ROW}: {what}: the SACM-XMI-010, its template and every argument"
+            );
             assert_none_affects(&what, &output, "nope");
+            assert_no_argument_names(&what, &output, "nope");
         }
     }
 
@@ -2451,18 +2499,31 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
             (
                 "SACM-XMI-010",
                 Severity::Warning,
-                "SACM-XMI-010/xsi-type",
+                "SACM-XMI-010/xsi-type-on-proxy",
                 Some(marks[1]),
                 vec!["p".to_owned()]
             ),
         ],
         "{ROW}: {what}: not three diagnostics, each affecting the container"
     );
+    assert_eq!(
+        diagnostics(&output).get(2),
+        Some(&typed(
+            Mode::Tolerant,
+            marks[1],
+            "argumentationElement",
+            "Claim",
+            "ArgumentPackage",
+            "p"
+        )),
+        "{ROW}: {what}: the SACM-XMI-010, its template and every argument"
+    );
     assert_none_affects(what, &output, "nope");
+    assert_no_argument_names(what, &output, "nope");
 
     // A kept proxy that names a root of the wrong kind, or one another proxy
     // names too: its SACM-XMI-010 affects the container, not that root.
-    for (about, proxies_of_case, template, holders) in [
+    for (about, proxies_of_case, template, holders, role, class) in [
         (
             "an xsi:type proxy of the ArtifactPackage arts under argumentPackage",
             format!(
@@ -2470,6 +2531,8 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
             ),
             "SACM-XMI-003/proxy-wrong-kind",
             1,
+            "argumentPackage",
+            "ArgumentPackage",
         ),
         (
             "two xsi:type proxies of arts",
@@ -2479,6 +2542,8 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
             ),
             "SACM-XMI-003/proxy-shared",
             2,
+            "artifactPackage",
+            "ArtifactPackage",
         ),
     ] {
         let (input, marks) = marked(&format!(
@@ -2503,7 +2568,7 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                     (
                         "SACM-XMI-010",
                         kept_severity(mode),
-                        "SACM-XMI-010/xsi-type",
+                        "SACM-XMI-010/xsi-type-on-proxy",
                         Some(marks[2 * index + 1]),
                         vec!["case".to_owned()],
                     )
@@ -2523,6 +2588,27 @@ fn sacm23_xmi_029_a_kept_proxy_s_diagnostics_affect_its_container() {
                 "{ROW}: {what}: a diagnostic of a kept proxy does not affect its container"
             );
             assert_none_affects(&what, &output, "arts");
+            let typed_found: Vec<Found> = diagnostics(&output)
+                .into_iter()
+                .filter(|one| one.0 == "SACM-XMI-010")
+                .collect();
+            let typed_expected: Vec<Found> = (0..holders)
+                .map(|index| {
+                    typed(
+                        mode,
+                        marks[2 * index + 1],
+                        role,
+                        class,
+                        "AssuranceCasePackage",
+                        "case",
+                    )
+                })
+                .collect();
+            assert_eq!(
+                typed_found, typed_expected,
+                "{ROW}: {what}: each SACM-XMI-010, its template and every argument"
+            );
+            assert_no_argument_names(&what, &output, "arts");
             assert_eq!(
                 root_ids(output.document()),
                 ["case", "arts"],

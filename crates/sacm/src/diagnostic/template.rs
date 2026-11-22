@@ -558,6 +558,9 @@ templates! {
     XMI_010_XSI_TYPE_ON_NAME_VALUE = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-name-value",
         [Text("class"), Text("id")],
         "the value in the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_PROXY = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-proxy",
+        [Text("element"), Text("holder_class"), Text("holder_id"), Text("class")],
+        "the proxy {element:?} in the {holder_class} {holder_id:?} is typed {class} with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
     XMI_011_VERSION_ON_XMI_ELEMENT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-xmi-element",
         [Text("value")],
         "the xmi:version {value:?} of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
@@ -855,13 +858,14 @@ mod tests {
         // diagnostic templates (SACM23-XMI-019, SACM23-XMI-030; ADR 0042),
         // and, in its fix round, SACM-XMI-003/proxy-of-linked-root; slice
         // 0073b removed the four refusals and four kept forms of
-        // SACM-XMI-007 (SACM23-XMI-029; ADR 0040 amendment 1).
-        assert_eq!(count, 205, "LIB-API-017: the number of templates");
+        // SACM-XMI-007 (SACM23-XMI-029; ADR 0040 amendment 1), and, in its
+        // fix round, added SACM-XMI-010/xsi-type-on-proxy.
+        assert_eq!(count, 206, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 105, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 106, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

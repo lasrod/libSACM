@@ -4,22 +4,25 @@ use std::fmt;
 
 use super::ElementKind;
 
-/// A reference to an element of another document, held as the `href` that
-/// names it (XMI 2.5.1 §7.10.2 `URI#id_value`): a document part and a
-/// fragment, exactly as read (white space around it trimmed), never resolved
-/// (SACM23-XMI-027, SACM23-XMI-029, ADR 0040).
+/// A reference to an element of another document, or an `XPointer`, held as
+/// the `href` that names it (XMI 2.5.1 §7.10.2 `URI#id_value`, rule 2n): an
+/// optional type, then a document part and a fragment, as read (white space
+/// around it trimmed, and a type written as `sacm:<Class>` and one space),
+/// never resolved (SACM23-XMI-027, SACM23-XMI-029, ADR 0040).
 /// [`SacmElement::hrefs`](crate::model::SacmElement::hrefs) gives an end's,
 /// [`LangString::expression_href`](crate::model::LangString::expression_href)
 /// an `ExpressionLangString`'s, and a [`Proxy`] holds one. [`Href::new`]
 /// makes one for an edit.
 ///
-/// Its URI reference ([`uri`](Self::uri)) holds one `#`, with a fragment
-/// after it, and no XML white space. The fragment is the id of an element of
+/// Every character of it is an XML 1.0 `Char` (XML 1.0 §2.2). Its URI
+/// reference ([`uri`](Self::uri)) holds one `#`, with a fragment after it,
+/// and no XML white space. The fragment is the id of an element of
 /// the other document, or an `XPointer` ([`is_xpointer`](Self::is_xpointer));
 /// the document part before the `#` is empty only for an `XPointer` into the
 /// same document. A type may stand before the URI reference (XMI 2.5.1 rule
 /// 2n), held as `sacm:<Class>` and one space: [`kind`](Self::kind) gives the
-/// class. Nothing is decoded or normalised: `a%20b.xmi#c` stays as written.
+/// class. The URI reference is never decoded or normalised: `a%20b.xmi#c`
+/// stays as written.
 /// Equality, ordering and hashing are those of the string. No file is
 /// opened: [`document`](Self::document) and [`fragment`](Self::fragment) let
 /// an application load the other document and find the element itself.
@@ -51,6 +54,15 @@ const TYPE_PREFIX: &str = "sacm:";
 /// XML white space (XML 1.0 production 3).
 fn is_xml_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
+/// Whether `c` is an XML 1.0 `Char` (§2.2): what an XMI document can hold.
+/// A Rust `char` is never a surrogate.
+pub(crate) fn is_xml_char(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\r' | ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
+    )
 }
 
 /// The concrete class `name` names, if it names one.
@@ -86,6 +98,9 @@ impl Href {
     ///
     /// [`HrefError`], the first problem in the order of its variants.
     pub fn new(value: &str) -> Result<Self, HrefError> {
+        if !value.chars().all(is_xml_char) {
+            return Err(HrefError::Character);
+        }
         // The one space after a type is the only white space allowed: it
         // stands between two parts that are not empty, and what is before it
         // holds no `#`, or the space would be inside the URI reference.
@@ -268,6 +283,9 @@ impl AsRef<str> for Href {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum HrefError {
+    /// The value holds a character that is not an XML 1.0 `Char` (XML 1.0
+    /// §2.2), which no XMI document can hold.
+    Character,
     /// The value holds XML white space other than the one space after its
     /// type.
     WhiteSpace,
@@ -286,6 +304,7 @@ pub enum HrefError {
 impl fmt::Display for HrefError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Character => "the href holds a character that XML 1.0 cannot represent",
             Self::WhiteSpace => {
                 "the href holds XML white space other than the one space after its type"
             }

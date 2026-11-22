@@ -396,6 +396,24 @@ fn named(kind: ElementKind, id: &str) -> Vec<Argument> {
     ]
 }
 
+/// The arguments of `SACM-XMI-010/xsi-type-on-proxy`, in the order its
+/// sentence names them: the proxy `element`, as written, in the
+/// `holder_class` `holder`, typed `class` with `xsi:type` (ADR 0040
+/// amendment 1, A9).
+fn typed_proxy(
+    element: &str,
+    class: ElementKind,
+    holder_class: ElementKind,
+    holder: &ElementId,
+) -> Vec<Argument> {
+    vec![
+        Argument::text("element", element),
+        Argument::text("holder_class", holder_class.name()),
+        Argument::text("holder_id", holder.as_str()),
+        Argument::text("class", class.name()),
+    ]
+}
+
 /// A C++ shape of a name or a text (SACM-XMI-012, LIB-COMPAT-008): its
 /// refusal's template, and the template of the Warning a read gives.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1312,10 +1330,11 @@ impl Findings<'_, '_> {
     ///
     /// For a resolved proxy, `target` is the root that took its place: a
     /// role spelling affects the container, and a type spelling and the
-    /// `xsi:type` the root, as a child's do. A kept proxy stands for no
-    /// element, so `target` is `None` and each affects the container, never
-    /// the id the proxy names; the `xsi:type` names the container's id too
-    /// (ADR 0040 amendment 1, A9).
+    /// `xsi:type` the root, as a child's do (`xsi-type`). A kept proxy
+    /// stands for no element, so `target` is `None` and each affects the
+    /// container, never the id the proxy names; the `xsi:type` is
+    /// `xsi-type-on-proxy`, which names the proxy and its container (ADR
+    /// 0040 amendment 1, A9).
     fn proxy_notes(
         &mut self,
         node: Option<Node<'_, '_>>,
@@ -1336,13 +1355,19 @@ impl Findings<'_, '_> {
             return Ok(());
         };
         for attribute in node.attributes().filter(is_xsi_type) {
-            let arguments = named(class, about.as_str());
-            self.xsi_type(
-                &attribute,
-                &template::XMI_010_XSI_TYPE,
-                arguments,
-                about.as_str(),
-            )?;
+            let (template, arguments) = match target {
+                Some(root) => (&template::XMI_010_XSI_TYPE, named(class, root.as_str())),
+                None => (
+                    &template::XMI_010_XSI_TYPE_ON_PROXY,
+                    typed_proxy(
+                        &proxy.written,
+                        class,
+                        proxy.container_kind,
+                        &proxy.container,
+                    ),
+                ),
+            };
+            self.xsi_type(&attribute, template, arguments, about.as_str())?;
         }
         Ok(())
     }
@@ -2626,7 +2651,8 @@ impl Pending {
     /// the proxies held so far (SACM23-XMI-029; ADR 0040 amendment 1, A2).
     /// A role or type spelling a tolerant read read in it is one
     /// SACM-XMI-013 Warning at its start tag, and its `xsi:type` one
-    /// SACM-XMI-010 at the attribute, as on a same-file proxy that is kept:
+    /// SACM-XMI-010 `xsi-type-on-proxy` at the attribute, as on a same-file
+    /// proxy that is kept:
     /// each affects this element, since the proxy stands for no element of
     /// this document (A9).
     fn hold_proxy(
@@ -2646,10 +2672,10 @@ impl Pending {
         }
         if let Some(class) = class {
             for attribute in node.attributes().filter(is_xsi_type) {
-                let arguments = named(class, self.id.as_str());
+                let arguments = typed_proxy(node.tag_name().name(), class, self.kind, &self.id);
                 found.xsi_type(
                     &attribute,
-                    &template::XMI_010_XSI_TYPE,
+                    &template::XMI_010_XSI_TYPE_ON_PROXY,
                     arguments,
                     self.id.as_str(),
                 )?;

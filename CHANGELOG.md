@@ -73,8 +73,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `Href::as_str()` may start with a type, `sacm:<Class>` and one space; `document()` and
   `fragment()` are those of `Href::uri()` [SACM23-XMI-029].
 - The SACM-XMI-010 and SACM-XMI-013 of a same-file proxy that is kept affect its
-  container, and the `id` argument of that `SACM-XMI-010/xsi-type` is the container's id;
-  they named the id the proxy names [SACM23-XMI-029].
+  container; they named the id the proxy names. That SACM-XMI-010, and the one of a
+  cross-file proxy, has the new template `SACM-XMI-010/xsi-type-on-proxy`, whose
+  arguments are `element` (the proxy's role), `holder_class`, `holder_id` and `class`; it
+  was `SACM-XMI-010/xsi-type`. A resolved proxy's stays `xsi-type`, about the root
+  [SACM23-XMI-029].
 - `compare::Difference` has the variant `Proxies`, and `edit::EditError` the variant
   `HrefNotHeld`; both enums are `#[non_exhaustive]` [SACM23-XMI-029, LIB-EDIT-020].
 
@@ -149,8 +152,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `expression` reference element in the name or value [SACM23-XMI-029].
 - `compare::Difference::Proxies`, reported after `Hrefs` [SACM23-XMI-029].
 - `Href::new` makes a cross-document reference from a string, and `HrefError` says why a
-  value is refused: `WhiteSpace`, `Type`, `NoFragment`, `HashInFragment` or `SameDocument`
-  [LIB-EDIT-020].
+  value is refused: `Character` (a character that is not an XML 1.0 `Char`), `WhiteSpace`,
+  `Type`, `NoFragment`, `HashInFragment` or `SameDocument` [LIB-EDIT-020].
 - Edits create and remove cross-document references: `SetReferences::with_hrefs` (and
   `hrefs`), `AddReference::href`, `RemoveReference::href` (`EditError::HrefNotHeld`,
   SACM-CMD-001, when the end does not hold it) and their `cross_document` accessors; the
