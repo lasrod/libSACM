@@ -15,6 +15,12 @@
 //!   reference artifacts and of the W3C XML Conformance Test Suite
 //!   (`cargo xtask fetch-spec`), and of the SACM files written by other
 //!   tools (`cargo xtask fetch-corpus`).
+//! - [`metamodel`]: the SACM 2.3 metamodel read from the pinned ptc/22-03-13,
+//!   with its recorded corrections, which the LIB-TOOL-004 tests compare with
+//!   the crate and the metamodel inventory.
+//! - [`schema`]: the SACM XML Schema generated from it, and the check of
+//!   strict output against it with xmllint (`cargo xtask schema`,
+//!   `schema validate`; LIB-TOOL-023, ADR 0043).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -28,6 +34,10 @@
 //!                                 Download and extract only the W3C suite
 //! cargo xtask fetch-corpus        Download the pinned SACM files written by other tools
 //!                                 into third_party/corpus
+//! cargo xtask schema [--out DIR]            generate the SACM 2.3 XML Schema from ptc/22-03-13
+//!                                           into DIR (default: target/schema); needs fetch-spec
+//! cargo xtask schema validate [--out DIR]   generate it, then check the strict golden files and
+//!                                           DIR/outputs with xmllint
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -49,6 +59,8 @@
 
 pub mod fetch;
 pub mod matrix;
+pub mod metamodel;
+pub mod schema;
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -70,6 +82,11 @@ commands:
                           download and extract only the W3C XML Conformance Test Suite
   fetch-corpus            download the pinned SACM files written by other tools
                           into third_party/corpus
+  schema [--out DIR]      generate the SACM 2.3 XML Schema from ptc/22-03-13
+                          into DIR (default: target/schema); needs fetch-spec
+  schema validate [--out DIR]
+                          generate it, then check the strict golden files and
+                          DIR/outputs with xmllint
 
 environment:
   XTASK_ROOT              repository to work on (default: the one xtask was built in);
@@ -122,14 +139,15 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 ///
 /// `args` are the command-line arguments without the program name, for
 /// example `["matrix", "next", "-n", "3"]`. `help`, `--help`, `-h` and no
-/// arguments write the usage text. Paths given to `fetch-spec --dest` are
-/// resolved against `root`. What a successful command reports goes to `out`,
+/// arguments write the usage text. Paths given to `fetch-spec --dest` and
+/// `schema --out` are resolved against `root`. What a successful command reports goes to `out`,
 /// which is flushed before returning; a failing command writes nothing to
 /// standard error, and the problems `matrix check` finds are in its error.
 /// `fetch-spec` puts the W3C suite in `<root>/third_party/xmlconf` with or
 /// without `--dest`; `fetch-spec --only xmlconf` fetches only the suite, and
 /// `--only` takes no other value. `fetch-corpus` puts the corpus in
-/// `<root>/third_party/corpus` and takes no option.
+/// `<root>/third_party/corpus` and takes no option. `schema` and
+/// `schema validate` write to `<root>/target/schema` without `--out`.
 ///
 /// With [`RootSource::Environment`], `matrix check` names the root: the first
 /// line of its report, which is the OK line, the problem-count header or the
@@ -163,8 +181,9 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// - the count given to `matrix next -n`/`--limit` is not a number:
 ///   `invalid row count: <count>`;
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
-///   [`matrix::cmd_next`], [`matrix::cmd_status`], [`fetch::cmd_fetch`] and
-///   [`fetch::cmd_fetch_corpus`]);
+///   [`matrix::cmd_next`], [`matrix::cmd_status`], [`fetch::cmd_fetch`],
+///   [`fetch::cmd_fetch_corpus`], [`schema::cmd_schema`] and
+///   [`schema::cmd_validate`]);
 ///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
 ///   describes;
 /// - writing to or flushing `out` fails.
@@ -207,6 +226,10 @@ fn dispatch(
             fetch::cmd_fetch_suite(&root.join(fetch::XMLCONF_DEST), out)
         }
         ["fetch-corpus"] => fetch::cmd_fetch_corpus(&root.join(fetch::CORPUS_DEST), out),
+        ["schema"] => schema::cmd_schema(root, &root.join(schema::DEFAULT_OUT), out),
+        ["schema", "--out", dir] => schema::cmd_schema(root, &root.join(dir), out),
+        ["schema", "validate"] => schema::cmd_validate(root, &root.join(schema::DEFAULT_OUT), out),
+        ["schema", "validate", "--out", dir] => schema::cmd_validate(root, &root.join(dir), out),
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
         _ => Err(format!(
             "unrecognized arguments: {}\n\n{USAGE}",

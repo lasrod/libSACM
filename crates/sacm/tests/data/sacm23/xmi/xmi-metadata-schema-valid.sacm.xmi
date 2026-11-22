@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-TOOL-023: xmi-metadata-valid.sacm.xmi with its xmi:documentation written as XMI.xsd declares it (ADR 0043 S7): lowercase xmi:documentation under xmi:XMI, with the unqualified children exporter, exporterVersion and timestamp. Its strict output is valid against the generated SACM XML Schema (cargo xtask schema validate prints ok); the rest is as in xmi-metadata-valid.sacm.xmi (SACM23-XMI-019). Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmi:id="doc" xmi:uuid="urn:uuid:doc">
+  <xmi:documentation xmi:id="d1"><exporter>Tool</exporter><exporterVersion>1.0</exporterVersion><timestamp>2026-11-21T10:00:00Z</timestamp></xmi:documentation>
+  <sacm:ArgumentPackage xmi:id="p" xmi:uuid="urn:uuid:p" xmi:label="Arguments">
+    <name content="Arguments" xmi:uuid="urn:uuid:p-name"/>
+    <xmi:Extension extender="Tool" xmi:id="x1"><layout x="1"/></xmi:Extension>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" xmi:uuid="urn:uuid:c1">
+      <name content="C1"/>
+    </argumentElement>
+  </sacm:ArgumentPackage>
+  <xmi:extension extender="Tool"/>
+</xmi:XMI>

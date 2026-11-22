@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository automation for libSACM (functionality-matrix gate, reference fetching)"
+description = "Repository automation for libSACM (functionality-matrix gate, reference fetching, SACM XML Schema)"
 version = "0.0.0"
 publish = false
 edition.workspace = true
@@ -13,6 +13,10 @@ license.workspace = true
 # renderer does (ADR 0008, LIB-TOOL-005/015). Without default features it
 # adds only bitflags, memchr and unicase.
 pulldown-cmark = { version = "0.13", default-features = false }
+# Reads the pinned ptc/22-03-13, namespaced XML with id references, for the
+# metamodel check and the schema generator (LIB-TOOL-004, LIB-TOOL-023). The
+# library's own XML backend (ADR 0005), at the version already in Cargo.lock.
+roxmltree = { version = "0.21.2", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 toml = "1.2"

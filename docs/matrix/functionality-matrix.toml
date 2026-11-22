@@ -6026,11 +6026,39 @@ id = "LIB-TOOL-004"
 area = "TOOL"
 milestone = "M6"
 title = "Metamodel coverage against ptc/22-03-13"
-requirement = "`cargo xtask inventory` regenerates docs/sacm/metamodel-inventory.md from the pinned ptc/22-03-13 (applying the recorded divergences), and a test asserts every concrete class, attribute, containment role and reference end in it is represented by the crate."
-source = "ADR 0003; docs/sacm/metamodel-inventory.md"
+requirement = "An xtask test reads the pinned ptc/22-03-13 (`xtask::metamodel`) and fails unless every class, generalization, attribute, composition, reference end and multiplicity in it, with the five recorded corrections, is what `docs/sacm/metamodel-inventory.md` lists and what the crate represents: `ElementKind` and `AbstractClass` (names, packages, is-a), `ElementKind::may_contain`, `Flag` and `ReferenceEnd` with `applies_to` and `bounds`, and, for the attributes and value compositions that have no metadata, a strict read and write of a document that uses each. There is no inventory generator: the inventory is kept by hand and the test fails on drift (M6 decisions Q10)."
+source = "ADR 0003; ptc/22-03-13; docs/sacm/metamodel-inventory.md; M6 decisions Q10 (the maintainer, 2026-11-19); design brief target/slice-0074-design.md section 4"
 kind = "tooling"
-status = "planned"
-depends_on = ["LIB-TOOL-002", "LIB-API-003"]
+code = ["xtask/src/metamodel.rs", "xtask/src/lib.rs", "xtask/Cargo.toml", "docs/sacm/metamodel-inventory.md"]
+tests = [
+  "xtask/tests/metamodel.rs::lib_tool_004_parse_reads_classes_properties_bounds_and_enumerations",
+  "xtask/tests/metamodel.rs::lib_tool_004_parse_refuses_what_it_does_not_model",
+  "xtask/tests/metamodel.rs::lib_tool_004_the_pinned_model_has_its_known_shape",
+  "xtask/tests/metamodel.rs::lib_tool_004_the_corrections_are_the_five_recorded_ones",
+  "xtask/tests/metamodel.rs::lib_tool_004_every_class_is_a_kind_an_abstract_class_or_a_value_type",
+  "xtask/tests/metamodel.rs::lib_tool_004_generalizations_agree_with_is_a_and_is_kind_of",
+  "xtask/tests/metamodel.rs::lib_tool_004_compositions_agree_with_may_contain",
+  "xtask/tests/metamodel.rs::lib_tool_004_reference_ends_and_bounds_agree_with_reference_end",
+  "xtask/tests/metamodel.rs::lib_tool_004_flags_agree_with_the_boolean_attributes",
+  "xtask/tests/metamodel.rs::lib_tool_004_the_inventory_agrees_with_the_model",
+  "xtask/tests/metamodel.rs::lib_tool_004_every_attribute_and_value_composition_is_read_and_written",
+]
+status = "implemented"
+depends_on = ["LIB-TOOL-002", "LIB-API-003", "LIB-API-012", "LIB-API-015"]
+acceptance = [
+  "In `xtask/tests/metamodel.rs` (tests 3 to 10 need the spec; with `SACM_SPEC_DIR` unset and the file absent they print `<ROW>: SKIPPED: <path> is absent; run `cargo xtask fetch-spec`` on stderr and pass; set with the file absent, or empty, they fail; a wrong hash always fails): `lib_tool_004_parse_reads_classes_properties_bounds_and_enumerations`: on `SAMPLE_MODEL`, the exact `Metamodel` value, including `Box.next` with lower 2, upper None and `Leaf.state` with `Enumeration, 1, Some(1)`.",
+  "`lib_tool_004_parse_refuses_what_it_does_not_model`: the six refusals of the design brief.",
+  "`lib_tool_004_the_pinned_model_has_its_known_shape`: packages in document order Base, AssuranceCase, Artifact, Argumentation, Terminology; classes 12/3/13/16/10 = 54; 12 abstract; 60 properties, 11 unnamed, all in Base; 46 associations, 11 named; one enumeration `AssertionDeclaration` with its six literals in order; no class with two generalizations.",
+  "`lib_tool_004_the_corrections_are_the_five_recorded_ones`: the `CORRECTIONS` ids in order (D8, D19, D17, D5, §11.3), and `corrected()` differs from the raw model in exactly those five ways: 13 abstract, 41 concrete, no empty name.",
+  "`lib_tool_004_every_class_is_a_kind_an_abstract_class_or_a_value_type`: the corrected concrete classes minus {LangString, MultiLangString, ExpressionLangString} equal `ElementKind::ALL` by (name, package): 38. The abstract classes equal `AbstractClass::ALL`: 13.",
+  "`lib_tool_004_generalizations_agree_with_is_a_and_is_kind_of`: for all 38 x 13 and 38 x 38 pairs.",
+  "`lib_tool_004_compositions_agree_with_may_contain`: for all 1,444 pairs, `may_contain(parent, child)` holds exactly when a composition of the parent (inherited included) has a type that is the child's class or an ancestor of it; exactly 339 are true.",
+  "`lib_tool_004_reference_ends_and_bounds_agree_with_reference_end`: the set of (kind, name, lower, upper) over the model's References on concrete kinds equals that over `ReferenceEnd::ALL` minus `Expression`, with `name()` and `bounds(kind)`; separately, the model has `ExpressionLangString.expression`, a Reference to `ExpressionElement`, `[1..1]`.",
+  "`lib_tool_004_flags_agree_with_the_boolean_attributes`: `Flag::applies_to(kind)` holds exactly when the model has the Data property `Flag::name()` typed `eee_1045467100323_191782_59` on that kind.",
+  "`lib_tool_004_the_inventory_agrees_with_the_model`: the Package summary counts (12/5, 3/0, 10/3, 16/4, 13/1; enumerations 0/0/0/1/0); per class, abstractness, the generalization chain and the three tables (name, type, multiplicity, the multiplicity cell compared up to its first space); type names `String`, `Boolean` for `eee_1045467100323_191782_59`, and `_be00301_1073305590699_364818_1` as itself; multiplicities `1`, `0..1`, `0..*`, `1..*`, `2..*`; `Resource.location` in no table, and the sentence starting \"Absent from ptc/22-03-13 and followed from the text\" present; the enumeration literals.",
+  "`lib_tool_004_every_attribute_and_value_composition_is_read_and_written` (uses `sacm`): for each concrete kind and each Data or Enumeration property of it, a minimal strict document with that attribute reads with `has_preserved_content() == false` and no SACM-XMI-003, and its strict write contains `name=\"value\"` (values `x`; `true` for the three Booleans; `needsSupport`; `2026-01-01` for the four dates); the same for `name`, `content`, `key`, `value`, `location`, and `lang`, `content` and `expression` on a LangString; control: `bogus=\"x\"` on a Claim is preserved content.",
+  "`docs/sacm/metamodel-inventory.md`: the provenance sentence \"Until this repository has its own generator (row LIB-TOOL-004)...\" becomes \"A test (row LIB-TOOL-004) compares this page with the pinned model; edit it only together with that test.\", and the stale bullets on LIB-COMPAT-004 and TerminologyPackage as a top object are corrected.",
+]
 
 [[row]]
 id = "LIB-SEC-003"
@@ -7942,6 +7970,50 @@ acceptance = [
 status = "verified"
 verification = "docs/verification/0072-reader-front-end.md"
 depends_on = ["LIB-TOOL-021"]
+
+
+[[row]]
+id = "LIB-TOOL-023"
+area = "TOOL"
+milestone = "M6"
+title = "The SACM XML Schema is generated and strict output is validated against it"
+requirement = "`cargo xtask schema [--out DIR]` generates `DIR/SACM-2.3.xsd` (default `target/schema`, git-ignored, never committed) from the pinned ptc/22-03-13 by the XMI 2.5.1 clause 8 rules with the default tag values, in the pinned namespace, with the five recorded model corrections, with rule 4f's candidate list replaced by a candidate type and rule 7 not applied (ADR 0043), and copies the pinned XMI.xsd beside it. Its output is deterministic; its SHA-256 is pinned. `cargo xtask schema validate [--out DIR]` then runs `xmllint --noout --nonet --schema` on every strict golden file and every file in `DIR/outputs`, and fails unless each is valid or is a listed file that fails in XMI metadata only. CI's `SACM XML Schema` job produces the outputs with `sacm roundtrip` from every fixture and corpus file and runs the check, on Linux only; it is a required check and not part of the local gate."
+source = "formal/23-05-08 §2.2-2.5; XMI 2.5.1 §2.2.1, §7.2, §7.8, §7.11.1, clause 8, §9.5.2 rule 2a; M6 decisions Q1 (the maintainer, 2026-11-19); Q-A and Q-B of the slice 0074 design (the maintainer, 2026-11-22); ADR 0043; OMG's SACM 2.3 page lists no XML Schema (2026-11-21); design brief target/slice-0074-design.md section 3"
+kind = "tooling"
+acceptance = [
+  "In `xtask/tests/schema.rs` (tests 6 and 7 need the spec, with the same SKIPPED rule as LIB-TOOL-004): `lib_tool_023_the_sample_model_gives_the_sample_schema`: `generate(&parse(SAMPLE_MODEL)?)? == SAMPLE_SCHEMA`, byte for byte, with the design brief's `SAMPLE_MODEL` and `SAMPLE_SCHEMA`.",
+  "`lib_tool_023_generation_is_deterministic_text`: two calls are equal; LF only; no tab; no trailing space; one final newline; the four header lines exactly.",
+  "`lib_tool_023_a_composition_is_typed_by_its_one_candidate_or_by_a_candidate_type`: `tag` is `sacm:Tag`, `item` is `sacm:Item.candidates`, and the output contains no `<xsd:element ref=\"sacm:` (rule 4f's child-element form is never generated).",
+  "`lib_tool_023_a_candidate_type_merges_properties_of_one_name`: in `Item.candidates`, `item` has the composition element and an `IDREF` attribute, and `next` is `IDREFS`.",
+  "`lib_tool_023_conflicting_properties_in_a_candidate_type_are_an_error`: two candidates declaring `x` as Data and as Enumeration give `schema: property x of <T>.candidates is declared as <kind> and <kind>`.",
+  "`lib_tool_023_the_schema_of_the_pinned_model_has_the_pinned_hash`: `sha256_hex(generate(&load(dir)?.corrected()?)?) == GENERATED_SHA256` (`2dde06a5d97d8c855873092b5a0d37bb8be79ea738412673d55fce56637792cc`, 2,589 lines, 145,742 bytes); exactly 62 `<xsd:complexType name=`; the eight candidate type names.",
+  "`lib_tool_023_cmd_schema_writes_the_schema_and_the_xmi_xsd_copy`: in a temporary out dir, both report lines (`wrote <DIR>/SACM-2.3.xsd (54 classes, 1 enumeration, 8 candidate types)`, `wrote <DIR>/XMI.xsd`); the `XMI.xsd` hash equals its pin.",
+  "`lib_tool_023_cmd_schema_names_fetch_spec_when_the_model_is_missing_or_changed`: an empty root gives the \"is missing\" text; a wrong-hash file gives the \"has SHA-256\" text, both naming `cargo xtask fetch-spec`.",
+  "`lib_tool_023_judge_reads_xmllint_exit_codes`: 0 is `Valid`; 3 with two validity lines is `Invalid` with both; 1 and `None` are `Err`.",
+  "`lib_tool_023_a_metadata_only_file_must_fail_and_only_on_xmi_elements`: the three cases of `judge` for a listed name (valid is an error naming the list, XMI-namespace errors only is `MetadataOnly`, any other error is `Invalid`), and an unlisted name with the same stderr is `Invalid`.",
+  "`lib_tool_023_validate_checks_goldens_then_outputs_in_name_order`: in a temporary root with a fake `lint`, the report text is exact, ending `schema: <G> golden files and <O> outputs checked: <V> valid, <M> invalid in XMI metadata only`.",
+  "`lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without_goldens`: the three error texts; every file is still checked.",
+  "`xtask/tests/run.rs::lib_tool_023_run_dispatches_schema_and_the_usage_lists_it`: `[\"schema\"]`, `[\"schema\",\"--out\",d]`, `[\"schema\",\"validate\"]`, `[\"schema\",\"validate\",\"--out\",d]`; the two usage entries.",
+  "The fixture `crates/sacm/tests/data/sacm23/xmi/xmi-metadata-schema-valid.sacm.xmi` (lowercase `xmi:documentation` with unqualified children) has a strict output that is `ok`. On the PR, the `SACM XML Schema` job's log shows every golden and output checked, and only the two `METADATA_ONLY` files reported `metadata`.",
+]
+code = ["xtask/src/schema.rs", "xtask/src/lib.rs", "xtask/Cargo.toml", ".github/workflows/ci.yml", "docs/adr/0043-the-sacm-xml-schema.md"]
+tests = [
+  "xtask/tests/schema.rs::lib_tool_023_the_sample_model_gives_the_sample_schema",
+  "xtask/tests/schema.rs::lib_tool_023_generation_is_deterministic_text",
+  "xtask/tests/schema.rs::lib_tool_023_a_composition_is_typed_by_its_one_candidate_or_by_a_candidate_type",
+  "xtask/tests/schema.rs::lib_tool_023_a_candidate_type_merges_properties_of_one_name",
+  "xtask/tests/schema.rs::lib_tool_023_conflicting_properties_in_a_candidate_type_are_an_error",
+  "xtask/tests/schema.rs::lib_tool_023_the_schema_of_the_pinned_model_has_the_pinned_hash",
+  "xtask/tests/schema.rs::lib_tool_023_cmd_schema_writes_the_schema_and_the_xmi_xsd_copy",
+  "xtask/tests/schema.rs::lib_tool_023_cmd_schema_names_fetch_spec_when_the_model_is_missing_or_changed",
+  "xtask/tests/schema.rs::lib_tool_023_judge_reads_xmllint_exit_codes",
+  "xtask/tests/schema.rs::lib_tool_023_a_metadata_only_file_must_fail_and_only_on_xmi_elements",
+  "xtask/tests/schema.rs::lib_tool_023_validate_checks_goldens_then_outputs_in_name_order",
+  "xtask/tests/schema.rs::lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without_goldens",
+  "xtask/tests/run.rs::lib_tool_023_run_dispatches_schema_and_the_usage_lists_it",
+]
+status = "implemented"
+depends_on = ["LIB-TOOL-004", "LIB-TOOL-021", "LIB-CLI-003", "LIB-COMPAT-007", "SACM23-XMI-019"]
 
 [[row]]
 id = "LIB-TOOL-021"

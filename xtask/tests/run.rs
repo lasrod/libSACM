@@ -12,6 +12,8 @@
 //! be picked up by the real repository's orphan scan.
 
 mod common;
+#[path = "common/spec.rs"]
+mod spec;
 
 use std::fs;
 use std::io::{self, Write};
@@ -1034,4 +1036,117 @@ fn lib_compat_015_the_usage_lists_fetch_corpus_and_third_party_corpus_is_git_ign
             .any(|line| line.trim() == "/third_party/corpus/"),
         "LIB-COMPAT-015: .gitignore lists /third_party/corpus/, so the corpus is never committed"
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-023: `schema` and `schema validate`
+// ---------------------------------------------------------------------------
+
+/// The pinned model and XMI.xsd, as `fetch-spec` names them.
+const SCHEMA_INPUTS: [&str; 2] = ["SACM-2.3-ptc-22-03-13.xml", "XMI-2.5.1-XMI.xsd"];
+
+/// The four forms of the command.
+const SCHEMA_FORMS: [&[&str]; 4] = [
+    &["schema"],
+    &["schema", "--out", "custom"],
+    &["schema", "validate"],
+    &["schema", "validate", "--out", "custom"],
+];
+
+/// `cmd_schema`'s refusal when the root holds no model.
+const NO_MODEL: &str = "schema: third_party/sacm-2.3/SACM-2.3-ptc-22-03-13.xml is missing; run \
+                        `cargo xtask fetch-spec`";
+
+#[test]
+fn lib_tool_023_run_dispatches_schema_and_the_usage_lists_it() {
+    // Without the model under the root, every form reads
+    // <root>/third_party/sacm-2.3, fails offline and writes nothing.
+    let tree = TempTree::new("run-schema-missing");
+    for args in SCHEMA_FORMS {
+        assert_eq!(
+            run_err(args, tree.root()),
+            NO_MODEL,
+            "LIB-TOOL-023: `{}` runs the schema command on the root",
+            args.join(" ")
+        );
+    }
+    assert!(
+        entries(tree.root(), "").is_empty(),
+        "LIB-TOOL-023: a refused `schema` creates nothing under the root"
+    );
+    for args in [
+        &["schema", "--out"][..],
+        &["schema", "validate", "--out"],
+        &["schema", "extra"],
+        &["schema", "validate", "extra"],
+        &["schema", "--out", "d", "validate"],
+        &["schema", "validate", "--out", "d", "extra"],
+    ] {
+        let message = run_err(args, tree.root());
+        let expected = format!("unrecognized arguments: {}", args.join(" "));
+        assert!(
+            message.starts_with(&expected),
+            "LIB-TOOL-023: `{}` must be `{expected}`, got {message:?}",
+            args.join(" ")
+        );
+    }
+
+    let usage = run_ok(&["help"], tree.root());
+    for entry in ["schema [--out DIR]", "schema validate [--out DIR]"] {
+        assert!(
+            usage.lines().any(|l| l.trim_start().starts_with(entry)),
+            "LIB-TOOL-023: `help` lists `{entry}`, wrote {usage:?}"
+        );
+    }
+    assert!(
+        usage.contains("target/schema") && usage.contains("xmllint"),
+        "LIB-TOOL-023: `help` names the default target/schema and xmllint, wrote {usage:?}"
+    );
+
+    // With the pinned inputs under the root, each form writes the schema
+    // where its --out, resolved against the root, says.
+    let Some(dir) = spec::spec_dir("LIB-TOOL-023", &SCHEMA_INPUTS) else {
+        return;
+    };
+    let tree = TempTree::new("run-schema");
+    for name in SCHEMA_INPUTS {
+        let bytes = fs::read(dir.join(name))
+            .unwrap_or_else(|e| panic!("LIB-TOOL-023: setup: read {name}: {e}"));
+        let path = tree.root().join(DEFAULT_DEST).join(name);
+        fs::create_dir_all(tree.root().join(DEFAULT_DEST))
+            .and_then(|()| fs::write(&path, bytes))
+            .unwrap_or_else(|e| panic!("LIB-TOOL-023: setup: write {}: {e}", path.display()));
+    }
+    for (args, out_dir) in [
+        (SCHEMA_FORMS[0], "target/schema"),
+        (SCHEMA_FORMS[1], "custom"),
+    ] {
+        let out = run_ok(args, tree.root());
+        let schema = tree.root().join(out_dir).join("SACM-2.3.xsd");
+        assert!(
+            out.starts_with(&format!("wrote {}", schema.display())) && schema.is_file(),
+            "LIB-TOOL-023: `{}` writes {}, wrote {out:?}",
+            args.join(" "),
+            schema.display()
+        );
+    }
+    // `validate` generates first; this tree has no golden file, so it then
+    // fails (on that, or on a missing xmllint).
+    for (args, out_dir) in [
+        (SCHEMA_FORMS[2], "target/schema"),
+        (SCHEMA_FORMS[3], "custom"),
+    ] {
+        let schema = tree.root().join(out_dir).join("SACM-2.3.xsd");
+        fs::remove_file(&schema)
+            .unwrap_or_else(|e| panic!("LIB-TOOL-023: setup: remove {}: {e}", schema.display()));
+        fs::create_dir_all(tree.root().join(out_dir).join("outputs"))
+            .unwrap_or_else(|e| panic!("LIB-TOOL-023: setup: create outputs: {e}"));
+        let (result, _) = run_captured(args, tree.root());
+        assert!(
+            result.is_err() && schema.is_file(),
+            "LIB-TOOL-023: `{}` generates {} and then fails without golden files, got {result:?}",
+            args.join(" "),
+            schema.display()
+        );
+    }
 }
