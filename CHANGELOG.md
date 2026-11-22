@@ -49,6 +49,34 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   the proxy was SACM-XMI-014 [SACM23-XMI-030].
 - `compare::Difference` has the variants `Metadata` and `DocumentMetadata`; the enum is
   `#[non_exhaustive]` [SACM23-XMI-019].
+- A strict read now returns documents it refused: an XPointer `href`, an `href` as an
+  `ExpressionLangString`'s `expression`, and a role element in reference form with an
+  `href` to another document (a proxy) are read and held, where they were
+  `ReadError::Unsupported` with SACM-XMI-007, and a tolerant read no longer keeps them as
+  preserved content. No input gives SACM-XMI-007 any more; `Code::XMI_EXTERNAL_HREF`
+  stays, and the code is never reused [SACM23-XMI-029].
+- The templates `SACM-XMI-007/*` are removed: 4 refusal templates (`/unread-attribute`,
+  `/proxy-child`, `/proxy-child-of-root`, `/href`) and their 4 `-kept` diagnostic
+  templates [SACM23-XMI-029].
+- An `XLink` attribute on a reference element, and a role element that carries an `href`
+  to another document together with an `xmi:id`, `xmi:uuid`, `xmi:label`, another
+  attribute, an `xmi:idref` or content, do not conform: SACM-XMI-003
+  (`SACM-XMI-003/element-kept`), kept whole as preserved content in both modes, where they
+  were SACM-XMI-007 [SACM23-XMI-029].
+- `AddReference::id()` and `RemoveReference::id()` return `Option<&ElementId>`, `None`
+  for an operation on an href; they returned `&ElementId` [LIB-EDIT-020].
+- `implements()` of `CreateAssuranceCasePackageInterface`,
+  `CreateArgumentPackageInterface`, `CreateArtifactPackageInterface` and
+  `CreateTerminologyPackageInterface` returns `Option<&ElementId>`, `None` when an href
+  names the package; it returned `&ElementId` [LIB-EDIT-020].
+- `Href::document()` may be empty, for an XPointer into the same document, and
+  `Href::as_str()` may start with a type, `sacm:<Class>` and one space; `document()` and
+  `fragment()` are those of `Href::uri()` [SACM23-XMI-029].
+- The SACM-XMI-010 and SACM-XMI-013 of a same-file proxy that is kept affect its
+  container, and the `id` argument of that `SACM-XMI-010/xsi-type` is the container's id;
+  they named the id the proxy names [SACM23-XMI-029].
+- `compare::Difference` has the variant `Proxies`, and `edit::EditError` the variant
+  `HrefNotHeld`; both enums are `#[non_exhaustive]` [SACM23-XMI-029, LIB-EDIT-020].
 
 ### Added
 
@@ -104,8 +132,49 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   its proxy's depth and its tree shifts with it, and an element nested deeper than
   `Limits::max_depth` refuses the read as `ReadError::LimitExceeded`
   (`SACM-SEC-003/depth`) [SACM23-XMI-030].
+- Cross-document links are read in both modes with no diagnostic, held as written, never
+  resolved, compared, and written back by both saves: an `href` whose fragment is an
+  XPointer (its document part may be empty), an `href` with a type before its URI
+  reference (XMI 2.5.1 rule 2n; held as `sacm:<Class> <URI>`, and a typed `#id` is the
+  id), and an `href` as an `ExpressionLangString`'s `expression` [SACM23-XMI-029].
+- `Href::kind`, `Href::uri` and `Href::is_xpointer` [SACM23-XMI-029].
+- Cross-file proxies: a role element of a composite in reference form whose `href` names
+  an element of another document, or an XPointer, is held as a `model::Proxy` (its role
+  and its `Href`) of its container, `SacmElement::proxies`, in document order. A type
+  attribute is held as the href's type. Both saves write each as `<role href="…" />`
+  after the container's children. No rule counts a proxy, `RejectIfNonEmpty` counts it as
+  contained, a copy keeps it and a move takes it along [SACM23-XMI-029].
+- `LangString::expression_href`: the `expression` of an `ExpressionLangString` held in
+  another document, which counts as the expression being present; it is written as an
+  `expression` reference element in the name or value [SACM23-XMI-029].
+- `compare::Difference::Proxies`, reported after `Hrefs` [SACM23-XMI-029].
+- `Href::new` makes a cross-document reference from a string, and `HrefError` says why a
+  value is refused: `WhiteSpace`, `Type`, `NoFragment`, `HashInFragment` or `SameDocument`
+  [LIB-EDIT-020].
+- Edits create and remove cross-document references: `SetReferences::with_hrefs` (and
+  `hrefs`), `AddReference::href`, `RemoveReference::href` (`EditError::HrefNotHeld`,
+  SACM-CMD-001, when the end does not hold it) and their `cross_document` accessors; the
+  interface creates' `root_href`, `new_href` and `implements_href`; the binding creates'
+  `with_participant_package_hrefs` and `participant_package_hrefs`; and
+  `LangString::with_expression_href`. Bounds count distinct ids plus distinct hrefs, and
+  an `Href` is never checked for existence or type [LIB-EDIT-020].
+- JSON (`serde`): an `Href` is a string, checked by `Href::new`; `SetReferences` takes
+  `hrefs` and the binding creates `participant_package_hrefs`, each empty by default and
+  written only when not empty; `AddReference` and `RemoveReference` take exactly one of
+  `id` and `href`, and the interface creates exactly one of `implements` and
+  `implements_href`; an `ExpressionLangString`'s `expression` is an id, `null` or
+  `{"href": "…"}`; and `EditError::HrefNotHeld` is `{"type", "code", "end", "href"}`
+  [LIB-EDIT-020].
 
 ### Changed
+
+- `SetReferences::new` and `clear` still set an end's ids and remove its hrefs; a set
+  that gives the hrefs the end holds, in order, no longer changes the element
+  [LIB-EDIT-020].
+- A proxy's type must be admitted by its role however it is given: a same-file proxy
+  `href="sacm:<Class> #id"` whose class its role does not admit, or that disagrees with
+  its type attribute, is kept with SACM-XMI-003, and its class is checked against the
+  root it names (`SACM-XMI-003/proxy-wrong-kind`) [SACM23-XMI-029].
 
 - A strict read refuses a root in an older SACM revision's namespace with SACM-XMI-008,
   where it was SACM-XMI-002 [LIB-COMPAT-004].

@@ -1,7 +1,7 @@
 //! The create operations (LIB-EDIT-001, ADR 0019).
 
 use super::EditError;
-use super::argumentation::{binding_operation, interface_operation, plan_referencing};
+use super::argumentation::{binding_operation, interface_operation};
 use super::plan::{Features, NewElement, Plan};
 use crate::model::{
     Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement, admits, is_ncname,

@@ -6,7 +6,7 @@ use std::fmt;
 use super::containment::{Role, role};
 use super::{
     AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, Href, LangString,
-    MultiLangString, Preserved, ReferenceEnd, Revision,
+    MultiLangString, Preserved, Proxy, ReferenceEnd, Revision,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -275,6 +275,11 @@ struct Node {
     /// empty list. They name no element of this document, so no id use
     /// counts them.
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
+    /// The element's proxies, in document order (SACM23-XMI-029, ADR 0040
+    /// amendment 1, A2): each a child in one of its composite roles that is
+    /// held in another document. They are no elements of this document, so
+    /// no id use and no child list counts them.
+    proxies: Vec<Proxy>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
     /// The element's index among its parent's children, or among the
@@ -744,6 +749,7 @@ impl Document {
             is_counter: false,
             references: Vec::new(),
             hrefs: Vec::new(),
+            proxies: Vec::new(),
             parent,
             slot,
             role,
@@ -1149,6 +1155,34 @@ impl Document {
         if !hrefs.is_empty() {
             ends.push((end, hrefs));
         }
+        Ok(())
+    }
+
+    /// Sets the proxies of the element `owner` to `proxies`, in order,
+    /// replacing what it held (SACM23-XMI-029, ADR 0040 amendment 1, A2).
+    /// Only the XMI reader sets them. Refuses, with the reason, an unknown
+    /// owner and a proxy in a role that is no composite role of the owner's
+    /// class; on an error the document is unchanged.
+    pub(crate) fn set_proxies(
+        &mut self,
+        owner: &ElementId,
+        proxies: Vec<Proxy>,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        let kind = self.nodes[node].kind;
+        if let Some(proxy) = proxies
+            .iter()
+            .find(|proxy| super::role_named(kind, proxy.role()).is_none())
+        {
+            return Err(format!(
+                "the {kind} {:?} has no composite role {}",
+                owner.as_str(),
+                proxy.role()
+            ));
+        }
+        self.nodes[node].proxies = proxies;
         Ok(())
     }
 
@@ -2088,6 +2122,7 @@ impl Document {
             is_counter,
             references,
             hrefs,
+            proxies,
             // Replaced by the place in the capture.
             parent: _,
             // Set where the copy is added.
@@ -2116,6 +2151,7 @@ impl Document {
             is_counter: *is_counter,
             references: references.clone(),
             hrefs: hrefs.clone(),
+            proxies: proxies.clone(),
             preserved: preserved.clone(),
             metadata: metadata.clone(),
             name_metadata: name_metadata.clone(),
@@ -2225,6 +2261,10 @@ impl Document {
                 // An href names an element of another document, which a copy
                 // never copies, so it is kept as it is (ADR 0040 D7).
                 hrefs: captured.hrefs.clone(),
+                // A proxy names a child held in another document, which a
+                // copy never copies either: the copy holds the same proxy
+                // (ADR 0040 amendment 1).
+                proxies: captured.proxies.clone(),
                 parent: holder,
                 slot,
                 role,
@@ -2324,6 +2364,7 @@ struct Captured {
     is_counter: bool,
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
+    proxies: Vec<Proxy>,
     preserved: Option<Box<Preserved>>,
     metadata: Option<Box<Preserved>>,
     name_metadata: Option<Box<Preserved>>,
@@ -2379,7 +2420,8 @@ impl<'s> CapturedElement<'s> {
     }
 
     /// Whether its name or a value of its texts is an `ExpressionLangString`
-    /// with no `expression` (§8.4 `expression[1]`), which a copy refuses.
+    /// with no `expression`, neither an id nor an href (§8.4
+    /// `expression[1]`), which a copy refuses.
     pub(crate) fn has_missing_expression(self) -> bool {
         let captured = self.captured;
         captured
@@ -2391,7 +2433,7 @@ impl<'s> CapturedElement<'s> {
                     .flatten()
                     .flat_map(|text| text.value.values()),
             )
-            .any(|value| value.is_expression_lang_string() && value.expression().is_none())
+            .any(LangString::lacks_expression)
     }
 
     /// The ids of its name, `content`, `key`, `location` and their values.
@@ -3420,6 +3462,44 @@ impl<'a> SacmElement<'a> {
         hrefs_of(&self.node().hrefs, end)
     }
 
+    /// The element's proxies, in document order: each a child in one of its
+    /// composite roles that the file holds in another document and names by
+    /// an `href` (XMI 2.5.1 §7.10.1; SACM23-XMI-029, ADR 0040 amendment 1).
+    ///
+    /// A proxy is never resolved, and it is no element of this document: it
+    /// is not among [`children`](Self::children), it has no id, and no
+    /// validation rule counts it. Both saves write it back, after the
+    /// element's children. A copy keeps the proxies, a move takes them
+    /// along, and
+    /// [`PackageDeletePolicy::RejectIfNonEmpty`](crate::edit::PackageDeletePolicy::RejectIfNonEmpty)
+    /// counts each as contained. Only [`xmi::read`](crate::xmi::read) gives
+    /// one; no edit creates or removes a proxy yet.
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+    ///   <name content="Case"/>
+    ///   <argumentPackage href="arguments.sacm.xmi#args"/>
+    ///   <argumentPackage xmi:type="sacm:ArgumentPackageInterface" href="braking.sacm.xmi#api"/>
+    /// </sacm:AssuranceCasePackage>"#;
+    /// let doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let case = doc.get("case").ok_or("not read")?;
+    /// let files: Vec<&str> = case.proxies().iter().map(|p| p.href().document()).collect();
+    /// assert_eq!(files, ["arguments.sacm.xmi", "braking.sacm.xmi"]);
+    /// // A proxy's type attribute is held as its href's type.
+    /// let typed = &case.proxies()[1];
+    /// assert_eq!(typed.href().kind(), Some(ElementKind::ArgumentPackageInterface));
+    /// assert_eq!(typed.href().as_str(), "sacm:ArgumentPackageInterface braking.sacm.xmi#api");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn proxies(self) -> &'a [Proxy] {
+        &self.node().proxies
+    }
+
     /// The ids the element's `ExpressionLangStrings` (§8.4) name: its name's, then each
     /// value's of its `content`, `key` and `location`, in order. An `ExpressionLangString`
     /// with no `expression` adds none. It is `references(ReferenceEnd::Expression)`.
@@ -3946,6 +4026,8 @@ impl<'a> SacmElement<'a> {
             references,
             // Compared, end by end (ADR 0040 D8).
             hrefs,
+            // Compared, in order (ADR 0040 amendment 1, A6).
+            proxies,
             // Compared, as the parent's id.
             parent,
             // Derived from the parent's children (or the roots), which are
@@ -3981,6 +4063,7 @@ impl<'a> SacmElement<'a> {
             is_counter: *is_counter,
             references,
             hrefs,
+            proxies,
             preserved: preserved.as_deref(),
             metadata: metadata.as_deref(),
             name_metadata: name_metadata.as_deref(),
@@ -4145,6 +4228,8 @@ pub(crate) struct Compared<'a> {
     references: &'a [(ReferenceEnd, Vec<ElementId>)],
     /// The `href`s each reference end holds: only the ends that hold one.
     hrefs: &'a [(ReferenceEnd, Vec<Href>)],
+    /// The element's proxies, in order.
+    pub(crate) proxies: &'a [Proxy],
     /// The element's preserved content; `None` when it holds none.
     pub(crate) preserved: Option<&'a Preserved>,
     /// The element's XMI metadata; `None` when it holds none.
@@ -4990,7 +5075,7 @@ mod tests {
         let hrefs = |values: &[&str]| {
             values
                 .iter()
-                .map(|value| Href::new_unchecked(value))
+                .map(|value| Href::from_parts(None, value))
                 .collect::<Vec<_>>()
         };
         let before = document.clone();
@@ -5027,6 +5112,38 @@ mod tests {
             document.get("j").map(|j| j.hrefs(ReferenceEnd::Implements)),
             Some(hrefs(&["o.xmi#p"]).as_slice())
         );
+    }
+
+    #[test]
+    fn set_proxies_refuses_an_unknown_owner_and_a_role_the_class_lacks() {
+        use crate::model::Proxy;
+
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        let proxy = |role| Proxy::new(role, Href::from_parts(None, "o.xmi#c"));
+        let before = document.clone();
+        // `p` is an ArgumentPackage: it has no role `artifactPackage`.
+        assert_eq!(
+            document.set_proxies(&p, vec![proxy("argumentElement"), proxy("artifactPackage")]),
+            Err("the ArgumentPackage \"p\" has no composite role artifactPackage".to_owned())
+        );
+        assert_eq!(
+            document.set_proxies(&ElementId::new("nope"), vec![proxy("argumentElement")]),
+            Err("the document has no element \"nope\"".to_owned())
+        );
+        assert!(
+            document == before,
+            "a refused set_proxies changed the document"
+        );
+        let held = vec![proxy("argumentElement"), proxy("argumentElement")];
+        assert_eq!(document.set_proxies(&p, held.clone()), Ok(()));
+        assert_eq!(
+            document.get("p").map(SacmElement::proxies),
+            Some(held.as_slice())
+        );
+        // Setting replaces, and none removes.
+        assert_eq!(document.set_proxies(&p, Vec::new()), Ok(()));
+        assert!(document == before, "set_proxies with none does not remove");
     }
 
     #[test]

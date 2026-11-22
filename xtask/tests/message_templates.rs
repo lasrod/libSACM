@@ -71,8 +71,10 @@ const HEADING: &str = "## Message templates";
 /// and slice 0073a removes the seven Unread templates of SACM-XMI-014 and
 /// adds `SACM-XMI-001/xmi-namespace-root` (Read) and
 /// `SACM-XMI-003/wrapper-element` (Unread) (SACM23-XMI-019, ADR 0042): Read
-/// 76, Unread 21, Write 7.
-const REFUSAL_TEMPLATES: usize = 104;
+/// 76, Unread 21, Write 7; and slice 0073b removes the four Unread templates
+/// of SACM-XMI-007 (SACM23-XMI-029, ADR 0040 amendment 1): Read 76, Unread
+/// 17, Write 7.
+const REFUSAL_TEMPLATES: usize = 100;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
@@ -86,8 +88,10 @@ const ROW_018: &str = "LIB-API-018";
 /// kept forms of SACM-XMI-014 and adds eight: `SACM-XMI-003/wrapper-element-kept`,
 /// the five `SACM-XMI-003/proxy-*` forms, `SACM-REF-001/metadata-dangling`
 /// and `SACM-ID-002/metadata-id-not-an-ncname` (SACM23-XMI-019,
-/// SACM23-XMI-030; ADR 0042).
-const DIAGNOSTIC_TEMPLATES: usize = 109;
+/// SACM23-XMI-030; ADR 0042); slice 0073b removes the four kept forms of
+/// SACM-XMI-007, which leaves 67 from the reader (SACM23-XMI-029, ADR 0040
+/// amendment 1).
+const DIAGNOSTIC_TEMPLATES: usize = 105;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -907,7 +911,7 @@ fn lib_api_017_every_template_const_is_named_in_another_file_of_the_crate() {
 }
 
 #[test]
-fn lib_api_017_template_rs_declares_the_104_refusal_templates() {
+fn lib_api_017_template_rs_declares_the_100_refusal_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW}: {SACM_SRC}/{TEMPLATES} does not exist");
@@ -927,7 +931,7 @@ fn lib_api_017_template_rs_declares_the_104_refusal_templates() {
 }
 
 #[test]
-fn lib_api_018_template_rs_declares_the_109_diagnostic_templates() {
+fn lib_api_018_template_rs_declares_the_105_diagnostic_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");

@@ -1680,9 +1680,14 @@ fn sacm23_term_007_create_reports_what_it_holds_and_checks_in_order() {
             operation.parent(),
             operation.id(),
             operation.name(),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (None, None, &named("Hazard terminology interface"), "t"),
+        (
+            None,
+            None,
+            &named("Hazard terminology interface"),
+            Some("t")
+        ),
         "{row}: root()"
     );
     let operation = CreateTerminologyPackageInterface::new("t", named("I"), "t").with_id("i");
@@ -1690,9 +1695,9 @@ fn sacm23_term_007_create_reports_what_it_holds_and_checks_in_order() {
         (
             operation.parent().map(ElementId::as_str),
             operation.id().map(ElementId::as_str),
-            operation.implements().as_str()
+            operation.implements().map(ElementId::as_str)
         ),
-        (Some("t"), Some("i"), "t"),
+        (Some("t"), Some("i"), Some("t")),
         "{row}: new() and with_id()"
     );
     assert_eq!(

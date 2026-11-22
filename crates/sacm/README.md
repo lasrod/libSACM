@@ -41,16 +41,22 @@ Read, edit, validate and write assurance cases in the
   `participant_packages`, `interfaces`). A reference element whose `href` names an
   element of another document, such as `other.sacm.xmi#c1`, is held as a `model::Href`
   in the end's hrefs (`SacmElement::hrefs`), written back and counted toward the end's
-  bounds, but never resolved; no edit creates one yet. A `name`, or a value of a
+  bounds, but never resolved; its fragment may be an XPointer, and a type may stand before
+  it (`Href::kind`). `Href::new` makes one, and `SetReferences::with_hrefs`,
+  `AddReference::href`, `RemoveReference::href` and the interface and binding creates set
+  them. A child held in another file, such as
+  `<argumentPackage href="arguments.sacm.xmi#args"/>`, is held as a `model::Proxy` of its
+  container (`SacmElement::proxies`), written back and never resolved. A `name`, or a value of a
   `content`, `key` or `location`, may be an `ExpressionLangString` (§8.4) that links an
-  ExpressionElement (`LangString::expression`, `SacmElement::expressions`). Content that
+  ExpressionElement (`LangString::expression`, `SacmElement::expressions`), or one of
+  another file (`LangString::expression_href`). Content that
   is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an
   older SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
   depth 256, 1,000,000 XML nodes and 256 namespace bindings in scope): what a strict read
-  refuses, such as a value that is no literal or conforming content not read yet, it keeps as
+  refuses, such as a value that is no literal or an untyped child under an abstract role, it keeps as
   preserved content with a Warning, never dropped (`Document::has_preserved_content`),
   and it reads the four names formal/23-05-08 and ptc/22-03-13 spell differently,
   `ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and

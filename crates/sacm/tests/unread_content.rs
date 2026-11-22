@@ -202,19 +202,10 @@ fn kept_entries() -> Vec<Kept> {
     // (SACM23-XMI-019, ADR 0042), so no entry is SACM-XMI-014.
     // The spellings SACM23-XMI-009 reads are no kept entry since slice
     // 0057: see `spelled_entries`.
-    // A cross-document link not read yet: SACM-XMI-007 (SACM23-XMI-029).
-    cases.push(Kept {
-        entry: "CrossDocumentHref",
-        what: "an XPointer href to another document",
-        input: package(&claim(
-            "c1",
-            "",
-            "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
-        )),
-        code: Code::XMI_EXTERNAL_HREF,
-        row: None,
-        holder: Some("c1"),
-    });
+    // A cross-document link is read since slice 0073b, with no diagnostic
+    // (SACM23-XMI-029, ADR 0040 amendment 1), so no entry is SACM-XMI-007:
+    // `lib_api_011_a_cross_document_href_is_held_and_never_sacm_xmi_007`
+    // reads the XPointer this list gave for `CrossDocumentHref`.
     // Defects with nowhere to be kept before: SACM-XMI-003.
     for (what, input) in [
         (
@@ -455,13 +446,32 @@ fn spelled_entries() -> [Spelled; 2] {
     ]
 }
 
-/// A cross-document `href` SACM23-XMI-029 is to read (an `expression`'s,
-/// `XLink`), and the reference form of a composite, are kept with
-/// SACM-XMI-007, never SACM-XMI-003; the reference end stays empty. Since
-/// slice 0068 an `href` with a document part on a reference element is read
-/// (SACM23-XMI-027), so the first input is the `expression` of a name.
+/// What a cross-document link reads as, since slice 0073b holds it.
+enum Link {
+    /// The expression href of the name of `c1`.
+    Expression(&'static str),
+    /// The one href of the `metaClaim` of `c1`.
+    MetaClaim(&'static str),
+    /// The one proxy of `p`: its role and its href.
+    Proxy(&'static str, &'static str),
+    /// Not held: the reference element that starts with this text is kept
+    /// whole in `c1`, with one SACM-XMI-003 at its start tag.
+    Kept(&'static str),
+}
+
+/// A cross-document `href` SACM23-XMI-029 reads (an `expression`'s, an
+/// `XPointer`), and the reference form of a composite, are held, in both
+/// modes, with no diagnostic: never SACM-XMI-007, which no input gives since
+/// slice 0073b, and never SACM-XMI-003 (ADR 0040 amendment 1). `XLink`
+/// attributes on a reference element do not conform: that element is kept
+/// with SACM-XMI-003, and its end stays empty. Since slice 0068 an `href`
+/// with a document part on a reference element is read (SACM23-XMI-027).
 #[test]
-fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn lib_api_011_a_cross_document_href_is_held_and_never_sacm_xmi_007() {
     let cases = [
         (
             "an expression href to another document in a name",
@@ -470,7 +480,17 @@ fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
                  <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\">\
                  <expression href=\"other.sacm.xmi#t\"/></name></argumentElement>",
             ),
-            "c1",
+            Link::Expression("other.sacm.xmi#t"),
+        ),
+        // The input of the `CrossDocumentHref` entry, until slice 0073b.
+        (
+            "an XPointer href to another document",
+            package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+            )),
+            Link::MetaClaim("other.sacm.xmi#xpointer(id('c'))"),
         ),
         (
             "XLink attributes on a metaClaim element",
@@ -484,12 +504,12 @@ fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
                 ),
                 claim("c2", "", "")
             )),
-            "c1",
+            Link::Kept("<metaClaim "),
         ),
         (
             "an untyped role element with an href to another document",
             package("<argumentElement href=\"other.sacm.xmi#c9\"/>"),
-            "p",
+            Link::Proxy("argumentElement", "other.sacm.xmi#c9"),
         ),
         // To another document: a typed role element with `href="#c2"` is a
         // same-file proxy since slice 0073a (SACM23-XMI-030), so it is no
@@ -497,50 +517,93 @@ fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
         (
             "a typed role element with an href",
             package("<argumentElement xmi:type=\"sacm:Claim\" href=\"other.sacm.xmi#c2\"/>"),
-            "p",
+            Link::Proxy("argumentElement", "sacm:Claim other.sacm.xmi#c2"),
         ),
     ];
-    for (what, input, holder) in &cases {
-        let strict = strict_refusal(API_011, what, input);
-        let output = tolerant(API_011, what, input);
-        let found: Vec<(Code, Severity, Vec<ElementId>, Option<SourceLocation>)> = output
-            .diagnostics()
-            .iter()
-            .map(|found| {
-                (
-                    found.code(),
-                    found.severity(),
-                    found.affected().to_vec(),
-                    found.location(),
-                )
-            })
-            .collect();
-        assert_eq!(
-            found,
-            [(
-                Code::XMI_EXTERNAL_HREF,
-                Severity::Warning,
-                ids(&[holder]),
-                strict.location()
-            )],
-            "{API_011}: {what}: not one SACM-XMI-007 Warning affecting {holder} (and no \
-             SACM-XMI-003)"
-        );
-        let doc = output.into_document();
-        let held = doc.get(*holder);
-        assert!(
-            held.is_some_and(SacmElement::has_preserved_content),
-            "{API_011}: {what}: {holder} does not hold the href"
-        );
-        assert!(
-            doc.get("c1").is_none_or(|c1| c1.meta_claims().is_empty()),
-            "{API_011}: {what}: a metaClaim is read from it"
-        );
-        let text = assert_round_trips(API_011, what, &doc);
-        assert!(
-            text.contains("href=\""),
-            "{API_011}: {what}: the href is not written back\n{text}"
-        );
+    for (what, input, link) in &cases {
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            let output = match read(mode, input) {
+                Ok(output) => output,
+                Err(error) => panic!("{API_011}: {what}: a {mode:?} read refused it: {error:?}"),
+            };
+            let found: Vec<(Code, Severity, Vec<ElementId>, Option<SourceLocation>)> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code(),
+                        found.severity(),
+                        found.affected().to_vec(),
+                        found.location(),
+                    )
+                })
+                .collect();
+            let expected = match link {
+                Link::Kept(start) => vec![(
+                    Code::XMI_UNKNOWN_CONTENT,
+                    if mode == Mode::Strict {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    },
+                    ids(&["c1"]),
+                    Some(position_of(API_011, input, start)),
+                )],
+                _ => Vec::new(),
+            };
+            assert_eq!(
+                found, expected,
+                "{API_011}: {what}: the diagnostics of a {mode:?} read (never SACM-XMI-007)"
+            );
+            let doc = output.into_document();
+            let c1 = doc.get("c1");
+            match link {
+                Link::Expression(href) => assert_eq!(
+                    c1.and_then(SacmElement::name)
+                        .and_then(|name| name.expression_href())
+                        .map(sacm::model::Href::as_str),
+                    Some(*href),
+                    "{API_011}: {what}: the name of c1 does not hold the href"
+                ),
+                Link::MetaClaim(href) => assert_eq!(
+                    c1.map(|c1| c1
+                        .hrefs(sacm::model::ReferenceEnd::MetaClaim)
+                        .iter()
+                        .map(sacm::model::Href::as_str)
+                        .collect::<Vec<_>>()),
+                    Some(vec![*href]),
+                    "{API_011}: {what}: the metaClaim of c1 does not hold the href"
+                ),
+                Link::Proxy(role, href) => assert_eq!(
+                    doc.get("p").map(|p| p
+                        .proxies()
+                        .iter()
+                        .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                        .collect::<Vec<_>>()),
+                    Some(vec![(*role, *href)]),
+                    "{API_011}: {what}: p does not hold the proxy"
+                ),
+                Link::Kept(_) => assert!(
+                    c1.is_some_and(SacmElement::has_preserved_content),
+                    "{API_011}: {what}: c1 does not keep the reference element"
+                ),
+            }
+            assert_eq!(
+                doc.has_preserved_content(),
+                matches!(link, Link::Kept(_)),
+                "{API_011}: {what}: whether a {mode:?} read keeps preserved content"
+            );
+            assert!(
+                doc.get("c1").is_none_or(|c1| c1.meta_claims().is_empty()),
+                "{API_011}: {what}: a metaClaim id is read from it"
+            );
+            // A tolerant write round-trips it in either case.
+            let text = assert_round_trips(API_011, what, &doc);
+            assert!(
+                text.contains("href=\""),
+                "{API_011}: {what}: the href is not written back\n{text}"
+            );
+        }
     }
 }
 

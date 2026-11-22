@@ -622,15 +622,21 @@ impl<'d> Tree<'d> {
 
     /// How many elements deleting the element at `position` removes that
     /// [`PackageDeletePolicy::RejectIfNonEmpty`] refuses: each element of its
-    /// subtree but itself that is no `UtilityElement`, and each preserved
-    /// child element anywhere in its subtree (ADR 0033; preserved attributes
-    /// and text do not count).
+    /// subtree but itself that is no `UtilityElement`, each preserved child
+    /// element anywhere in its subtree (ADR 0033; preserved attributes and
+    /// text do not count), and each proxy anywhere in its subtree, a child
+    /// held in another document (ADR 0040 amendment 1, A4).
     fn contained(&self, position: usize) -> usize {
         let subtree = self.subtree(position);
         let preserved: usize = subtree
             .clone()
-            .filter_map(|inner| self.elements[inner].preserved())
-            .map(Preserved::element_count)
+            .map(|inner| {
+                let element = self.elements[inner];
+                element
+                    .preserved()
+                    .map_or(0, Preserved::element_count)
+                    .saturating_add(element.proxies().len())
+            })
             .sum();
         subtree
             .skip(1)

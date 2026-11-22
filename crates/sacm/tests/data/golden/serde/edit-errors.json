@@ -118,6 +118,12 @@
     "id": "m1"
   },
   {
+    "type": "HrefNotHeld",
+    "code": "SACM-CMD-001",
+    "end": "participantPackage",
+    "href": "o.xmi#x"
+  },
+  {
     "type": "ChildNotFound",
     "code": "SACM-CMD-001",
     "parent": "p",

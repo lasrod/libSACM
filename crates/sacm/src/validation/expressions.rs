@@ -6,7 +6,7 @@ use crate::diagnostic::template::{
     MULT_001_VALUE_WITHOUT_EXPRESSION,
 };
 use crate::diagnostic::{Argument, Diagnostic, Severity};
-use crate::model::{Document, LangString, SacmElement, TextRole};
+use crate::model::{Document, ElementId, Href, LangString, SacmElement, TextRole};
 
 /// The requirement of a missing `expression` (§8.4 `expression[1]`; spec
 /// defect D20).
@@ -64,7 +64,13 @@ fn check(
     arguments.push(Argument::text("class", element.kind().name()));
     arguments.push(Argument::text("id", element.id().as_str()));
     let is_name = place.is_none();
-    let diagnostic = match value.expression() {
+    // An href counts as the expression being present, and is named as the
+    // id is (ADR 0040 amendment 1, A4).
+    let expression = value
+        .expression()
+        .map(ElementId::as_str)
+        .or_else(|| value.expression_href().map(Href::as_str));
+    let diagnostic = match expression {
         None => {
             let template = if is_name {
                 &MULT_001_NAME_WITHOUT_EXPRESSION
@@ -79,7 +85,7 @@ fn check(
             } else {
                 &EXPR_001_VALUE_WITH_CONTENT
             };
-            arguments.push(Argument::text("expression", expression.as_str()));
+            arguments.push(Argument::text("expression", expression));
             Diagnostic::emit(template, Severity::Warning, CONTENT_ROW, arguments)
         }
         Some(_) => return,

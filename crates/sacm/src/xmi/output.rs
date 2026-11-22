@@ -29,8 +29,8 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Event, Flag, Fragment, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd, SacmElement,
-    StringAttribute, Text, TextRole,
+    Event, Flag, Fragment, Href, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd,
+    SacmElement, StringAttribute, Text, TextRole,
 };
 use crate::validation;
 
@@ -109,6 +109,7 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             || has_placed
             || !as_elements.is_empty()
             || planned.element.children().next().is_some()
+            || !planned.element.proxies().is_empty()
         {
             out.push_str(">\n");
             if let Some(name) = name {
@@ -273,12 +274,7 @@ fn push_reference_elements(
             out.push_str("\" />\n");
         }
         for href in element.hrefs(end) {
-            indent(out, depth);
-            out.push('<');
-            out.push_str(end.name());
-            out.push_str(" href=\"");
-            escape_into(out, href.as_str());
-            out.push_str("\" />\n");
+            push_href_element(out, depth, end.name(), href);
         }
     }
 }
@@ -370,9 +366,26 @@ fn push_placed(
 
 /// Writes the rest of the element `top`, whose start tag is at `depth`: its
 /// preserved children not written yet, then its end tag.
+/// Its proxies come last, one line each, `<role href="…" />`, in held order
+/// (ADR 0040 amendment 1, A3).
 fn close(out: &mut String, depth: usize, mut top: Open<'_, '_>) {
     top.placing.push(out, depth + 1, None);
+    for proxy in top.planned.element.proxies() {
+        push_href_element(out, depth + 1, proxy.role(), proxy.href());
+    }
     push_end_tag(out, depth, &top.planned.tag);
+}
+
+/// Writes `<tag href="…" />` on its own line at `depth`: a cross-document
+/// reference, a proxy, or the `expression` of an `ExpressionLangString`, the
+/// value escaped (XMI 2.5.1 rule 2m; ADR 0040 D4).
+fn push_href_element(out: &mut String, depth: usize, tag: &str, href: &Href) {
+    indent(out, depth);
+    out.push('<');
+    out.push_str(tag);
+    out.push_str(" href=\"");
+    escape_into(out, href.as_str());
+    out.push_str("\" />\n");
 }
 
 /// Writes `fragment`, preserved content (ADR 0033), on the current line:
@@ -725,11 +738,17 @@ fn push_lang_string(out: &mut String, depth: usize, tag: &str, value: &LangStrin
     }
     push_kept_attributes(out, part.metadata, None);
     let mut placing = Placing::new(part.metadata, None);
-    if !placing.places_any() {
+    // An expression in another document is an `expression` reference
+    // element, the first child (ADR 0040 amendment 1, A3).
+    let href = value.expression_href();
+    if href.is_none() && !placing.places_any() {
         out.push_str(" />\n");
         return;
     }
     out.push_str(">\n");
+    if let Some(href) = href {
+        push_href_element(out, depth + 1, "expression", href);
+    }
     placing.push(out, depth + 1, None);
     push_end(out, depth, tag);
 }

@@ -83,7 +83,9 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 22] = [
+const READABLE_GOLDEN: [&str; 23] = [
+    // The golden file of slice 0073b (SACM23-XMI-029).
+    "cross-document-links.golden.sacm.xmi",
     // The golden files of slice 0073a (SACM23-XMI-019, SACM23-XMI-030).
     "same-file-proxies.golden.sacm.xmi",
     "xmi-metadata.golden.sacm.xmi",
@@ -115,20 +117,29 @@ const READABLE_GOLDEN: [&str; 22] = [
     "terminology-element-spelling.golden.sacm.xmi",
     "terminology.golden.sacm.xmi",
 ];
-/// A document the reader refuses, as `Unsupported`, in this release: an
-/// ArgumentPackage root holding a proxy of an element of another document,
-/// a cross-document link not read yet (SACM23-XMI-029). Until slice 0066
-/// this was the golden file `nested.golden.sacm.xmi`, whose
+/// The last document the reader refused, as `Unsupported`, for conforming
+/// content not read yet: an ArgumentPackage root holding a proxy of an
+/// element of another document, which slice 0073b holds (SACM23-XMI-029).
+/// Until slice 0066 this was the golden file `nested.golden.sacm.xmi`, whose
 /// `ArgumentPackageInterface` (SACM23-ARG-014) slice 0066 reads; until slice
 /// 0067 a `TerminologyPackageInterface` root (SACM23-TERM-007), which slice
 /// 0067 reads; and until slice 0073a an `xmi:uuid` on the root, which slice
 /// 0073a reads as XMI metadata (SACM23-XMI-019). No golden file is refused
-/// now.
-const UNREAD_CONTENT: &str = concat!(
+/// now, and no conforming content.
+const FORMERLY_UNREAD_CONTENT: &str = concat!(
     "<sacm:ArgumentPackage",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmi:id=\"x\"><name content=\"x\"/><argumentElement href=\"o.xmi#c\"/></sacm:ArgumentPackage>",
+);
+/// A document a strict read refuses, as `Unsupported`, and a tolerant read
+/// keeps: an attribute on `xmi:XMI` that XMI 2.5.1 does not define, a defect
+/// with no element to be kept in (ADR 0035 D3).
+const WRAPPER_CONTENT: &str = concat!(
+    "<xmi:XMI",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" foo=\"bar\">",
+    "<sacm:ArgumentPackage xmi:id=\"x\"><name content=\"x\"/></sacm:ArgumentPackage></xmi:XMI>",
 );
 
 // ---------------------------------------------------------------------------
@@ -1061,15 +1072,34 @@ fn lib_compat_001_every_golden_file_reads_with_no_diagnostic_in_either_mode() {
             );
         }
     }
-    // Content this release does not read: a strict read refuses it, and a
-    // tolerant read keeps it (ADR 0035).
+    // The last conforming content a strict read refused is read since slice
+    // 0073b, in both modes, with no diagnostic (SACM23-XMI-029).
     let what = "a cross-document proxy in an ArgumentPackage root";
-    let strict = read_err(COMPAT_001, what, Mode::Strict, UNREAD_CONTENT);
+    for mode in MODES {
+        let output = read_ok(COMPAT_001, what, mode, FORMERLY_UNREAD_CONTENT);
+        assert_eq!(
+            (
+                output.diagnostics().len(),
+                output.document().has_preserved_content(),
+                output.document().get("x").map(|x| x
+                    .proxies()
+                    .iter()
+                    .map(|proxy| (proxy.role(), proxy.href().as_str()))
+                    .collect::<Vec<_>>())
+            ),
+            (0, false, Some(vec![("argumentElement", "o.xmi#c")])),
+            "{COMPAT_001}: {what} is not held as a proxy by a {mode:?} read"
+        );
+    }
+    // What has nowhere to be kept: a strict read refuses it, and a tolerant
+    // read keeps it (ADR 0035).
+    let what = "an attribute on xmi:XMI that XMI does not define";
+    let strict = read_err(COMPAT_001, what, Mode::Strict, WRAPPER_CONTENT);
     assert!(
         matches!(strict, ReadError::Unsupported { .. }),
         "{COMPAT_001}: {what} is not refused as Unsupported in strict mode: {strict:?}"
     );
-    let tolerant = read_ok(COMPAT_001, what, Mode::Tolerant, UNREAD_CONTENT);
+    let tolerant = read_ok(COMPAT_001, what, Mode::Tolerant, WRAPPER_CONTENT);
     assert!(
         tolerant.document().has_preserved_content(),
         "{COMPAT_001}: {what} is not kept by a tolerant read"

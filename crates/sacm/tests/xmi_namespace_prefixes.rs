@@ -1324,8 +1324,9 @@ const REFUSALS: [(&str, Template, (u32, u32)); 3] = [
     // root (an ArgumentPackageInterface until slice 0066), which are read
     // now (SACM23-TERM-007, SACM23-AC-002). Content that does not conform
     // where an element can keep it is preserved (ADR 0033), so it is no
-    // sample here. Since slice 0073a: defects on and under `xmi:XMI`, and a
-    // cross-document link not read yet (SACM23-XMI-029).
+    // sample here. Since slice 0073a: defects on and under `xmi:XMI`; until
+    // slice 0073b the third sample was a cross-document link not read yet,
+    // which is read now (SACM23-XMI-029): see [`XPOINTER_HREF`].
     (
         "an XMI-namespace element XMI does not define beside a root",
         |s, x| {
@@ -1348,17 +1349,27 @@ const REFUSALS: [(&str, Template, (u32, u32)); 3] = [
         (2, 3),
     ),
     (
-        "an XPointer href on a reference element",
+        "text in the XMI element",
         |s, x| {
             format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"a\">\n  \
-                     <argumentElement {x}:type=\"{s}:Claim\" {x}:id=\"c1\">\n    \
-                     <metaClaim href=\"o.xmi#xpointer(id('c'))\"/></argumentElement></{s}:ArgumentPackage>"
+                "<{x}:XMI xmlns:{x}=\"{XMI_NS}\" xmlns:{s}=\"{SACM_NS}\">\n  \
+                     stray\n  <{s}:ArgumentPackage {x}:id=\"a\"/>\n</{x}:XMI>"
             )
         },
-        (3, 16),
+        (2, 3),
     ),
 ];
+
+/// An `XPointer` `href` on a reference element, with its type written with
+/// the SACM prefix: `Unsupported` until slice 0073b, which reads it under
+/// any prefix (SACM23-XMI-029; ADR 0040 amendment 1).
+const XPOINTER_HREF: Template = |s, x| {
+    format!(
+        "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"a\">\n  \
+         <argumentElement {x}:type=\"{s}:Claim\" {x}:id=\"c1\">\n    \
+         <metaClaim href=\"{s}:Claim o.xmi#xpointer(id('c'))\"/></argumentElement></{s}:ArgumentPackage>"
+    )
+};
 
 /// The XMI-namespace document elements other than `xmi:XMI`: `InvalidRoot`
 /// at line 1, column 1, under any prefix (SACM23-XMI-019, ADR 0042 D4;
@@ -1463,5 +1474,42 @@ fn sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_unde
                 preview(input.as_bytes())
             );
         }
+    }
+    // What was a refusal until slice 0073b reads the same under any prefix:
+    // the href is held with its type under the prefix `sacm`.
+    for (s, x) in [
+        ("sacm", "xmi"),
+        ("s", "x"),
+        ("ü", "ns0"),
+        ("SACM", "XMI"),
+        ("xmi", "sacm"),
+    ] {
+        let input = XPOINTER_HREF(s, x);
+        let output = match xmi::read(
+            input.as_bytes(),
+            &ReadOptions::default().with_mode(Mode::Strict),
+        ) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: an XPointer href: with {s:?} and {x:?}, {} is refused: {error:?}",
+                preview(input.as_bytes())
+            ),
+        };
+        let held: Vec<&str> = output
+            .document()
+            .get("c1")
+            .map(|c1| {
+                c1.hrefs(sacm::model::ReferenceEnd::MetaClaim)
+                    .iter()
+                    .map(sacm::model::Href::as_str)
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(
+            (output.diagnostics().len(), held),
+            (0, vec!["sacm:Claim o.xmi#xpointer(id('c'))"]),
+            "{ROW}: an XPointer href: with {s:?} and {x:?}, it is not held the same: {:?}",
+            output.diagnostics()
+        );
     }
 }

@@ -35,10 +35,13 @@
 //!    text, or a `name`, `content`, `key`, value or reference element that
 //!    does not conform inside, kept whole. A part is read whole first, and
 //!    what it reported and the ids it took are given back if it is
-//!    preserved after all. In strict mode the first conforming thing this
-//!    release does not read is `Unsupported`, at its location, labelled by
-//!    its entry of `refusal::Unread` (LIB-API-011); nothing is dropped (ADR
-//!    0015, D-PRESERVE).
+//!    preserved after all. A role element in reference form is a proxy: of
+//!    a root of this document, resolved once every root is read
+//!    (SACM23-XMI-030), or of an element of another document, held by its
+//!    container (SACM23-XMI-029). What a strict read cannot represent is
+//!    `Unsupported`, at its location, labelled by its entry of
+//!    `refusal::Unread` (LIB-API-011); nothing is dropped (ADR 0015,
+//!    D-PRESERVE).
 //!
 //! In tolerant mode, every strict refusal but the fatal ones (malformed or
 //! unsafe input, a root that is no SACM 2.3 package, a repeated `xmi:id`,
@@ -151,11 +154,11 @@ use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
 use super::{Limit, Limits, Mode, ReadError};
 use crate::diagnostic::template::{self, Template};
-use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Details, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Role,
-    StringAttribute, Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
+    Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, Proxy as HeldProxy, ReferenceEnd,
+    Role, StringAttribute, Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
 };
 
 /// The machine-readable model's spelling of the class
@@ -344,20 +347,12 @@ impl Spelled {
     }
 }
 
-/// The `XLink` namespace, whose attributes on a reference element are a
-/// cross-document link not read yet (SACM23-XMI-029).
-const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
-
 /// The requirement of the diagnostics for preserved content.
 const PRESERVED_ROW: &str = "LIB-COMPAT-003";
 
 /// The requirement of the Warnings for content a tolerant read keeps where
 /// a strict read refuses it (ADR 0035 D1).
 const TOLERANT_ROW: &str = "LIB-COMPAT-001";
-
-/// The requirement of the Warnings for conforming content not read yet
-/// (ADR 0035 D2).
-const UNREAD_ROW: &str = "LIB-API-011";
 
 /// Why a part of the input is not read: a refusal, content that does not
 /// conform, which the caller keeps as preserved content (ADR 0033), or, in
@@ -463,54 +458,6 @@ impl Shape {
     }
 }
 
-/// Content a tolerant read keeps in an element where a strict read refuses
-/// it, by the refusal's template: the element column of the (reason,
-/// holder) table of the kept forms (ADR 0035 D1, D2). Each reason has its
-/// refusal and its kept form, so none lacks a form.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ElementReason {
-    /// SACM-XMI-007/unread-attribute.
-    ExternalAttribute,
-    /// SACM-XMI-007/proxy-child.
-    ExternalProxyChild,
-    /// SACM-XMI-007/proxy-child-of-root.
-    ExternalProxyChildOfRoot,
-    /// SACM-XMI-007/href.
-    Href,
-}
-
-impl ElementReason {
-    /// Every reason.
-    #[cfg(test)]
-    const ALL: [Self; 4] = [
-        Self::ExternalAttribute,
-        Self::ExternalProxyChild,
-        Self::ExternalProxyChildOfRoot,
-        Self::Href,
-    ];
-
-    /// The template of the strict read's refusal.
-    fn refusal(self) -> &'static Template {
-        match self {
-            Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE,
-            Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD,
-            Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT,
-            Self::Href => &template::XMI_007_HREF,
-        }
-    }
-
-    /// The template of the tolerant read's Warning, which names the element
-    /// that holds the content.
-    fn kept(self) -> &'static Template {
-        match self {
-            Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE_KEPT,
-            Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD_KEPT,
-            Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT_KEPT,
-            Self::Href => &template::XMI_007_HREF_KEPT,
-        }
-    }
-}
-
 /// Content a tolerant read keeps as the document's preserved content where
 /// a strict read refuses it, by the refusal's template: the document column
 /// of the (reason, holder) table of the kept forms (ADR 0035 D3).
@@ -550,18 +497,6 @@ impl DocumentReason {
     }
 }
 
-/// The requirement and clause of the Warning for content kept with `code`
-/// where a strict read refuses it: LIB-COMPAT-003, clause 7.3.3, for content
-/// that does not conform (SACM-XMI-003), and LIB-API-011 for conforming
-/// content not read yet (ADR 0035 D1, D2).
-fn kept_row(code: Code) -> (&'static str, Option<&'static str>) {
-    if code == Code::XMI_UNKNOWN_CONTENT {
-        (PRESERVED_ROW, Some("7.3.3"))
-    } else {
-        (UNREAD_ROW, None)
-    }
-}
-
 /// The Warning a tolerant read gives for a construct it keeps as preserved
 /// content of an element where a strict read refuses it (ADR 0035 D1, D2):
 /// at the strict refusal's byte offset. Or the Error a strict read gives for
@@ -581,8 +516,6 @@ struct Keep {
     /// Whether the message names the element that holds the construct: its
     /// class and id follow `arguments`. A spelling's names none.
     names_holder: bool,
-    /// The row that reads the construct, the last argument, if it has one.
-    row: Option<&'static str>,
     /// Whether the construct is a value that is no literal, which counts as
     /// an occurrence of its property (ADR 0035, SACM23-VAL-006).
     is_literal: bool,
@@ -607,24 +540,7 @@ impl Keep {
             template,
             arguments,
             names_holder: true,
-            row: None,
             is_literal: false,
-        }
-    }
-
-    /// The Warning of `unread`, kept in an element for `reason` at byte
-    /// `offset`, whose refusal is made from `arguments`.
-    fn unread(
-        offset: usize,
-        unread: Unread,
-        reason: ElementReason,
-        arguments: Vec<Argument>,
-    ) -> Self {
-        let template = reason.kept();
-        let (requirement, clause) = kept_row(template.code);
-        Self {
-            row: unread.refusal().row(),
-            ..Self::held(offset, requirement, clause, template, arguments)
         }
     }
 
@@ -679,7 +595,6 @@ impl Keep {
             template: spelled.kept(),
             arguments: spelled.arguments,
             names_holder: false,
-            row: None,
             is_literal: false,
         }
     }
@@ -695,13 +610,11 @@ impl Keep {
             template,
             mut arguments,
             names_holder,
-            row,
             is_literal: _,
         } = self;
         if names_holder {
             arguments.extend(holder.arguments());
         }
-        arguments.extend(row.map(|row| Argument::text("row", row)));
         let mut diagnostic = Diagnostic::emit(template, severity, requirement, arguments)
             .set_affected([holder.id.clone()]);
         if let Some(clause) = clause {
@@ -739,18 +652,17 @@ impl DocumentKeep {
         }
     }
 
-    /// The diagnostic, with the byte offset it is to be located at.
+    /// The diagnostic, with the byte offset it is to be located at: every
+    /// reason is content that does not conform (SACM-XMI-003), so its row is
+    /// LIB-COMPAT-003 and its clause 7.3.3.
     fn into_diagnostic(self) -> (usize, Diagnostic) {
-        let (requirement, clause) = kept_row(self.template.code);
-        let mut diagnostic = Diagnostic::emit(
+        let diagnostic = Diagnostic::emit(
             self.template,
             Severity::Warning,
-            requirement,
+            PRESERVED_ROW,
             self.arguments,
-        );
-        if let Some(clause) = clause {
-            diagnostic = diagnostic.set_clause(clause);
-        }
+        )
+        .set_clause("7.3.3");
         (self.offset, diagnostic)
     }
 }
@@ -854,39 +766,6 @@ fn refuse_unless_kept(
             Details::new(refusal, arguments),
         )),
     }
-}
-
-/// The fault of `unread` at byte `offset` in `mode`, kept in an element for
-/// `reason`: its refusal in strict mode and when a tolerant read refuses it
-/// too; otherwise the Warning a tolerant read keeps it with (ADR 0035 D1,
-/// D2).
-fn unread_fault(
-    text: &str,
-    mode: Mode,
-    offset: usize,
-    unread: Unread,
-    reason: ElementReason,
-    arguments: Vec<Argument>,
-) -> Fault {
-    fault(keep_or_refuse(
-        text, mode, offset, unread, reason, arguments,
-    ))
-}
-
-/// What a read in `mode` does with `unread` at byte `offset`, kept in an
-/// element for `reason`: the Warning a tolerant read keeps it with, or, in
-/// strict mode and for an entry a tolerant read refuses, its refusal, made
-/// from `arguments`.
-fn keep_or_refuse(
-    text: &str,
-    mode: Mode,
-    offset: usize,
-    unread: Unread,
-    reason: ElementReason,
-    arguments: Vec<Argument>,
-) -> Result<Keep, ReadError> {
-    let arguments = refuse_unless_kept(text, mode, offset, unread, reason.refusal(), arguments)?;
-    Ok(Keep::unread(offset, unread, reason, arguments))
 }
 
 /// The fault of the value `value` of `property` of the element `element`,
@@ -1194,19 +1073,6 @@ impl Findings<'_, '_> {
         Ok(DocumentKeep::unread(offset, unread, reason, arguments))
     }
 
-    /// What this read does with `unread` at byte `offset`, kept in an
-    /// element for `reason`, as a [`Fault`] ([`keep_or_refuse`]). Every
-    /// refusal site in an element that a tolerant read may keep asks this.
-    fn unread_fault(
-        &self,
-        offset: usize,
-        unread: Unread,
-        reason: ElementReason,
-        arguments: Vec<Argument>,
-    ) -> Fault {
-        unread_fault(self.text, self.mode, offset, unread, reason, arguments)
-    }
-
     /// Reports `keep`, a construct kept as preserved content of `holder`: one
     /// Warning at the strict refusal's location, affecting the holder (ADR
     /// 0035 D1).
@@ -1437,6 +1303,48 @@ impl Findings<'_, '_> {
             .set_clause("7.10.1")
             .set_affected([proxy.container.clone()]);
         self.push_at(diagnostic, proxy.at)
+    }
+
+    /// Reports what the start tag of the same-file proxy `proxy`, whose node
+    /// is `node`, says besides its link (SACM23-XMI-030): the role or type
+    /// `spelled` that a tolerant read read (SACM-XMI-013), at its start tag,
+    /// and its `xsi:type` (SACM-XMI-010), at the attribute.
+    ///
+    /// For a resolved proxy, `target` is the root that took its place: a
+    /// role spelling affects the container, and a type spelling and the
+    /// `xsi:type` the root, as a child's do. A kept proxy stands for no
+    /// element, so `target` is `None` and each affects the container, never
+    /// the id the proxy names; the `xsi:type` names the container's id too
+    /// (ADR 0040 amendment 1, A9).
+    fn proxy_notes(
+        &mut self,
+        node: Option<Node<'_, '_>>,
+        proxy: &Proxy,
+        spelled: Option<Spelled>,
+        target: Option<&ElementId>,
+    ) -> Result<(), ReadError> {
+        let about = target.unwrap_or(&proxy.container);
+        if let Some(spelled) = spelled {
+            let affected = if spelled.spelling.is_role() {
+                &proxy.container
+            } else {
+                about
+            };
+            self.spelled(proxy.at, spelled, affected)?;
+        }
+        let (Some(node), Some(class)) = (node, proxy.link.class) else {
+            return Ok(());
+        };
+        for attribute in node.attributes().filter(is_xsi_type) {
+            let arguments = named(class, about.as_str());
+            self.xsi_type(
+                &attribute,
+                &template::XMI_010_XSI_TYPE,
+                arguments,
+                about.as_str(),
+            )?;
+        }
+        Ok(())
     }
 
     /// Adds `diagnostic`, located at the name of `attribute`.
@@ -1958,6 +1866,8 @@ struct Pending {
     /// Each reference end given an `href` with a document part, with its
     /// `href`s in document order (SACM23-XMI-027, ADR 0040 D2).
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
+    /// Its cross-file proxies, in document order (SACM23-XMI-029).
+    proxies: Vec<HeldProxy>,
     /// The `name`, `content` and `key` a tolerant read kept as preserved
     /// content for a value in it that is no literal: each counts as given
     /// (ADR 0035, SACM23-VAL-006).
@@ -2712,6 +2622,43 @@ impl Pending {
         Ok(())
     }
 
+    /// Holds `remote`, the cross-file proxy `node` in this element, after
+    /// the proxies held so far (SACM23-XMI-029; ADR 0040 amendment 1, A2).
+    /// A role or type spelling a tolerant read read in it is one
+    /// SACM-XMI-013 Warning at its start tag, and its `xsi:type` one
+    /// SACM-XMI-010 at the attribute, as on a same-file proxy that is kept:
+    /// each affects this element, since the proxy stands for no element of
+    /// this document (A9).
+    fn hold_proxy(
+        &mut self,
+        found: &mut Findings<'_, '_>,
+        node: Node<'_, '_>,
+        remote: RemoteProxy,
+    ) -> Result<(), ReadError> {
+        let RemoteProxy {
+            role,
+            href,
+            class,
+            spelled,
+        } = remote;
+        if let Some(spelled) = spelled {
+            found.spelled(node.range().start, spelled, &self.id)?;
+        }
+        if let Some(class) = class {
+            for attribute in node.attributes().filter(is_xsi_type) {
+                let arguments = named(class, self.id.as_str());
+                found.xsi_type(
+                    &attribute,
+                    &template::XMI_010_XSI_TYPE,
+                    arguments,
+                    self.id.as_str(),
+                )?;
+            }
+        }
+        self.proxies.push(HeldProxy::new(role, href));
+        Ok(())
+    }
+
     /// Reads `node`, a reference element of the end `end` in `holder`, this
     /// element's node (SACM23-XMI-015): checked whole first
     /// ([`read_reference`]), then against an earlier occurrence, the
@@ -2728,7 +2675,7 @@ impl Pending {
         node: Node<'_, '_>,
         end: ReferenceEnd,
     ) -> Result<(), Fault> {
-        let link = read_reference(found, node, true)?;
+        let link = read_reference(found, node)?;
         // An occurrence of the end is an id or an `href` (ADR 0040 D5).
         let given = self.references.iter().any(|(held, _)| *held == end)
             || self.hrefs.iter().any(|(held, _)| *held == end);
@@ -3271,10 +3218,13 @@ fn read_root<'a>(
                 open.push((*child, node, node.children()));
             }
             Ok(Some(Child::Proxy(link))) => {
-                let proxy = read_proxy(found, node, link, element, (tree, depth))?;
+                let proxy = read_proxy(found, node, link, element, (tree, depth));
                 roots.proxies.push(proxy);
                 element.kept.typed = element.kept.typed.saturating_add(1);
             }
+            // A cross-file proxy is no typed child: it takes no slot, and is
+            // written after the children (ADR 0040 amendment 1, A3).
+            Ok(Some(Child::Remote(remote))) => element.hold_proxy(found, node, remote)?,
             Ok(Some(Child::Preserve)) | Err(Fault::Defect) => {
                 found.rollback(checkpoint);
                 element.kept.preserve_element(found, node)?;
@@ -3293,33 +3243,17 @@ fn read_root<'a>(
 /// The proxy `node`, which `link` describes, a child of `container` in the
 /// tree of the root `tree`, nested `depth` deep in it, as read
 /// (SACM23-XMI-030): it takes the next typed slot of its container and the
-/// next place in document order. Its
-/// `xsi:type` is reported as SACM-XMI-010 on the element it names, and a
-/// role or type spelling a tolerant read read as SACM-XMI-013, at its start
-/// tag, as a child's are.
+/// next place in document order. Its `xsi:type` and a spelling a tolerant
+/// read read in its role or type are reported once it is resolved or kept
+/// ([`Findings::proxy_notes`]), since what they affect depends on which.
 fn read_proxy(
     found: &mut Findings<'_, '_>,
     node: Node<'_, '_>,
-    mut link: ProxyLink,
+    link: ProxyLink,
     container: &Pending,
     (tree, depth): (usize, usize),
-) -> Result<Proxy, ReadError> {
-    let target = ElementId::new(link.target.as_str());
-    if let Some(spelled) = link.spelled.take() {
-        found.spelled_child(node, spelled, &container.id, &target)?;
-    }
-    if let Some(class) = link.class {
-        for attribute in node.attributes().filter(is_xsi_type) {
-            let arguments = named(class, target.as_str());
-            found.xsi_type(
-                &attribute,
-                &template::XMI_010_XSI_TYPE,
-                arguments,
-                target.as_str(),
-            )?;
-        }
-    }
-    Ok(Proxy {
+) -> Proxy {
+    Proxy {
         node: node.id(),
         at: node.range().start,
         written: written_name(found.text, node),
@@ -3331,7 +3265,7 @@ fn read_proxy(
         depth,
         slot: container.kept.typed,
         order: found.next_order(),
-    })
+    }
 }
 
 /// Reads `node`, an element in `holder`, the node of `element`, if it is a
@@ -3553,9 +3487,11 @@ fn resolve(
     // its container, at its place, which is no typed slot any more.
     let mut kept: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
     for (index, outcome) in outcomes.into_iter().enumerate() {
-        let Some(proxy) = roots.proxies.get(index) else {
+        let Some(proxy) = roots.proxies.get_mut(index) else {
             continue;
         };
+        let spelled = proxy.link.spelled.take();
+        let node = tree.get_node(proxy.node);
         match outcome {
             Ok(root) => {
                 if let Some(flag) = stays.get_mut(root) {
@@ -3570,9 +3506,16 @@ fn resolve(
                     element.parent_order = Some(proxy.container_order);
                     element.place = proxy.order;
                 }
+                // What the proxy's start tag says is about the root that
+                // takes its place.
+                let target = ElementId::new(proxy.link.target.as_str());
+                found.proxy_notes(node, proxy, spelled, Some(&target))?;
             }
             Err(why) => {
                 found.unresolved(proxy, why)?;
+                // A kept proxy stands for no element: what its start tag
+                // says is about its container (ADR 0040 amendment 1, A9).
+                found.proxy_notes(node, proxy, spelled, None)?;
                 if let Some(container) = index_of(&roots.read, proxy.container_order) {
                     kept.entry(container).or_default().push(index);
                 }
@@ -3972,6 +3915,8 @@ fn hold_element(
             .into_iter()
             .try_for_each(|(end, hrefs)| document.set_hrefs(&id, end, hrefs))
     });
+    let referenced =
+        referenced.and_then(|()| document.set_proxies(&id, std::mem::take(&mut element.proxies)));
     let held = referenced.and_then(|()| {
         let holder = || ElementHolder {
             kind: element.kind,
@@ -4106,6 +4051,7 @@ fn pending(
         flags: Vec::new(),
         references: Vec::new(),
         hrefs: Vec::new(),
+        proxies: Vec::new(),
         given: Vec::new(),
         written,
         at: node.range().start,
@@ -4221,6 +4167,8 @@ enum Child {
     Element(Box<Pending>),
     /// A same-file proxy (SACM23-XMI-030), resolved once every root is read.
     Proxy(ProxyLink),
+    /// A cross-file proxy (SACM23-XMI-029), held by its container.
+    Remote(RemoteProxy),
     /// It does not conform as a whole: the caller keeps it whole (ADR 0033).
     Preserve,
 }
@@ -4229,20 +4177,16 @@ enum Child {
 /// type and kind, its id, and its other attributes, in that order, reading
 /// an Assertion's `assertionDeclaration` and the flags and references, and
 /// keeping its XMI metadata (SACM23-XMI-019). [`Child::Proxy`] for a
-/// same-file proxy, and [`Child::Preserve`] if the child does not conform
-/// as a whole (its role, namespace or type), so the caller preserves it
-/// whole (ADR 0033). [`Fault::Keep`] if a tolerant read keeps it whole where
-/// a strict read refuses it: a child [`child_kind`] keeps, and a role
-/// element in reference form with an `href` to another document (ADR 0035
-/// D1). An attribute a strict read
+/// same-file proxy, [`Child::Remote`] for a cross-file one, and
+/// [`Child::Preserve`] if the child does not conform as a whole (its role,
+/// namespace or type), so the caller preserves it whole (ADR 0033).
+/// [`Fault::Keep`] if a tolerant read keeps it whole where a strict read
+/// refuses it: a child [`child_kind`] keeps (ADR 0035 D1). An attribute a
+/// strict read
 /// refuses, a tolerant read keeps as preserved content of the child. A role
 /// or type spelling a tolerant read reads (SACM23-XMI-009) is one
 /// SACM-XMI-013 Warning at the start tag, affecting the parent for the role
 /// and the child for the type.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one pass over a child's start tag, each attribute in turn"
-)]
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -4252,6 +4196,7 @@ fn child_start<'a>(
     let (kind, spelled) = match child_kind(found, node, parent)? {
         ChildKind::Read { kind, spelled } => (kind, spelled),
         ChildKind::Proxy(link) => return Ok(Child::Proxy(link)),
+        ChildKind::Remote(remote) => return Ok(Child::Remote(remote)),
         ChildKind::Preserve => return Ok(Child::Preserve),
     };
     let written = written_name(text, node);
@@ -4355,19 +4300,8 @@ fn child_start<'a>(
                 .take_metadata_attribute(found, node, &attribute)?;
             continue;
         }
-        if is_unqualified(&attribute, "href") {
-            // In reference form, the role element is no object but a proxy
-            // of one in another document, which SACM23-XMI-029 reads: it is
-            // kept whole (XMI 2.5.1 §7.10.1, §7.10.2; ADR 0035 D1). A
-            // same-file one is a proxy ([`child_kind`]).
-            let arguments = attribute_arguments(text, &attribute, &element.written);
-            return Err(found.unread_fault(
-                at,
-                Unread::CrossDocumentHref,
-                ElementReason::ExternalAttribute,
-                arguments,
-            ));
-        }
+        // A role element with a link attribute is in reference form, and
+        // never comes here ([`child_kind`]).
         element
             .kept
             .preserve_attribute(found, node, &attribute, at)?;
@@ -4568,9 +4502,22 @@ enum ChildKind {
     /// It is a same-file proxy (SACM23-XMI-030), resolved once every root is
     /// read.
     Proxy(ProxyLink),
+    /// It is a cross-file proxy (SACM23-XMI-029), held by its container.
+    Remote(RemoteProxy),
     /// It does not conform as a whole, by its namespace, role or type: the
     /// caller keeps it as preserved content (ADR 0033).
     Preserve,
+}
+
+/// What a cross-file proxy says (SACM23-XMI-029; XMI 2.5.1 §7.10.1, §7.10.2;
+/// ADR 0040 amendment 1, A2): its role, the `href` it is held with, which
+/// carries its type, the class of that type, if it has one, and the spelling
+/// a tolerant read read in its role or type (SACM23-XMI-009).
+struct RemoteProxy {
+    role: &'static str,
+    href: Href,
+    class: Option<ElementKind>,
+    spelled: Option<Spelled>,
 }
 
 /// What a same-file proxy says (SACM23-XMI-030; XMI 2.5.1 §7.10.1): the
@@ -4598,16 +4545,16 @@ struct ProxyLink {
 /// type `ArtifactAssertedRelationship`, the model's spelling of a kind the
 /// role admits. A tolerant read reads each as the resolved name, and
 /// returns it to be reported; a strict read keeps the child whole with a
-/// SACM-XMI-013 Error. Without a type under a role of an
-/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010),
-/// unless it carries an `xmi:idref` or an `href`, the reference form of a
-/// composite, which is refused by its entry ([`proxy_link`]); a typed one,
-/// or one under a concrete role, is refused at that attribute
-/// ([`role_metadata`]). A
-/// conforming kind this release does not read is refused by its entry.
-/// Every refusal is at the child's start tag. A tolerant read keeps each of
-/// these children whole instead, with its Warning: [`Fault::Keep`] (ADR 0035
-/// D1).
+/// SACM-XMI-013 Error. A role element that carries an `xmi:idref` or an
+/// `href` is in reference form, typed or not, under an abstract or a
+/// concrete role: a proxy ([`proxy_link`]), of a root of this document
+/// ([`ChildKind::Proxy`], SACM23-XMI-030) or of an element of another
+/// document ([`ChildKind::Remote`], SACM23-XMI-029), whose type, given by a
+/// type attribute, by its `href` or by both in agreement, its role must
+/// admit; one that is no proxy does not conform. Otherwise, without a type
+/// under a role of an abstract type, it is `MissingType` (SACM-XMI-005,
+/// LIB-COMPAT-010), at the child's start tag; a tolerant read keeps the
+/// child whole instead, with its Warning: [`Fault::Keep`] (ADR 0035 D1).
 #[expect(
     clippy::too_many_lines,
     reason = "one walk through a child's namespace, role, type and kind, each with its refusal"
@@ -4676,45 +4623,53 @@ fn child_kind(
     // into its place once every root is read. One of a type the role does
     // not admit is no proxy of the role; one with anything on or in it
     // besides its link and a type does not conform (ADR 0033).
-    if is_same_file_proxy(node) {
-        if typed.is_some_and(|kind| !role.declared.admits(kind)) {
-            return Ok(ChildKind::Preserve);
-        }
-        let Some(target) = proxy_target(text, node) else {
+    if is_reference_form(node) {
+        let Some((prefix, link)) = proxy_link(found, node) else {
             return Err(Fault::Defect);
         };
+        // Its type, given by a type attribute, by its href (rule 2n) or by
+        // both, which must then agree; the role must admit it, however it
+        // is given (SACM23-XMI-029; ADR 0040 amendment 1, A2).
+        let class = match (typed, prefix) {
+            (Some(attribute), Some(prefix)) if attribute != prefix => {
+                return Err(Fault::Defect);
+            }
+            (attribute, prefix) => attribute.or(prefix),
+        };
+        if class.is_some_and(|kind| !role.declared.admits(kind)) {
+            return Ok(ChildKind::Preserve);
+        }
         if type_spelled {
             let reason = Spelled::of_child(Spelling::Type, &written, container, in_root);
             spelled = Some(child_spelling(found, at, reason)?);
         }
-        return Ok(ChildKind::Proxy(ProxyLink {
-            declared: role.declared,
-            class: typed,
-            target,
-            spelled,
-        }));
+        return Ok(match link {
+            // An id of this document: a proxy of a root, which moves into
+            // its place once every root is read (SACM23-XMI-030).
+            Link::Id(target) => ChildKind::Proxy(ProxyLink {
+                declared: role.declared,
+                class,
+                target: target.as_str().to_owned(),
+                spelled,
+            }),
+            // An element of another document, or an XPointer: held, never
+            // resolved (SACM23-XMI-029).
+            Link::Href(href) => ChildKind::Remote(RemoteProxy {
+                role: role.name,
+                href: match class {
+                    Some(class) => Href::from_parts(Some(class), href.uri()),
+                    None => href,
+                },
+                class,
+                spelled,
+            }),
+        });
     }
     let kind = match (typed, role.declared) {
         (Some(kind), _) | (None, DeclaredType::Kind(kind)) => kind,
-        // Named after its role, so no class can be inferred (LIB-COMPAT-010),
-        // unless it is the reference form of a composite, a proxy of an
-        // element of another document, which names its object rather than
-        // leaving its class out (XMI 2.5.1 §7.10.1): not read yet
-        // (SACM23-XMI-029).
+        // Named after its role, so no class can be inferred
+        // (LIB-COMPAT-010).
         (None, DeclaredType::Abstract(class)) => {
-            if has_href(node) {
-                let reason = if in_root {
-                    ElementReason::ExternalProxyChildOfRoot
-                } else {
-                    ElementReason::ExternalProxyChild
-                };
-                let arguments = text_arguments(&[
-                    ("element", &written),
-                    ("container", container),
-                    ("class", class.name()),
-                ]);
-                return Err(found.unread_fault(at, Unread::CrossDocumentHref, reason, arguments));
-            }
             return Err(match found.mode {
                 Mode::Strict => Fault::Refused(ReadError::missing_type(
                     role.name.to_owned(),
@@ -4778,53 +4733,38 @@ fn child_spelling(found: &Findings<'_, '_>, at: usize, spelled: Spelled) -> Resu
     }
 }
 
-/// Whether the role element `node` carries an unqualified `href`: under an
-/// abstract role with no type, the reference form of a composite in another
-/// document, which SACM23-XMI-029 reads (LIB-COMPAT-010).
-fn has_href(node: Node<'_, '_>) -> bool {
+/// Whether the role element `node` is in reference form (XMI 2.5.1 §7.10.1,
+/// rule 2l): it carries an `xmi:idref` or an unqualified `href`, so it is a
+/// proxy, or it does not conform. Whether it carries nothing else is
+/// [`proxy_link`]'s check.
+fn is_reference_form(node: Node<'_, '_>) -> bool {
     node.attributes()
-        .any(|attribute| is_unqualified(&attribute, "href"))
+        .any(|attribute| is_xmi(&attribute, "idref") || is_unqualified(&attribute, "href"))
 }
 
-/// Whether the role element `node` is a same-file proxy as XMI 2.5.1 rule 2l
-/// writes it (§7.10.1, SACM23-XMI-030): it carries an `xmi:idref`, or an
-/// unqualified `href` whose value, trimmed, is `#id`. Whether it carries
-/// nothing else is [`proxy_target`]'s check.
-fn is_same_file_proxy(node: Node<'_, '_>) -> bool {
-    node.attributes().any(|attribute| {
-        is_xmi(&attribute, "idref")
-            || (is_unqualified(&attribute, "href")
-                && matches!(
-                    classify_href(attribute.value().trim_matches(is_xml_space)),
-                    HrefForm::Id(_)
-                ))
-    })
-}
-
-/// The id the same-file proxy `node` names, if it is one as §7.10.1 allows
-/// (SACM23-XMI-030): exactly one link attribute, an `xmi:idref` holding one
-/// token or an `href="#id"`, at most one type attribute (`xmi:type` or
-/// `xsi:type`), no other attribute, and only white space, comments and
-/// processing instructions in it ("Proxies … contain no nested elements";
-/// "XML attributes may be defined, but not contents"). `None` otherwise.
-fn proxy_target(text: &str, node: Node<'_, '_>) -> Option<String> {
-    let mut target = None;
+/// What the proxy `node` names, with the class the type of its `href` names,
+/// if it is a proxy as §7.10.1 allows (SACM23-XMI-030, SACM23-XMI-029):
+/// exactly one link attribute, an `xmi:idref` holding one token or an `href`
+/// that names an element ([`href_link`]), at most one type attribute
+/// (`xmi:type` or `xsi:type`), no other attribute, and only white space,
+/// comments and processing instructions in it ("Proxies … contain no nested
+/// elements"; "XML attributes may be defined, but not contents"; §7.6.2 "any
+/// one of which may be used at one time"). `None` otherwise.
+fn proxy_link(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Option<(Option<ElementKind>, Link)> {
+    let mut link = None;
     let mut links = 0_usize;
     let mut types = 0_usize;
     for attribute in node.attributes() {
-        let value = attribute.value().trim_matches(is_xml_space);
         if is_xmi(&attribute, "idref") {
             links = links.saturating_add(1);
+            let value = attribute.value().trim_matches(is_xml_space);
             if value.is_empty() || value.contains(is_xml_space) {
                 return None;
             }
-            target = Some(value);
+            link = Some((None, Link::Id(ElementId::new(value))));
         } else if is_unqualified(&attribute, "href") {
             links = links.saturating_add(1);
-            let HrefForm::Id(id) = classify_href(value) else {
-                return None;
-            };
-            target = Some(id);
+            link = Some(href_link(&found.types, node, attribute.value())?);
         } else if is_type(&attribute) {
             types = types.saturating_add(1);
         } else {
@@ -4833,11 +4773,11 @@ fn proxy_target(text: &str, node: Node<'_, '_>) -> Option<String> {
     }
     let holds_content = node
         .children()
-        .any(|child| child.is_element() || text_offset(text, child).is_some());
+        .any(|child| child.is_element() || text_offset(found.text, child).is_some());
     if links != 1 || types > 1 || holds_content {
         return None;
     }
-    target.map(str::to_owned)
+    link
 }
 
 /// The `assertionDeclaration` that `value` names, of the element `element`,
@@ -4895,85 +4835,55 @@ fn parse_flag(
 /// The target of the reference element `node` (SACM23-XMI-015; XMI 2.5.1
 /// production 2c, rules 2l and 2n, §7.10.1; ADR 0026): in no namespace and
 /// named after its end, checked by the caller. Its start tag carries exactly
-/// one link attribute, `xmi:idref="id"` or an unqualified `href="#id"`, and
+/// one link attribute, `xmi:idref="id"` or an unqualified `href`, and
 /// nothing else; its content is only white space, comments and processing
 /// instructions.
 ///
 /// Each attribute is checked in document order, then the link, then the
-/// content. An `XLink` attribute or an `XPointer` `href` is a
-/// cross-document link not read yet (SACM23-XMI-029): each is refused at
-/// the attribute. Anything else that does not conform is
-/// [`Fault::Defect`]: an identity attribute or a type, which production 2c
-/// and rule 4e do not give a reference element (SACM23-XMI-019), a second
-/// link attribute, any other attribute, an
-/// `xmi:idref` that is empty or holds white space, an `href` that names no
-/// element, no link, a child
+/// content. Anything that does not conform is [`Fault::Defect`]: an identity
+/// attribute, a type or an `XLink` attribute, which production 2c and rule
+/// 4e do not give a reference element (SACM23-XMI-029), a second link
+/// attribute (§7.6.2), any other attribute, an `xmi:idref` that is empty or
+/// holds white space, an `href` that names no element, no link, a child
 /// element, or text. The caller then keeps the whole element as preserved
-/// content (ADR 0033). A tolerant read keeps the whole element, with the
-/// Warning of a refusal's entry (ADR 0035 D1).
+/// content (ADR 0033), in both modes.
 ///
-/// An `href` is classified by [`classify_href`]: `#id` names the id `id` of
-/// this document; `document#fragment` is a cross-document reference
-/// (SACM23-XMI-027, ADR 0040 D1), read where `cross_document` is true (every
-/// element end) and refused as not read yet where it is false (the derived
-/// `expression`, SACM23-XMI-029); an `XPointer` fragment is refused as not
-/// read yet; and an `href` that names no element is a defect.
-fn read_reference(
-    found: &Findings<'_, '_>,
-    node: Node<'_, '_>,
-    cross_document: bool,
-) -> Result<Link, Fault> {
+/// An `href` is read by [`href_link`]: `#id`, with or without a type, names
+/// the id `id` of this document; any other that names an element is a
+/// cross-document reference (SACM23-XMI-027, SACM23-XMI-029; ADR 0040 D1,
+/// amendment 1 A1), an `XPointer` and a type-prefixed one included, on every
+/// element end and on an `expression`.
+fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<Link, Fault> {
     let text = found.text;
-    let element = written_name(text, node);
     let mut link = None;
     for attribute in node.attributes() {
         let is_idref = is_xmi(&attribute, "idref");
-        let at = attribute.range_qname().start;
         if !(is_idref || is_unqualified(&attribute, "href")) {
-            // An XLink attribute is SACM23-XMI-029's (§7.6.2). Anything else,
-            // identity attributes and a type included, keeps the element
-            // whole: production 2c and rule 4e give a reference element only
-            // its link (SACM23-XMI-019).
-            if attribute.namespace() != Some(XLINK_NS) {
-                return Err(Fault::Defect);
-            }
-            let arguments = attribute_arguments(text, &attribute, &element);
-            return Err(found.unread_fault(
-                at,
-                Unread::CrossDocumentHref,
-                ElementReason::ExternalAttribute,
-                arguments,
-            ));
+            // Anything else, identity attributes, a type and XLink
+            // attributes included, keeps the element whole: production 2c
+            // and rule 4e give a reference element only its link
+            // (SACM23-XMI-029).
+            return Err(Fault::Defect);
         }
+        // "any one of which may be used at one time" (§7.6.2).
         if link.is_some() {
             return Err(Fault::Defect);
         }
-        let value = attribute.value().trim_matches(is_xml_space);
         if is_idref {
             // An `xsd:IDREF` is one token: white space inside it would be
             // read as one id here but written as an IDREFS attribute of
             // several.
+            let value = attribute.value().trim_matches(is_xml_space);
             if value.is_empty() || value.contains(is_xml_space) {
                 return Err(Fault::Defect);
             }
             link = Some(Link::Id(ElementId::new(value)));
             continue;
         }
-        let not_read = || {
-            let arguments = text_arguments(&[("href", attribute.value()), ("element", &element)]);
-            found.unread_fault(
-                at,
-                Unread::CrossDocumentHref,
-                ElementReason::Href,
-                arguments,
-            )
+        let Some((_, named)) = href_link(&found.types, node, attribute.value()) else {
+            return Err(Fault::Defect);
         };
-        link = Some(match classify_href(value) {
-            HrefForm::Id(id) => Link::Id(ElementId::new(id)),
-            HrefForm::Other if cross_document => Link::Href(Href::new_unchecked(value)),
-            HrefForm::Other | HrefForm::Pointer => return Err(not_read()),
-            HrefForm::NoElement => return Err(Fault::Defect),
-        });
+        link = Some(named);
     }
     let Some(target) = link else {
         return Err(Fault::Defect);
@@ -4993,8 +4903,43 @@ fn read_reference(
 enum Link {
     /// An `xmi:idref`, or an `href="#id"`: the id.
     Id(ElementId),
-    /// An `href` with a document part, as trimmed.
+    /// An `href` with a document part, or an `XPointer`, as trimmed, with
+    /// its type if it has one.
     Href(Href),
+}
+
+/// What the `href` value `value` on `node` names, with the class its type
+/// names, if it has one (XMI 2.5.1 rule 2n; ADR 0040 D1 and amendment 1,
+/// A1); `None` if it names no element.
+///
+/// The value is trimmed. A type is the part before the first run of XML
+/// white space: a `QName`, resolved in the scope of `node`, that names a
+/// concrete class in a SACM namespace of the root's family. A name with no
+/// prefix names none: it would be in the default namespace, and a reference
+/// element or a role element is in no namespace, so none is in scope. The
+/// rest is the URI reference, which [`classify_href`] classifies: `#id` is
+/// the id, whose type is returned but not held, and any other is held as
+/// `sacm:<Class> <URI>`.
+fn href_link(
+    types: &Types<'_>,
+    node: Node<'_, '_>,
+    value: &str,
+) -> Option<(Option<ElementKind>, Link)> {
+    let value = value.trim_matches(is_xml_space);
+    let (kind, uri) = match value.find(is_xml_space) {
+        None => (None, value),
+        Some(end) => {
+            let (class, rest) = value.split_at(end);
+            let kind = type_kind(types, node, class)?;
+            (Some(kind), rest.trim_start_matches(is_xml_space))
+        }
+    };
+    let link = match classify_href(uri) {
+        HrefForm::Id(id) => Link::Id(ElementId::new(id)),
+        HrefForm::Other => Link::Href(Href::from_parts(kind, uri)),
+        HrefForm::NoElement => return None,
+    };
+    Some((kind, link))
 }
 
 /// Appends `value` to the list of `end` in `ends`, a sparse list of ends in
@@ -5012,11 +4957,10 @@ fn push_value<T>(ends: &mut Vec<(ReferenceEnd, Vec<T>)>, end: ReferenceEnd, valu
 enum HrefForm<'v> {
     /// `#id`: the id of an element of this document.
     Id(&'v str),
-    /// `document#fragment`: an element of another document by its id.
+    /// `document#fragment`: an element of another document by its id, or,
+    /// with `(` or `)` in the fragment, an `XPointer`, whose document part
+    /// may be empty (SACM23-XMI-029).
     Other,
-    /// A fragment holding `(` or `)`: an `XPointer`, which SACM23-XMI-029 is to
-    /// read.
-    Pointer,
     /// No `#`, an empty fragment, a `#` in the fragment, or XML white space
     /// anywhere: it names no element.
     NoElement,
@@ -5024,9 +4968,9 @@ enum HrefForm<'v> {
 
 /// The form of the trimmed `href` value `value`, held exactly, with no
 /// percent-decoding. The checks run in this order: XML white space, no `#`,
-/// an empty fragment or a `#` in it name no element; then `(` or `)` in the
-/// fragment is an `XPointer`; then an empty document part is `#id`, and any
-/// other is a cross-document reference.
+/// an empty fragment or a `#` in it name no element; then an empty document
+/// part with no `(` or `)` in the fragment is `#id`, and any other is a
+/// cross-document reference or an `XPointer`.
 fn classify_href(value: &str) -> HrefForm<'_> {
     let Some((document, fragment)) = value.split_once('#') else {
         return HrefForm::NoElement;
@@ -5034,10 +4978,7 @@ fn classify_href(value: &str) -> HrefForm<'_> {
     if value.contains(is_xml_space) || fragment.is_empty() || fragment.contains('#') {
         return HrefForm::NoElement;
     }
-    if fragment.contains(['(', ')']) {
-        return HrefForm::Pointer;
-    }
-    if document.is_empty() {
+    if document.is_empty() && !fragment.contains(['(', ')']) {
         HrefForm::Id(fragment)
     } else {
         HrefForm::Other
@@ -5554,16 +5495,16 @@ fn read_lang_string<'a>(
         id: owner.clone(),
     });
     // The `expression` of an ExpressionLangString (§8.4), once it is given.
-    let mut expression: Option<ElementId> = None;
+    let mut expression: Option<Link> = None;
     for attribute in node.attributes() {
         let value = || Some(attribute.value().to_owned());
         let given = match (attribute.namespace(), attribute.name()) {
             (None, "lang") => fields.lang(value()),
             (None, "content") => fields.content(value()),
             (None, "expression") if is_expression => {
-                expression = Some(read_expression_attribute(
+                expression = Some(Link::Id(read_expression_attribute(
                     found, node, &attribute, owner, kind, property,
-                )?);
+                )?));
                 Ok(())
             }
             _ if is_xsi_type(&attribute) => {
@@ -5622,11 +5563,9 @@ fn read_lang_string<'a>(
         } else if is_expression && is_value_element(child, "expression") {
             // One reference element (SACM23-XMI-015), checked whole first,
             // then against an earlier occurrence (XMI 2.5.1 rule 2h).
-            // An `href` with a document part is SACM23-XMI-029's here
-            // (ADR 0040 D1): the end is derived from the name.
-            let Link::Id(target) = read_reference(found, child, false)? else {
-                return Err(Fault::Defect);
-            };
+            // An `href` to another document, or an XPointer, is held on the
+            // LangString (SACM23-XMI-029; ADR 0040 amendment 1, A1).
+            let target = read_reference(found, child)?;
             if expression.is_some() {
                 return Err(repeated_expression(
                     found, node, child, owner, kind, property,
@@ -5663,7 +5602,8 @@ fn read_lang_string<'a>(
     }
     if is_expression {
         name = match expression {
-            Some(expression) => name.with_expression(expression),
+            Some(Link::Id(expression)) => name.with_expression(expression),
+            Some(Link::Href(href)) => name.with_expression_href(href),
             None => name.with_no_expression(),
         };
     }
@@ -6042,6 +5982,7 @@ mod tests {
             flags: Vec::new(),
             references: Vec::new(),
             hrefs: Vec::new(),
+            proxies: Vec::new(),
             given: Vec::new(),
             written: written.to_owned(),
             at: 0,
@@ -6058,30 +5999,12 @@ mod tests {
     /// refusal and its `-read` form (LIB-API-018).
     #[test]
     fn the_reason_and_holder_mapping_gives_each_cell_of_the_table() {
-        use super::{DocumentReason, ElementReason, Shape};
+        use super::{DocumentReason, Shape};
         use crate::diagnostic::template::{Carrier, Template};
 
+        // The element column is empty since slice 0073b: its four reasons
+        // were the cross-document links SACM23-XMI-029 now reads.
         let ids = |refusal: &Template, kept: &Template| (refusal.id, kept.id);
-        let in_element: Vec<_> = ElementReason::ALL
-            .iter()
-            .map(|reason| ids(reason.refusal(), reason.kept()))
-            .collect();
-        assert_eq!(
-            in_element,
-            [
-                (
-                    "SACM-XMI-007/unread-attribute",
-                    "SACM-XMI-007/unread-attribute-kept"
-                ),
-                ("SACM-XMI-007/proxy-child", "SACM-XMI-007/proxy-child-kept"),
-                (
-                    "SACM-XMI-007/proxy-child-of-root",
-                    "SACM-XMI-007/proxy-child-of-root-kept"
-                ),
-                ("SACM-XMI-007/href", "SACM-XMI-007/href-kept"),
-            ],
-            "LIB-API-018: the element column"
-        );
         let in_document: Vec<_> = DocumentReason::ALL
             .iter()
             .map(|reason| ids(reason.refusal(), reason.kept()))
@@ -6116,14 +6039,9 @@ mod tests {
             );
         }
         assert_eq!(shapes.len(), 9, "LIB-API-018: the shapes");
-        let pairs = ElementReason::ALL
+        let pairs = DocumentReason::ALL
             .iter()
             .map(|reason| (reason.refusal(), reason.kept()))
-            .chain(
-                DocumentReason::ALL
-                    .iter()
-                    .map(|reason| (reason.refusal(), reason.kept())),
-            )
             .chain(
                 Shape::ALL
                     .iter()
@@ -6235,17 +6153,22 @@ mod tests {
     }
 
     #[test]
-    fn an_href_is_an_id_a_cross_document_reference_a_pointer_or_names_no_element() {
-        use super::HrefForm::{Id, NoElement, Other, Pointer};
+    fn an_href_is_an_id_a_cross_document_reference_or_names_no_element() {
+        use super::HrefForm::{Id, NoElement, Other};
         for (value, expected) in [
             ("#c2", Id("c2")),
             ("#1c", Id("1c")),
             ("#a%20b", Id("a%20b")),
             ("other.xmi#c2", Other),
             ("a%20b.xmi#//@argumentElement.0", Other),
-            ("#xpointer(id('c2'))", Pointer),
-            ("o.xmi#xpointer(id('c2'))", Pointer),
-            ("o.xmi#a)", Pointer),
+            // An XPointer, whose document part may be empty.
+            ("#xpointer(id('c2'))", Other),
+            ("o.xmi#xpointer(id('c2'))", Other),
+            ("o.xmi#a)", Other),
+            ("#a(", Other),
+            ("#)", Other),
+            // Parentheses in the document part make no XPointer.
+            ("a(1).xmi#c", Other),
             ("", NoElement),
             ("#", NoElement),
             ("o.xmi#", NoElement),
@@ -6370,17 +6293,10 @@ mod tests {
         // (SACM23-XMI-019).
         let extension = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>";
         assert_eq!(refusal(extension), None, "{extension:?}");
-        let cases = [(
-            "<argumentElement href=\"o.xmi#c\"/>",
-            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
-        )];
-        for (content, reason) in cases {
-            assert_eq!(
-                refusal(content).map(|(_, reason)| reason).as_deref(),
-                Some(reason),
-                "{content:?}"
-            );
-        }
+        // A role element in reference form with an `href` to another
+        // document is a proxy, held since slice 0073b (SACM23-XMI-029).
+        let proxy = "<argumentElement href=\"o.xmi#c\"/>";
+        assert_eq!(refusal(proxy), None, "{proxy:?}");
         // Every child kind its role admits is read: a
         // TerminologyPackageInterface in an AssuranceCasePackage, refused
         // until slice 0067 (SACM23-TERM-007).
@@ -6851,11 +6767,13 @@ mod tests {
         let on_claim = message(&in_p(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" href=\"o.xmi#c\"/>",
         ));
+        // A role element with a link attribute and an `xmi:id` is neither a
+        // definition nor a proxy (SACM23-XMI-029).
         assert_eq!(
             on_claim,
-            "the attribute \"href\" of the element \"argumentElement\" is not read in this \
-             release, so it is kept as preserved content of the ArgumentPackage \"p\", which a \
-             tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it"
+            "the element \"argumentElement\" is not SACM 2.3 where it stands, so it is kept as \
+             written as preserved content of the ArgumentPackage \"p\", which a tolerant write \
+             writes back and a strict write refuses"
         );
         let outside = message(
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
@@ -6866,8 +6784,8 @@ mod tests {
             outside.contains("kept as preserved content of the document,"),
             "{outside}"
         );
-        // Content not read yet is LIB-API-011's, with no clause; a defect
-        // kept on `xmi:XMI` is LIB-COMPAT-003's, clause 7.3.3.
+        // A defect kept in an element or on `xmi:XMI` is LIB-COMPAT-003's,
+        // clause 7.3.3.
         let first = |input: &str| {
             let output = read(input.as_bytes(), &ReadOptions::default());
             output.map_or_else(
@@ -6885,7 +6803,7 @@ mod tests {
             first(&in_p(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" href=\"o.xmi#c\"/>"
             )),
-            ("LIB-API-011".to_owned(), None)
+            ("LIB-COMPAT-003".to_owned(), Some("7.3.3".to_owned()))
         );
         assert_eq!(
             first(

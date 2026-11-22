@@ -124,7 +124,7 @@ use std::ops::ControlFlow;
 
 use crate::model::{
     AssertionDeclaration, Compared, Document, ElementId, ElementKind, Flag, Href, LangString,
-    MultiLangString, ReferenceEnd, SacmElement, StringAttribute, Text, TextRole,
+    MultiLangString, Proxy, ReferenceEnd, SacmElement, StringAttribute, Text, TextRole,
 };
 
 /// One way in which two documents differ in SACM content, as
@@ -563,6 +563,19 @@ pub enum Difference {
         /// The `href`s in the right document, in order.
         right: Vec<Href>,
     },
+    /// The proxies of an element differ, in order: its children held in
+    /// other documents (SACM23-XMI-029, ADR 0040 amendment 1, A6;
+    /// [`SacmElement::proxies`](crate::model::SacmElement::proxies)).
+    /// Compared exactly: the role and the `href` of each, with repeats.
+    #[doc(alias = "href")]
+    Proxies {
+        /// The element's id.
+        id: ElementId,
+        /// The proxies in the left document, in order.
+        left: Vec<Proxy>,
+        /// The proxies in the right document, in order.
+        right: Vec<Proxy>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -914,6 +927,7 @@ impl Difference {
             | Self::Implements { id, .. }
             | Self::ParticipantPackages { id, .. }
             | Self::Hrefs { id, .. }
+            | Self::Proxies { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -1105,6 +1119,13 @@ impl fmt::Display for Difference {
                 Hrefs(left),
                 Hrefs(right)
             ),
+            Self::Proxies { id, left, right } => write!(
+                f,
+                "element {:?} differs in its proxies: {} on the left, {} on the right",
+                id.as_str(),
+                Proxies(left),
+                Proxies(right)
+            ),
             Self::Name { id, left, right } => write!(
                 f,
                 "element {:?} differs in name: {} on the left, {} on the right",
@@ -1234,6 +1255,23 @@ impl fmt::Display for Hrefs<'_> {
     }
 }
 
+/// A list of proxies for `Display`: each as its role and its quoted `href`,
+/// such as `argumentPackage "o.xmi#a"`.
+struct Proxies<'a>(&'a [Proxy]);
+
+impl fmt::Display for Proxies<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[")?;
+        for (position, proxy) in self.0.iter().enumerate() {
+            if position > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{} {:?}", proxy.role(), proxy.href().as_str())?;
+        }
+        f.write_str("]")
+    }
+}
+
 /// A parent for `Display`: its quoted id, or `no parent` for a root.
 struct Parent<'a>(Option<&'a ElementId>);
 
@@ -1350,10 +1388,11 @@ impl fmt::Display for Value<'_> {
             Some(content) => write!(f, "content {content:?}")?,
             None => f.write_str("no content")?,
         }
-        match name.expression() {
-            Some(expression) => write!(f, ", expression {:?}]", expression.as_str()),
-            None if name.is_expression_lang_string() => f.write_str(", no expression]"),
-            None => f.write_str("]"),
+        match (name.expression(), name.expression_href()) {
+            (Some(expression), _) => write!(f, ", expression {:?}]", expression.as_str()),
+            (None, Some(href)) => write!(f, ", expression href {:?}]", href.as_str()),
+            (None, None) if name.is_expression_lang_string() => f.write_str(", no expression]"),
+            (None, None) => f.write_str("]"),
         }
     }
 }
@@ -1455,7 +1494,7 @@ impl fmt::Display for Declaration {
 ///    [`Implements`](Difference::Implements),
 ///    [`ParticipantPackages`](Difference::ParticipantPackages),
 ///    [`Hrefs`](Difference::Hrefs), one per end in [`ReferenceEnd::ALL`]
-///    order, [`Name`](Difference::Name),
+///    order, [`Proxies`](Difference::Proxies), [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
 ///    [`ContentValueIds`](Difference::ContentValueIds),
@@ -1536,6 +1575,8 @@ enum Found<'a> {
     Reference(ReferenceEnd, Compared<'a>, Compared<'a>),
     /// The `href`s of one of the element's reference ends differ.
     Hrefs(ReferenceEnd, Compared<'a>, Compared<'a>),
+    /// The element's proxies differ.
+    Proxies(Compared<'a>, Compared<'a>),
     /// The element's name differs.
     Name(Compared<'a>, Compared<'a>),
     /// The `xmi:id` of the element's name differs.
@@ -1609,6 +1650,11 @@ impl Found<'_> {
                 end,
                 left: ours.hrefs(end).to_vec(),
                 right: theirs.hrefs(end).to_vec(),
+            },
+            Self::Proxies(ours, theirs) => Difference::Proxies {
+                id: ours.id.clone(),
+                left: ours.proxies.to_vec(),
+                right: theirs.proxies.to_vec(),
             },
             Self::Name(ours, theirs) => Difference::Name {
                 id: ours.id.clone(),
@@ -1870,6 +1916,10 @@ fn compare_element<'a>(
         if ours.hrefs(end) != theirs.hrefs(end) {
             sink(Found::Hrefs(end, ours, theirs))?;
         }
+    }
+    // The proxies, right after the hrefs (ADR 0040 amendment 1, A6).
+    if ours.proxies != theirs.proxies {
+        sink(Found::Proxies(ours, theirs))?;
     }
     if ours.name != theirs.name {
         sink(Found::Name(ours, theirs))?;

@@ -121,7 +121,7 @@ pub(crate) use document::{
 pub use document::{Document, Referrer, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};
-pub use href::Href;
+pub use href::{Href, HrefError, Proxy};
 pub use id::ElementId;
 pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};

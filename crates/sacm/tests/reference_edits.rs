@@ -1674,8 +1674,12 @@ fn lib_edit_009_operations_hold_what_they_are_given_and_name_their_struct() {
     );
     let add = AddReference::new("c1", ReferenceEnd::MetaClaim, id("c2"));
     assert_eq!(
-        (add.element().as_str(), add.end(), add.id().as_str()),
-        ("c1", ReferenceEnd::MetaClaim, "c2"),
+        (
+            add.element().as_str(),
+            add.end(),
+            add.id().map(ElementId::as_str)
+        ),
+        ("c1", ReferenceEnd::MetaClaim, Some("c2")),
         "{ROW}: AddReference's accessors"
     );
     let remove = RemoveReference::new("c1", ReferenceEnd::MetaClaim, "c2");
@@ -1683,9 +1687,9 @@ fn lib_edit_009_operations_hold_what_they_are_given_and_name_their_struct() {
         (
             remove.element().as_str(),
             remove.end(),
-            remove.id().as_str()
+            remove.id().map(ElementId::as_str)
         ),
-        ("c1", ReferenceEnd::MetaClaim, "c2"),
+        ("c1", ReferenceEnd::MetaClaim, Some("c2")),
         "{ROW}: RemoveReference's accessors"
     );
     for (operation, name) in [

@@ -88,6 +88,8 @@ use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
 };
+// The href of slice 0073b (LIB-EDIT-020; ADR 0040 amendment 1).
+use sacm::model::Href;
 use sacm::validation;
 use sacm::xmi::{self, ReadOptions};
 use serde::Serialize;
@@ -199,7 +201,7 @@ const CREATE_COUNT: usize = 38;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERROR_COUNT: usize = 22;
+const EDIT_ERROR_COUNT: usize = 23;
 const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
@@ -215,6 +217,8 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     // The refusal of slice 0065 (SACM23-BASE-009).
     ("DerivedEnd", "SACM-CMD-008"),
     ("ReferenceNotHeld", "SACM-CMD-001"),
+    // The refusal of slice 0073b (LIB-EDIT-020).
+    ("HrefNotHeld", "SACM-CMD-001"),
     ("ChildNotFound", "SACM-CMD-001"),
     ("InvalidOrder", "SACM-CMD-009"),
     ("Referenced", "SACM-CMD-002"),
@@ -652,6 +656,7 @@ fn operation_samples() -> Vec<Operation> {
     samples.extend(artifact_samples());
     samples.extend(edit_samples());
     samples.extend(delete_samples());
+    samples.extend(href_samples());
     samples
 }
 
@@ -1313,12 +1318,73 @@ fn edit_refusal_samples() -> Vec<EditError> {
             &doc,
             RemoveReference::new("c1", ReferenceEnd::MetaClaim, "m1"),
         ),
+        // The refusal of slice 0073b, after ReferenceNotHeld (LIB-EDIT-020).
+        href_not_held_sample(),
         refusal(&doc, ReorderElements::new("p", ["case"])),
         refusal(&doc, ReorderElements::roots(["c1"])),
         refusal(&doc, ReorderElements::new("p", Vec::<ElementId>::new())),
         refusal(&doc, ReorderElements::new("p", ["c1", "c1"])),
     ]);
     samples
+}
+
+/// The `HrefNotHeld` sample of `edit-errors.json` (LIB-EDIT-020): removing
+/// an href that the `participantPackage` of a binding of two remote
+/// interfaces does not hold.
+fn href_not_held_sample() -> EditError {
+    let input = r#"<sacm:ArgumentPackageBinding xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="binding">
+  <name content="Binding"/>
+  <participantPackage href="braking.sacm.xmi#braking_api"/>
+  <participantPackage href="vehicle.sacm.xmi#vehicle_api"/>
+</sacm:ArgumentPackageBinding>
+"#;
+    let doc = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("LIB-EDIT-020: setup: the binding does not read: {error}"),
+    };
+    refusal(
+        &doc,
+        RemoveReference::href("binding", ReferenceEnd::ParticipantPackage, href("o.xmi#x")),
+    )
+}
+
+/// The `Href` `value`, which `Href::new` must accept.
+fn href(value: &str) -> Href {
+    match Href::new(value) {
+        Ok(href) => href,
+        Err(error) => panic!("LIB-EDIT-020: setup: Href::new({value:?}) refused it: {error}"),
+    }
+}
+
+/// The operations of slice 0073b that hold an href (LIB-EDIT-020; ADR 0040
+/// amendment 1, A7), the last samples of `operations.json`: a set, an add and
+/// a remove on a binding, an interface and a binding create, and a Claim
+/// whose name's expression is in another document.
+fn href_samples() -> Vec<Operation> {
+    let remote = href("braking.sacm.xmi#braking_api");
+    let participant = ReferenceEnd::ParticipantPackage;
+    vec![
+        SetReferences::new("binding", participant, ["vehicle_api"])
+            .with_hrefs([remote.clone()])
+            .into(),
+        AddReference::href("binding", participant, remote.clone()).into(),
+        RemoveReference::href("binding", participant, remote.clone()).into(),
+        CreateArgumentPackageInterface::root_href(
+            en("Braking interface"),
+            href("braking.sacm.xmi#braking"),
+        )
+        .with_id("braking_api")
+        .into(),
+        CreateArgumentPackageBinding::root(en("Braking supports the vehicle"), ["vehicle_api"])
+            .with_participant_package_hrefs([remote])
+            .with_id("binding")
+            .into(),
+        CreateClaim::new(
+            "arguments",
+            LangString::new("x").with_expression_href(href("terms.sacm.xmi#blade")),
+        )
+        .into(),
+    ]
 }
 
 /// [`ERROR_START`] with the `ArtifactPackage` `evidence` under `case`, holding
@@ -3034,7 +3100,14 @@ fn optional_keys(
             ("external_reference", Value::Null),
             ("expression_elements", Value::Array(Vec::new())),
         ]);
+        // The hrefs of a binding create (LIB-EDIT-020; ADR 0040 amendment 1,
+        // A7). An interface's `implements` and `implements_href` are one of
+        // two, so neither has a default.
+        keys.push(("participant_package_hrefs", Value::Array(Vec::new())));
         keys
+    } else if object.get("type").and_then(Value::as_str) == Some("SetReferences") {
+        // The hrefs of a set default to none (LIB-EDIT-020).
+        vec![("hrefs", Value::Array(Vec::new()))]
     } else if diagnostics && root {
         vec![
             ("clause", Value::Null),

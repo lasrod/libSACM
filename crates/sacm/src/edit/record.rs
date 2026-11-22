@@ -13,7 +13,8 @@ use super::EditError;
 use super::set::{ASSERTION_DECLARATION, GID, NAME};
 use crate::diagnostic::Code;
 use crate::model::{
-    AbstractClass, ElementId, ElementKind, Flag, ReferenceEnd, Revision, StringAttribute, TextRole,
+    AbstractClass, ElementId, ElementKind, Flag, Href, ReferenceEnd, Revision, StringAttribute,
+    TextRole,
 };
 
 /// A name as serialized: an end, feature or class name, which reads back to
@@ -94,6 +95,8 @@ pub(super) enum EditErrorRecord {
         end: Name,
         id: ElementId,
     },
+    /// [`EditError::HrefNotHeld`].
+    HrefNotHeld { code: Code, end: Name, href: Href },
     /// [`EditError::ChildNotFound`]; `parent` is required, `null` for the
     /// roots.
     ChildNotFound {
@@ -240,6 +243,11 @@ impl From<EditError> for EditErrorRecord {
                 code,
                 end: end.to_owned(),
                 id,
+            },
+            EditError::HrefNotHeld { end, href } => Self::HrefNotHeld {
+                code,
+                end: end.to_owned(),
+                href,
             },
             EditError::ChildNotFound { parent, child } => Self::ChildNotFound {
                 code,
@@ -405,6 +413,13 @@ impl TryFrom<EditErrorRecord> for EditError {
                 Self::ReferenceNotHeld {
                     end: end_name(&end)?,
                     id,
+                },
+            ),
+            R::HrefNotHeld { code, end, href } => (
+                code,
+                Self::HrefNotHeld {
+                    end: end_name(&end)?,
+                    href,
                 },
             ),
             R::ChildNotFound {
@@ -725,6 +740,7 @@ mod tests {
             }
             EditError::DerivedEnd { .. } => sampled!(EDIT_ERRORS, "DerivedEnd"),
             EditError::ReferenceNotHeld { .. } => sampled!(EDIT_ERRORS, "ReferenceNotHeld"),
+            EditError::HrefNotHeld { .. } => sampled!(EDIT_ERRORS, "HrefNotHeld"),
             EditError::ChildNotFound { .. } => sampled!(EDIT_ERRORS, "ChildNotFound"),
             EditError::InvalidOrder { .. } => sampled!(EDIT_ERRORS, "InvalidOrder"),
             EditError::Referenced { .. } => sampled!(EDIT_ERRORS, "Referenced"),

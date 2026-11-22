@@ -520,17 +520,13 @@ fn points_gated_by(row: &str) -> Vec<&'static str> {
 }
 
 /// Check (b): every `Interim` row exists, is not verified, and is in the
-/// closure of each compliance point [`points_gated_by`] names.
+/// closure of each compliance point [`points_gated_by`] names. A list with
+/// no `Interim` entry is accepted: since slice 0073 the real list has none
+/// (SACM23-XMI-029).
 fn interim_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
     let rows = matrix_rows(matrix);
     let mut problems = Vec::new();
     let interim = labelled_rows(list, "Interim");
-    if interim.is_empty() {
-        problems.push(problem(
-            "no-interim-rows",
-            format!("{LIST} names no Interim(\"ROW\")"),
-        ));
-    }
     let mut closures = Vec::new();
     for point in COMPLIANCE_POINTS {
         if rows.contains_key(point) {
@@ -928,16 +924,46 @@ fn lib_api_011_every_interim_row_exists_is_open_and_gates_its_compliance_points(
     );
 }
 
+/// The row of the inline list of [`interim_fixture`]: the last row the real
+/// list named `Interim`, until slice 0073b read it.
+const FIXTURE_ROW: &str = "SACM23-XMI-029";
+
+/// A list of one entry, `Interim(FIXTURE_ROW)`, and the matrix with that row
+/// `planned`: since slice 0073 the real list names no `Interim` row, so the
+/// tests of the check run on this one. The row is of no package, so every
+/// compliance point must hold it: the precondition, asserted here, is that
+/// the check accepts the pair.
+fn interim_fixture() -> (String, toml::Table) {
+    let list = one_entry(FIXTURE_ROW);
+    let planned = with_row_value(
+        &matrix(),
+        FIXTURE_ROW,
+        "status",
+        toml::Value::from("planned"),
+    );
+    assert_eq!(
+        points_gated_by(FIXTURE_ROW),
+        COMPLIANCE_POINTS.to_vec(),
+        "{ROW}: setup: {FIXTURE_ROW} does not gate all four compliance points"
+    );
+    let problems = interim_problems(&list, &planned);
+    assert!(
+        problems.is_empty(),
+        "{ROW}: setup: {FIXTURE_ROW}, planned, is not open and in all four closures: {problems:#?}"
+    );
+    (list, planned)
+}
+
 #[test]
 fn lib_api_011_interim_check_reports_an_unknown_row() {
-    let list = list_text();
+    let (list, matrix) = interim_fixture();
     let row = first_row(&list, "Interim");
     let mutated = replace_all(
         &list,
         &format!("Interim(\"{row}\")"),
         "Interim(\"SACM23-NOPE-999\")",
     );
-    let problems = interim_problems(&mutated, &matrix());
+    let problems = interim_problems(&mutated, &matrix);
     assert!(
         !problems.is_empty()
             && problem_codes(&problems)
@@ -949,13 +975,13 @@ fn lib_api_011_interim_check_reports_an_unknown_row() {
 
 #[test]
 fn lib_api_011_interim_check_reports_a_verified_row() {
-    let list = list_text();
+    let (list, matrix) = interim_fixture();
     let row = first_row(&list, "Interim");
     let uses = labelled_rows(&list, "Interim")
         .iter()
         .filter(|(found, _)| *found == row)
         .count();
-    let verified = with_row_value(&matrix(), &row, "status", toml::Value::from("verified"));
+    let verified = with_row_value(&matrix, &row, "status", toml::Value::from("verified"));
     assert_only(
         "an Interim row marked verified",
         &interim_problems(&list, &verified),
@@ -966,7 +992,7 @@ fn lib_api_011_interim_check_reports_a_verified_row() {
 
 #[test]
 fn lib_api_011_interim_check_reports_a_row_outside_a_compliance_point() {
-    let list = list_text();
+    let (list, matrix) = interim_fixture();
     // The entries that gate SACM23-CP-004: a Terminology row, or a row of no
     // package. An AC, ARG or ART row does not.
     let count = labelled_rows(&list, "Interim")
@@ -980,10 +1006,10 @@ fn lib_api_011_interim_check_reports_a_row_outside_a_compliance_point() {
         .count();
     assert!(
         count > 0,
-        "{ROW}: setup: no Interim entry of the real list gates SACM23-CP-004"
+        "{ROW}: setup: no Interim entry of the list gates SACM23-CP-004"
     );
     let emptied = with_row_value(
-        &matrix(),
+        &matrix,
         "SACM23-CP-004",
         "depends_on",
         toml::Value::Array(Vec::new()),
@@ -1202,8 +1228,8 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
 
 #[test]
 fn lib_api_011_interim_check_reports_a_missing_compliance_point() {
-    let list = list_text();
-    let problems = interim_problems(&list, &without_row(&matrix(), "SACM23-CP-003"));
+    let (list, matrix) = interim_fixture();
+    let problems = interim_problems(&list, &without_row(&matrix, "SACM23-CP-003"));
     let missing: Vec<&String> = problems
         .iter()
         .filter(|p| p.starts_with("[compliance-point-missing]"))
@@ -1221,7 +1247,7 @@ fn lib_api_011_interim_check_reports_a_missing_compliance_point() {
         .filter(|p| !p.starts_with("[compliance-point-missing]"))
         .collect();
     let emptied = with_row_value(
-        &matrix(),
+        &matrix,
         "SACM23-CP-003",
         "depends_on",
         toml::Value::Array(Vec::new()),
@@ -1246,13 +1272,26 @@ fn lib_api_011_interim_check_reports_a_missing_compliance_point() {
 }
 
 #[test]
-fn lib_api_011_interim_check_reports_a_list_with_no_interim_rows() {
-    let list = replace_all(&list_text(), "Interim(\"", "Interim(r\"");
-    assert_only(
-        "no Interim(\"ROW\") left",
-        &interim_problems(&list, &matrix()),
-        "no-interim-rows",
-        1,
+fn lib_api_011_interim_check_accepts_a_list_with_no_interim_rows() {
+    // Since slice 0073 the real list names none (SACM23-XMI-029).
+    let list = list_text();
+    let named = labelled_rows(&list, "Interim");
+    assert!(
+        named.is_empty(),
+        "{ROW}: {LIST} names an Interim(\"ROW\"): {named:?}"
+    );
+    let problems = interim_problems(&list, &matrix());
+    assert!(
+        problems.is_empty(),
+        "{ROW}: a list with no Interim(\"ROW\") is reported: {problems:#?}"
+    );
+    // And so is a list whose one entry is taken away.
+    let (fixture, planned) = interim_fixture();
+    let emptied = replace_all(&fixture, "Interim(\"", "Interim(r\"");
+    let problems = interim_problems(&emptied, &planned);
+    assert!(
+        problems.is_empty(),
+        "{ROW}: a list with no Interim(\"ROW\") left is reported: {problems:#?}"
     );
 }
 

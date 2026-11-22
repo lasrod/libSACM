@@ -16,8 +16,8 @@ use super::set::ASSERTION_DECLARATION;
 use std::collections::BTreeSet;
 
 use crate::model::{
-    AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    ReferenceEnd, Snapshot, StringAttribute, Text, TextRole,
+    AssertionDeclaration, Document, ElementId, ElementKind, Flag, Href, LangString,
+    MultiLangString, ReferenceEnd, Snapshot, StringAttribute, Text, TextRole,
 };
 
 /// The ids a change creates, changes and deletes, in the order a
@@ -227,13 +227,25 @@ impl NewElement<'_> {
                 name,
                 flags,
                 references,
+                hrefs,
             } => {
                 let held = references
                     .into_iter()
                     .filter(|(_, targets)| !targets.is_empty())
                     .map(|(end, targets)| (end, targets.to_vec()))
                     .collect();
-                document.insert_with_references(parent, kind, id, Some(name.clone()), &flags, held)
+                let name = Some(name.clone());
+                let inserted =
+                    document.insert_with_references(parent, kind, id.clone(), name, &flags, held);
+                if inserted.is_ok() {
+                    if let Some((end, hrefs)) = hrefs {
+                        document.set_hrefs(&id, end, hrefs.to_vec()).expect(
+                            "invariant: the element was just added, its kind owns the end, \
+                             which is not derived, and the plan checked the end's bounds",
+                        );
+                    }
+                }
+                inserted
             }
             Features::Asset {
                 name,
@@ -300,6 +312,10 @@ pub(super) enum Features<'o> {
         /// Each end, one the kind owns, with the ids it holds, within its
         /// bounds; an end with none holds nothing.
         references: Vec<(ReferenceEnd, &'o [ElementId])>,
+        /// The cross-document references of one of those ends, if the
+        /// create gives any, within the end's bounds beside its ids (ADR
+        /// 0040 amendment 1, A5).
+        hrefs: Option<(ReferenceEnd, &'o [Href])>,
     },
     /// The name, string-valued attributes and `location` of an
     /// `ArtifactAsset` kind (ADR 0034 amendment 1).
@@ -347,10 +363,14 @@ pub(super) enum Value<'o> {
     /// The ids an end the element's kind owns is to hold, within its bounds;
     /// its cross-document references are kept.
     References(ReferenceEnd, Vec<ElementId>),
-    /// The ids an end the element's kind owns is to hold, within its bounds,
-    /// and no cross-document reference: what
-    /// [`SetReferences`](super::SetReferences) sets (ADR 0040 D7).
-    Replaced(ReferenceEnd, Vec<ElementId>),
+    /// The ids and the cross-document references an end the element's kind
+    /// owns is to hold, within its bounds: what
+    /// [`SetReferences`](super::SetReferences) sets, replacing both lists
+    /// (ADR 0040 D7, amendment 1 A5).
+    Replaced(ReferenceEnd, Vec<ElementId>, Vec<Href>),
+    /// The cross-document references an end the element's kind owns is to
+    /// hold, within its bounds; its ids are kept.
+    Hrefs(ReferenceEnd, Vec<Href>),
 }
 
 impl Value<'_> {
@@ -384,13 +404,16 @@ impl Value<'_> {
                  keeps only the role's own ids",
             ),
             Self::Text(role, None) => document.remove_text(element, role),
-            Self::Replaced(end, ids) => {
-                document.set_hrefs(element, end, Vec::new()).expect(
-                    "invariant: the plan found the element, and its kind owns the end, which \
-                     is not derived",
-                );
+            Self::Replaced(end, ids, hrefs) => {
+                // The ids first: the hrefs are counted against the ids the
+                // end holds when they are set.
                 Self::References(end, ids).commit(document, element);
+                Self::Hrefs(end, hrefs).commit(document, element);
             }
+            Self::Hrefs(end, hrefs) => document.set_hrefs(element, end, hrefs).expect(
+                "invariant: the plan found the element, its kind owns the end, which is not \
+                 derived, and the ids and hrefs are within its bounds",
+            ),
             Self::References(end, ids) => {
                 let sets = !ids.is_empty();
                 document.set_references(element, end, ids).expect(
