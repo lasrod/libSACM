@@ -806,7 +806,7 @@ fn lib_tool_023_judge_reads_xmllint_exit_codes() {
             Err(format!(
                 "xmllint failed on {file} (exit {status}): warning: failed to load external entity \"x\""
             )),
-            "{ROW}: exit {status} without a `Schemas validity error` line is an error naming the              file, the status and the first stderr line"
+            "{ROW}: exit {status} without a `Schemas validity error` line is an error naming the file, the status and the first stderr line"
         );
     }
     assert!(
@@ -875,7 +875,7 @@ fn lib_tool_023_a_metadata_only_file_must_fail_and_only_on_xmi_elements() {
     assert_eq!(
         judge("foo-xmi-metadata-valid.sacm.xmi", &metadata),
         Ok(Verdict::Invalid(vec![xmi_error(path)])),
-        "{ROW}: foo-xmi-metadata-valid.sacm.xmi is not listed, so an XMI-namespace error makes it          Invalid"
+        "{ROW}: foo-xmi-metadata-valid.sacm.xmi is not listed, so an XMI-namespace error makes it Invalid"
     );
 }
 
@@ -960,6 +960,7 @@ fn lib_tool_023_validate_checks_goldens_then_outputs_in_name_order() {
     ];
     let outputs = [
         "z.sacm.xmi",
+        "Y.sacm.xmi",
         "xmi__xmi-metadata-valid.sacm.xmi",
         "m.sacm.xmi",
         "xmi__golden__xmi-metadata.golden.sacm.xmi",
@@ -985,17 +986,40 @@ fn lib_tool_023_validate_checks_goldens_then_outputs_in_name_order() {
         "ok golden/a.golden.sacm.xmi\n\
          ok golden/b.golden.sacm.xmi\n\
          metadata golden/xmi-metadata.golden.sacm.xmi\n\
+         ok outputs/Y.sacm.xmi\n\
          ok outputs/m.sacm.xmi\n\
          metadata outputs/xmi__golden__xmi-metadata.golden.sacm.xmi\n\
          metadata outputs/xmi__xmi-metadata-valid.sacm.xmi\n\
          ok outputs/z.sacm.xmi\n\
-         schema: 3 golden files and 4 outputs checked: 4 valid, 3 invalid in XMI metadata only\n",
+         schema: 3 golden files and 5 outputs checked: 5 valid, 3 invalid in XMI metadata only\n",
         "{ROW}: one line per file, goldens then outputs in name order, then the summary"
     );
     assert_eq!(
         calls,
         expected_calls(root.path(), &out_dir, &goldens, &outputs),
         "{ROW}: xmllint runs on every golden file, then every output, with the generated schema"
+    );
+}
+
+/// Test 12: one invalid file is enough to fail the check.
+fn assert_one_invalid_file_fails(goldens: &[&str]) {
+    let outputs = ["p.sacm.xmi", "q.sacm.xmi"];
+    let (root, out_dir) = validation_tree("lib-tool-023-one-invalid", goldens, &outputs);
+    let answer = |name: &str| {
+        Ok(if name == "p.sacm.xmi" {
+            failing(name, &[sacm_error(name, 3)])
+        } else {
+            passing(name)
+        })
+    };
+    let (result, _, _) = validate_fake(root.path(), &out_dir, &answer);
+    assert_eq!(
+        result,
+        Err(format!(
+            "1 of 4 files are not valid against the SACM XML Schema\noutputs/p.sacm.xmi: {}",
+            sacm_error("p.sacm.xmi", 3)
+        )),
+        "{ROW}: a single invalid file fails the check"
     );
 }
 
@@ -1057,6 +1081,8 @@ fn lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without
         expected_calls(root.path(), &out_dir, &goldens, &outputs),
         "{ROW}: every file is checked"
     );
+
+    assert_one_invalid_file_fails(&goldens);
 
     // A stale METADATA_ONLY entry fails, and every file is still checked.
     let outputs = [

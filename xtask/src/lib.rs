@@ -140,9 +140,10 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// `args` are the command-line arguments without the program name, for
 /// example `["matrix", "next", "-n", "3"]`. `help`, `--help`, `-h` and no
 /// arguments write the usage text. Paths given to `fetch-spec --dest` and
-/// `schema --out` are resolved against `root`. What a successful command reports goes to `out`,
-/// which is flushed before returning; a failing command writes nothing to
-/// standard error, and the problems `matrix check` finds are in its error.
+/// `schema --out` are resolved against `root`. What a successful command
+/// reports goes to `out`, which is flushed before returning; a failing
+/// command writes nothing to standard error, and the problems `matrix check`
+/// finds are in its error.
 /// `fetch-spec` puts the W3C suite in `<root>/third_party/xmlconf` with or
 /// without `--dest`; `fetch-spec --only xmlconf` fetches only the suite, and
 /// `--only` takes no other value. `fetch-corpus` puts the corpus in

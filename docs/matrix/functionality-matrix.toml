@@ -7994,7 +7994,7 @@ acceptance = [
   "`lib_tool_023_validate_checks_goldens_then_outputs_in_name_order`: in a temporary root with a fake `lint`, the report text is exact, ending `schema: <G> golden files and <O> outputs checked: <V> valid, <M> invalid in XMI metadata only`.",
   "`lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without_goldens`: the three error texts; every file is still checked.",
   "`xtask/tests/run.rs::lib_tool_023_run_dispatches_schema_and_the_usage_lists_it`: `[\"schema\"]`, `[\"schema\",\"--out\",d]`, `[\"schema\",\"validate\"]`, `[\"schema\",\"validate\",\"--out\",d]`; the two usage entries.",
-  "The fixture `crates/sacm/tests/data/sacm23/xmi/xmi-metadata-schema-valid.sacm.xmi` (lowercase `xmi:documentation` with unqualified children) has a strict output that is `ok`. On the PR, the `SACM XML Schema` job's log shows every golden and output checked, and only the two `METADATA_ONLY` files reported `metadata`.",
+  "The fixture `crates/sacm/tests/data/sacm23/xmi/xmi-metadata-schema-valid.sacm.xmi` (lowercase `xmi:documentation` with unqualified children) has a strict output that is `ok`. On the PR, the `SACM XML Schema` job's log shows every golden and output checked, and only the two `METADATA_ONLY` files and their strict outputs reported `metadata`.",
 ]
 code = ["xtask/src/schema.rs", "xtask/src/lib.rs", "xtask/Cargo.toml", ".github/workflows/ci.yml", "docs/adr/0043-the-sacm-xml-schema.md"]
 tests = [

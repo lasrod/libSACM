@@ -49,7 +49,8 @@ schema OMG does not publish.
   metadata as read (ADR 0042), so a file whose header is not valid against XMI.xsd keeps that
   header; OMG's own ptc/22-03-13 is one, with `<xmi:exporter>` inside `xmi:documentation`
   (D31). This is stated as a limit of the claim. CI tolerates exactly the two named fixtures
-  that show it, and only when every error is on an XMI-namespace element.
+  that show it, and their strict outputs, and only when every error is on an XMI-namespace
+  element.
 - **S8. Necessary, not sufficient.** Validity against this schema does not make a document
   conformant. The schema ignores multiplicities and checks no IDREF target (XMI defaults and
   libxml2), and it accepts more than a strict read does. `validate()` (LIB-COMPAT-007) and the

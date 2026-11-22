@@ -78,3 +78,15 @@ defects D29 to D32.
     the Linux CI jobs run that test.
   - The lead corrected the inventory's LIB-COMPAT-004 bullet to ADR 0041 D4: SACM 2.4 is
     refused in both modes, and a SACM-like namespace counts only on a package-kind root.
+- 2026-11-22 verify round 1 (56ae885): LIB-TOOL-004 PASS; LIB-TOOL-023 FAIL. No test had
+  exactly one invalid file, so the mutant `invalid_files > 0` → `> 1` survived. CI's
+  `SACM XML Schema` job passed: 85 valid, 3 invalid in XMI metadata only.
+  - Fix round:
+    - the builder adds the verifier's one-invalid-file block, the `Y.sacm.xmi` file-order
+      case, two assertion messages, the `run` rustdoc, and triage rows for the defensive
+      guards;
+    - the lead fixes the acceptance wording and ADR 0043 S7 ("and their strict outputs"),
+      makes the CI loop log each input that gives no strict output, and logs a follow-up:
+      the PR-diff mutants job has no spec.
+  - The maintainer approved adding `SACM XML Schema` to main's required checks
+    (2026-11-22). The lead added it.
