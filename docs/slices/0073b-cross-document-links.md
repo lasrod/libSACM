@@ -1,8 +1,8 @@
 ---
 slice: 0073b
 name: cross-document-links
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [SACM23-XMI-029, LIB-EDIT-020]
 mode: pr
 base: main (cbb0c09)
@@ -61,3 +61,4 @@ other files (ADR 0040 D9).
   - Fix round 1 is with the builder; the re-verification checks against the round-1 list only.
 - 2026-11-22 fix round 1 (9784412): `HrefError::Character`, `SACM-XMI-010/xsi-type-on-proxy` (arguments in sentence order, ADR 0030 amendment 3, accepted by the lead), the B2/B4/B5 tests and the wording.
 - 2026-11-22 verify round 2 (9784412): LIB-EDIT-020 PASS, SACM23-XMI-029 FAIL. The one gap left: for a cross-file proxy under a spelled role, no test pins the new template's `element` argument (the role as written). The fix is one test assertion, with no code change. LIB-EDIT-020 stays `implemented` until XMI-029 is verified, because it depends on that row. A round 3 needs the maintainer's OK.
+- 2026-11-22 verify round 3 (564f1d5): PASS for SACM23-XMI-029; LIB-EDIT-020's round-2 PASS holds. Record docs/verification/0073b-cross-document-links.md; both rows verified.
