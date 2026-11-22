@@ -239,6 +239,55 @@ jobs:
           python-version: "3.x"
       - run: python -m unittest discover -s .claude/hooks -p "test_*.py" -v
 
+  # LIB-TOOL-023 (ADR 0043): the SACM XML Schema, generated from ptc/22-03-13 and never
+  # committed, and every strict golden file and strict output checked against it with
+  # xmllint. LIB-TOOL-004: the metamodel coverage test. It always runs, with no `changes`
+  # gate, because its xtask tests read docs/. Linux only; not part of the local gate.
+  schema:
+    name: SACM XML Schema
+    runs-on: ubuntu-latest
+    env:
+      SACM_SPEC_DIR: ${{ github.workspace }}/third_party/sacm-2.3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache the OMG references (LIB-TOOL-002)
+        uses: actions/cache@v6
+        with:
+          path: third_party/sacm-2.3
+          key: sacm-spec-${{ hashFiles('xtask/src/fetch.rs') }}
+      - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
+        uses: actions/cache@v6
+        with:
+          path: third_party/xmlconf
+          key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
+      - name: Cache the SACM corpus (LIB-COMPAT-015)
+        uses: actions/cache@v6
+        with:
+          path: third_party/corpus
+          key: corpus-${{ hashFiles('xtask/src/fetch.rs') }}
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: cargo xtask fetch-spec
+      - run: cargo xtask fetch-corpus
+      - run: cargo build -p sacm-cli
+      - name: Strict outputs (tolerant read, strict save) of every fixture and corpus file
+        run: |
+          set -u
+          mkdir -p target/schema/outputs
+          made=0
+          while IFS= read -r f; do
+            out="target/schema/outputs/$(printf '%s' "$f" | sed -e 's#^crates/sacm/tests/data/sacm23/##' -e 's#^third_party/##' -e 's#/#__#g')"
+            rc=0; target/debug/sacm roundtrip "$f" -o "$out" >/dev/null 2>&1 || rc=$?
+            case "$rc" in 0|1|2) ;; *) echo "sacm roundtrip crashed on $f (exit $rc)"; exit 1 ;; esac
+            if [ -f "$out" ]; then made=$((made+1)); else echo "no strict output (exit $rc): $f"; fi
+          done < <( { find crates/sacm/tests/data/sacm23 -type f -name '*.xmi'; find third_party/corpus -type f; } | LC_ALL=C sort )
+          echo "strict outputs written: $made"
+      - run: cargo xtask schema validate
+      - run: cargo test -p xtask --test metamodel --test schema
+
   # Mutation testing of the PR's diff (LIB-QA-007), in four shards. The full
   # sharded run is in mutants.yml. The job only makes sense on pull requests:
   # push and dispatch events have no base ref to diff against. Rebuilding each

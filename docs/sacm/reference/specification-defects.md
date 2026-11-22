@@ -502,6 +502,52 @@ formal/23-05-08 §9.3 (p. 24) says an AssuranceCasePackageInterface is "only all
 
 **Suggested resolution.** Say whether the §7.6.2 and §7.10.2 forms conform, and align production 2c and rule 4e with the answer.
 
+## D29 — Clause 2 defines conformance by a schema OMG does not publish
+
+*Found by libSACM (M6 design, 2026-11-22).*
+
+Every model compliance point is defined by "XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel" (§2.2 to §2.5, pp. 4-5). OMG's SACM 2.3 page lists only the model, `SACM.xml` (ptc/22-03-13); no XML Schema is published (checked 2026-11-21). The clause also has three slips:
+
+- §2.5 (p. 5), the Terminology Model point, repeats §2.4's "the normative MOF metamodel defined in this entire specification", although its unit is "the Terminology::TerminologyPackage element".
+- §2.2 (p. 4) says Argumentation conformance "does not entail support for the Evidence subpackage of SACM", and §2.3 (p. 4) says "The top object of the Evidence package as a unit of interchange shall be the Artifact::ArtifactPackage element". SACM 2.3 has no Evidence package; it is the Artifact package.
+- §2.4 and §2.5 (p. 5) each end with the template sentence "The Conformance clause identifies which clauses of the specification are mandatory (or conditionally mandatory) and which are optional in order for an implementation to claim conformance to the specification."
+
+**This crate** generates the schema itself from ptc/22-03-13 by the XMI 2.5.1 clause 8 rules (`cargo xtask schema`, LIB-TOOL-023; ADR 0043) and does not distribute it. It reads §2.5 as the Terminology package with the Base elements.
+
+**Suggested resolution.** Publish the SACM XML Schema with the model, or state that conformance is to the schema the XMI rules give. Make §2.5 name the Terminology package, replace "Evidence" with "Artifact" in §2.2 and §2.3, and delete the template sentences.
+
+## D30 — XMI 2.5.1 rule 4f gives a schema that rejects the documents production 2a writes
+
+*Found by libSACM (M6 design, 2026-11-22).*
+
+Rule 4f (p. 51) says, for a Class-typed property: "Otherwise the list of candidate types is included: this is the name of the Property type (if not abstract) and the name of any non-abstract subclass. The list is in alphabetical order of immediate subclasses with depth first expansion." Its production (p. 49), and the example of §7.8.6 (p. 19), make that list a choice of element references inside the property's element, so a nested object must be written as `<name><sacm:LangString …/></name>`. Document production 2a (p. 63) says the opposite: "If the object is the value of an attribute or reference, the XMI name is the name of the Property", so the object is written `<name lang="en" …/>`. A schema built by the rules as written rejected 21 of this project's 23 strict golden files (xmllint 2.12.10). §7.8.6 also prints `<ref="ClassType"/>`, which is not XML Schema.
+
+**This crate** replaces rule 4f's list with a *candidate type*: the property's element takes one generated type, `<Type>.candidates`, holding the attributes and children of every class in the list, in the list's order (ADR 0043 S4). It accepts the form production 2a writes, and checks names, enumeration values, ids and structure.
+
+**Suggested resolution.** Align rule 4f with production 2a: give the property element a type that admits each candidate's content under the property's name, with `xmi:type` choosing the class.
+
+> **Note (editorial).** Rule 4e (p. 48) writes `"<xsd:attributeGroup ref='linkAttribs' />"`; XMI.xsd names the group `LinkAttribs`, in the XMI namespace. Rule 4c (p. 48) writes `"<xsd:element ref='xmi:extension'/>"`, while §7.8.3 (pp. 17-18) writes `<xsd:element ref="xmi:Extension"/>`. XMI.xsd declares both elements; this crate admits both (ADR 0043 S6).
+
+## D31 — OMG's own model file is not valid against XMI.xsd in its documentation
+
+*Found by libSACM (M6 design, 2026-11-22).*
+
+XMI.xsd declares Documentation's fields as unqualified local elements (`<xsd:element name="exporter" type="xsd:string"/>`, §7.5.5, p. 11), so they must be written `<exporter>` inside `xmi:documentation`. ptc/22-03-13 writes `<xmi:exporter>` and `<xmi:exporterVersion>` (lines 5-8), so OMG's normative model file is not valid against XMI.xsd. §7.5.3 (p. 10) also says that "The Documentation, Difference, and Extension elements (starting with uppercase) … may only be used if they are root elements, not nested underneath XMI", and XMI.xsd declares no global `Documentation` element at all, only the type and the lowercase `documentation`; an `xmi:Documentation` under `xmi:XMI` fails the wrapper's `<xsd:any processContents="strict"/>`.
+
+**This crate** writes XMI metadata back exactly as it was read (ADR 0042), so a header that arrived invalid stays invalid. The conformance statement states this as a limit, and the schema check tolerates it only for two named fixtures, and only when every error is on an XMI-namespace element (ADR 0043 S7).
+
+**Suggested resolution.** Qualify or unqualify Documentation's fields consistently between §7.5.5, XMI.xsd and OMG's own files, and say whether an uppercase `xmi:Documentation` may appear under `xmi:XMI`.
+
+## D32 — XMI 2.5.1 rule 7 cannot be applied to ptc/22-03-13
+
+*Found by libSACM (M6 design, 2026-11-22).*
+
+Rule 7 (p. 53) declares an Association as `"<xsd:element name='" 7a:AssnElmtName "'>"`, holding "the names of its AssociationEnd XML elements", with "7a. The use of the name of the XML element representing the Association." In ptc/22-03-13 every one of the 46 Associations has an Association-owned end with no name, and 35 of the 46 have no name themselves (11 are named, which D8 uses). No AssociationDef element can be named. This extends D8.
+
+**This crate** does not apply rule 7. Every class-owned end is a property of its class and is declared there (ADR 0043 S5).
+
+**Suggested resolution.** Name the Associations and their ends in the model, or say that rule 7 is not applied to SACM.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

@@ -2,14 +2,14 @@
 
 Clause 2 of formal/23-05-08 defines conformance as the ability to import and export
 XMI documents conforming to the SACM XML Schema, organized into compliance points by
-unit of interchange.
+unit of interchange. No compliance point is claimed yet.
 
-| Compliance point | Unit of interchange | Mandatory | Matrix row | Status |
+| Compliance point | Unit of interchange | Mandatory | Matrix row | Claimed |
 |---|---|---|---|---|
-| Assurance Case Model | `SACM::AssuranceCasePackage` | yes | SACM23-CP-001 | see matrix |
-| Argumentation Model | `Argumentation::ArgumentPackage` | no | SACM23-CP-002 | see matrix |
-| Artifact Model | `Artifact::ArtifactPackage` | no | SACM23-CP-003 | see matrix |
-| Terminology Model | `Terminology::TerminologyPackage` | no | SACM23-CP-004 | see matrix |
+| Assurance Case Model | `SACM::AssuranceCasePackage` | yes | SACM23-CP-001 | no |
+| Argumentation Model | `Argumentation::ArgumentPackage` | no | SACM23-CP-002 | no |
+| Artifact Model | `Artifact::ArtifactPackage` | no | SACM23-CP-003 | no |
+| Terminology Model | `Terminology::TerminologyPackage` | no | SACM23-CP-004 | no |
 | SACM UML Profile | UML models with the SACM profile | no | SACM23-CP-005 | out of scope |
 
 ## What claiming a point means here
@@ -19,9 +19,9 @@ for the classes in its unit of interchange. It may be marked `verified` only whe
 of them are verified, and then it means:
 
 - every conforming document of that unit can be read without loss, in strict mode;
-- every document the library writes in strict mode conforms to the SACM XML Schema
-  (clause 2) and is a valid SACM 2.3 model: strict save refuses a document that
-  `validate()` reports errors for (LIB-COMPAT-007);
+- a strict write gives a document valid against the SACM XML Schema (ADR 0043), apart
+  from XMI metadata that arrived invalid and is written as read; it does not run
+  `validate` (LIB-COMPAT-007);
 - load → save → load is semantically lossless for everything in the unit;
 - the constraints of the governing clauses are checked and reported as diagnostics.
 
