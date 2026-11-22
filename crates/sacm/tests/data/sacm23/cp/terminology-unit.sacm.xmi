@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:TerminologyPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="terms" gid="T-1" interface="terms_api">
+  <name lang="en" content="Blender terminology" />
+  <description xmi:id="terms_d1">
+    <content>
+      <value lang="en" content="The terms of the blender case" />
+    </content>
+  </description>
+  <note xmi:id="terms_n1">
+    <content>
+      <value lang="en" content="Reviewed" />
+    </content>
+  </note>
+  <taggedValue xmi:id="terms_tv1">
+    <content>
+      <value lang="en" content="1.0" />
+    </content>
+    <key>
+      <value lang="en" content="version" />
+    </key>
+  </taggedValue>
+  <terminologyElement xmi:type="sacm:Category" xmi:id="parts">
+    <name lang="en" content="Parts" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Category" xmi:id="sharp_parts" category="parts">
+    <name lang="en" content="Sharp parts" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="any_part" isAbstract="true" value="part">
+    <name lang="en" content="Any part" />
+    <implementationConstraint xmi:id="terms_ic1">
+      <content>
+        <value lang="en" content="Name one part of the blender" />
+      </content>
+    </implementationConstraint>
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="blade" abstractForm="any_part" category="sharp_parts" origin="parts" value="blade" externalReference="https://example.org/glossary#blade">
+    <name lang="en" content="Blade" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="lid" value="lid">
+    <name lang="en" content="Lid" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="interlock_test" value="interlock test">
+    <name lang="en" content="Interlock test" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_guarded" element="blade lid" value="$Blade$ is covered by the $Lid$">
+    <name xmi:type="sacm:ExpressionLangString" lang="en" expression="blade" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:TerminologyGroup" xmi:id="g_guarding" terminologyElement="blade lid">
+    <name lang="en" content="Guarding" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="terms_api" implements="terms">
+    <name lang="en" content="Public terms" />
+    <terminologyElement xmi:type="sacm:Term" xmi:id="api_blade" isCitation="true" citedElement="blade" value="blade">
+      <name lang="en" content="Blade" />
+    </terminologyElement>
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:TerminologyPackage" xmi:id="motor_terms">
+    <name lang="en" content="Motor terminology" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:TerminologyPackageBinding" xmi:id="terms_binding" participantPackage="terms_api motor_terms">
+    <name lang="en" content="Blender and motor terms" />
+  </terminologyElement>
+</sacm:TerminologyPackage>

@@ -3,6 +3,10 @@
 Read, edit, validate and write assurance cases in the
 [OMG Structured Assurance Case Metamodel (SACM) 2.3](https://www.omg.org/spec/SACM/2.3).
 
+It claims the four model compliance points of SACM 2.3 clause 2; the
+[conformance statement](https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md)
+says what that covers.
+
 > **Status: early development.** The API is not stable yet. What is
 > implemented and how it is tested is tracked requirement by requirement in the
 > [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md).

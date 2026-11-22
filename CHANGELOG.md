@@ -168,6 +168,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `implements_href`; an `ExpressionLangString`'s `expression` is an id, `null` or
   `{"href": "…"}`; and `EditError::HrefNotHeld` is `{"type", "code", "end", "href"}`
   [LIB-EDIT-020].
+- The four model compliance points of SACM 2.3 clause 2 (Assurance Case, Argumentation,
+  Artifact and Terminology) are claimed. `docs/sacm/compliance-points.md` is the
+  conformance statement: what the claim covers, the schema it is checked against and its
+  limits [SACM23-CP-001, SACM23-CP-002, SACM23-CP-003, SACM23-CP-004].
 
 ### Changed
 

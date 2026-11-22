@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="args" gid="A-1" interface="args_api">
+  <name lang="en" content="Blender argument" />
+  <description xmi:id="args_d1">
+    <content>
+      <value lang="en" content="Why the blender is safe to use" />
+    </content>
+  </description>
+  <note xmi:id="args_n1">
+    <content>
+      <value lang="en" content="Reviewed" />
+    </content>
+  </note>
+  <taggedValue xmi:id="args_tv1">
+    <content>
+      <value lang="en" content="draft" />
+    </content>
+    <key>
+      <value lang="en" content="status" />
+    </key>
+  </taggedValue>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c_pattern" isAbstract="true">
+    <name lang="en" content="A hazard is mitigated" />
+    <implementationConstraint xmi:id="args_ic1">
+      <content>
+        <value lang="en" content="Name the hazard" />
+      </content>
+    </implementationConstraint>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="c_pattern" metaClaim="c_meta">
+    <name xmi:type="sacm:ExpressionLangString" lang="en">
+      <expression href="terms.sacm.xmi#blade_guarded" />
+    </name>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="needsSupport">
+    <name lang="en" content="The blade stops when the lid is open" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c3" assertionDeclaration="assumed">
+    <name lang="en" content="The user reads the manual" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c4" assertionDeclaration="axiomatic">
+    <name lang="en" content="A stopped blade cannot cut" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c5" assertionDeclaration="defeated">
+    <name lang="en" content="The lid cannot be opened while the motor runs" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c_meta">
+    <name lang="en" content="The argument was reviewed" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1" structure="args">
+    <name lang="en" content="Argument over the interlock" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar1">
+    <name lang="en" content="Interlock test report" />
+    <referencedArtifactElement href="evidence.sacm.xmi#interlock_report" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar2">
+    <name lang="en" content="Interlock testing" />
+    <referencedArtifactElement href="evidence.sacm.xmi#testing" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar3">
+    <name lang="en" content="User manual" />
+    <referencedArtifactElement href="evidence.sacm.xmi#report_file" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" reasoning="r1" source="c2 c4" target="c1">
+    <name lang="en" content="Safe because the blade stops" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i2" isCounter="true" source="c5" target="c2">
+    <name lang="en" content="The lid lock is no support" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" source="ar1" target="c2">
+    <name lang="en" content="Tested" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedContext" xmi:id="x1" source="ar3" target="c3">
+    <name lang="en" content="The manual in scope" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedArtifactSupport" xmi:id="s1" source="ar2" target="ar1">
+    <name lang="en" content="The testing backs the report" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedArtifactContext" xmi:id="y1" source="ar3" target="ar1">
+    <name lang="en" content="The manual scopes the report" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g_interlock" argumentElement="c2 e1">
+    <name lang="en" content="Interlock" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="args_api" implements="args">
+    <name lang="en" content="Public claims" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="api_c1" isCitation="true" citedElement="c1" assertionDeclaration="asCited">
+      <name lang="en" content="The blender is safe to use" />
+    </argumentElement>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentPackageBinding" xmi:id="args_binding" participantPackage="args args_api">
+    <name lang="en" content="Argument binding" />
+  </argumentElement>
+</sacm:ArgumentPackage>
