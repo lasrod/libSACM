@@ -84,22 +84,29 @@ standard leaves a gap:
   SACM-XMI-002 Warning (LIB-COMPAT-004). A SACM 2.4 root, and a root in any other
   namespace or none, is refused in both modes.
 - **What the schema does not check.** The generated schema ignores multiplicities, types
-  Booleans as strings, and accepts under a property any `xmi:type` with the attributes and
-  children of every class the property admits (ADR 0043 S4 and S8), so some documents
-  valid against it are not read as they stand. A strict read refuses, and a tolerant read
-  keeps as preserved content with a Warning: a value given twice for a single-valued
-  property, or a multi-valued property given both as an attribute and as elements
-  (SACM-MULT-001); a Boolean that is no `xsd:boolean` (SACM-ENUM-001); a contained object
-  with no `xmi:type` where its property's type is abstract (SACM-XMI-005). A strict read
-  keeps as preserved content with an Error, so that a strict write refuses the document
-  (SACM-XMI-006), and a tolerant read keeps with a Warning: an `xmi:type` that names no
-  concrete class the property admits, or a root's `xmi:type` that names another class; an
-  attribute or child that the object's class lacks but another class of the property has,
-  such as `isCounter` on a Claim; an `href` or `xmi:idref` on an element that also has
-  content, both on one reference element, or a same-file proxy that names no root (each
-  SACM-XMI-003). The model's spelling `ArtifactAssertedRelationship` as an `xmi:type` is
-  kept by a strict read with a SACM-XMI-013 Error, and read as `ArtifactAssetRelationship`
-  by a tolerant read (SACM23-XMI-009).
+  Booleans as strings, accepts under a property any `xmi:type` with the attributes and
+  children of every class the property admits, lets every object carry an `href` and an
+  `xmi:idref`, and checks no IDREF target (ADR 0043 S4 and S8), so some documents valid
+  against it are not read as they stand.
+  - A strict read refuses, and a tolerant read keeps as preserved content with a Warning: a
+    value given twice for a single-valued property, or a multi-valued property given both
+    as an attribute and as elements (SACM-MULT-001); a Boolean that is no `xsd:boolean`
+    (SACM-ENUM-001); a contained object with no `xmi:type` where its property's type is
+    abstract (SACM-XMI-005).
+  - A strict read keeps as preserved content with an Error, so that a strict write refuses
+    the document (SACM-XMI-006), and a tolerant read keeps with a Warning, content that does
+    not conform where it stands (SACM-XMI-003; the diagnostics catalog lists every case).
+    Among them: an `xmi:type` that names no concrete class the property admits, or a root's
+    `xmi:type` that names another class; an attribute or child that the object's class lacks
+    but another class of the property has, such as `isCounter` on a Claim; an `href` or
+    `xmi:idref` on a root, on a `name`, `content`, `key`, `location` or `value`, or on an
+    element that also has content, and both on one reference element; a same-file proxy
+    that names no root, a root of a class its property or its `xmi:type` does not admit, a
+    root with an `href` or `xmi:idref` of its own, or a root another proxy names too, and
+    each proxy of a cycle.
+  - The model's spelling `ArtifactAssertedRelationship` as an `xmi:type` is kept by a strict
+    read with a SACM-XMI-013 Error, and read as `ArtifactAssetRelationship` by a tolerant
+    read (SACM23-XMI-009).
 - **XMI metadata** (documentation, extensions, differences, `xmi:uuid`, `xmi:label`) is
   written back exactly as read. A strict write checks only its ids and IDREFs; if it was
   otherwise not valid against XMI.xsd when read, it is not valid when written (ADR 0043
@@ -115,9 +122,11 @@ standard leaves a gap:
 - **Encoding.** A read decodes UTF-8 (and so ASCII), UTF-16 with a byte order mark and
   ISO-8859-1 (LIB-COMPAT-016); a document in any other encoding, such as windows-1252, is
   refused in both modes (SACM-XML-002). XML 1.0 §4.3.3 requires only UTF-8 and UTF-16.
-- **Embedded XMI.** SACM packages inside a non-SACM root element are not read: a document
-  element that is neither a SACM package nor `xmi:XMI`, or an element outside SACM and XMI
-  among the roots under `xmi:XMI`, is refused in both modes (SACM-XMI-001).
+- **Roots.** Only SACM packages are read as roots, so SACM packages inside a non-SACM root
+  element are not read: a document element that is neither a SACM package nor `xmi:XMI`, or
+  an element under `xmi:XMI`, outside the XMI namespace, that is not a SACM package (another
+  SACM class such as `sacm:Claim`, or an element outside SACM and XMI), is refused in both
+  modes (SACM-XMI-001).
 - **The check itself.** xmllint does not check that an IDREF names an id; a strict write
   refuses a reference that names no `xmi:id` of its output (LIB-COMPAT-007).
 

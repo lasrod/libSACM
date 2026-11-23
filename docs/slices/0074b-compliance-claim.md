@@ -57,3 +57,5 @@ Left out: the SACM UML Profile point (D-SCOPE).
   - Fix round, docs only:
     - the builder applies the verifier's statement text (Import, what the schema does not check, Encoding, comments and processing instructions, the other points' wording), the crate claim paragraph and two catalog entries;
     - the lead corrects the CP-004 article, CP-002's literal wording and D-STRICT, adds LIB-RT-003 to CP-002 to CP-004, and logs the no-proxy follow-up.
+- 2026-11-23 verify round 2 (a69bc49): FAIL for all four rows, on wording again. The list of schema-valid documents a strict read does not take was still incomplete (an `href` on a root, proxies of a wrong or shared root, a cycle, `sacm:Claim` under `xmi:XMI`). The maintainer allowed a round 3.
+  - The lead applied the verifier's two blocks word for word, which point to the diagnostics catalog as the full list, and its SACM-XMI-003 catalog phrase. Docs only.
