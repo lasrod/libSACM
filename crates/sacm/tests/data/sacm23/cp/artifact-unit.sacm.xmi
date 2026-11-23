@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:ArtifactPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="evidence" gid="E-1" interface="evidence_api">
+  <name lang="en" content="Blender evidence" />
+  <description xmi:id="evidence_d1">
+    <content>
+      <value lang="en" content="What backs the blender argument" />
+    </content>
+  </description>
+  <note xmi:id="evidence_n1">
+    <content>
+      <value lang="en" content="Reviewed" />
+    </content>
+  </note>
+  <taggedValue xmi:id="evidence_tv1">
+    <content>
+      <value lang="en" content="draft" />
+    </content>
+    <key>
+      <value lang="en" content="status" />
+    </key>
+  </taggedValue>
+  <artifactElement xmi:type="sacm:Artifact" xmi:id="report_pattern" isAbstract="true">
+    <name lang="en" content="A test report" />
+    <implementationConstraint xmi:id="evidence_ic1">
+      <content>
+        <value lang="en" content="Name the report" />
+      </content>
+    </implementationConstraint>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Artifact" xmi:id="interlock_report" abstractForm="report_pattern" version="1.2" date="2026-10-01">
+    <name lang="en" content="Interlock test report" />
+    <property xmi:id="confidential">
+      <name lang="en" content="Confidential" />
+    </property>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Activity" xmi:id="testing" startTime="2026-09-29T08:00:00Z" endTime="2026-09-30T16:00:00Z">
+    <name xmi:type="sacm:ExpressionLangString" lang="en">
+      <expression href="terms.sacm.xmi#interlock_test" />
+    </name>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Event" xmi:id="report_issued" date="2026-10-01">
+    <name lang="en" content="Report issued" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Technique" xmi:id="fault_injection">
+    <name lang="en" content="Fault injection" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Participant" xmi:id="test_lab">
+    <name lang="en" content="Test laboratory" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Resource" xmi:id="report_file">
+    <name lang="en" content="Report file" />
+    <location>
+      <value lang="en" content="reports/interlock.pdf" />
+    </location>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="produced_by" source="interlock_report" target="testing test_lab">
+    <name lang="en" content="Produced by" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="g_report" artifactElement="interlock_report report_file">
+    <name lang="en" content="The report" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="evidence_api" implements="evidence">
+    <name lang="en" content="Public evidence" />
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="api_report" isCitation="true" citedElement="interlock_report">
+      <name lang="en" content="Interlock test report" />
+    </artifactElement>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactPackageBinding" xmi:id="evidence_binding" participantPackage="evidence evidence_api">
+    <name lang="en" content="Evidence binding" />
+  </artifactElement>
+</sacm:ArtifactPackage>

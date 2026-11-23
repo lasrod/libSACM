@@ -286,7 +286,7 @@ jobs:
           done < <( { find crates/sacm/tests/data/sacm23 -type f -name '*.xmi'; find third_party/corpus -type f; } | LC_ALL=C sort )
           echo "strict outputs written: $made"
       - run: cargo xtask schema validate
-      - run: cargo test -p xtask --test metamodel --test schema
+      - run: cargo test -p xtask --test metamodel --test schema --test compliance
 
   # Mutation testing of the PR's diff (LIB-QA-007), in four shards. The full
   # sharded run is in mutants.yml. The job only makes sense on pull requests:

@@ -48,7 +48,7 @@ goal = "Package interfaces and bindings for all four package families, with the 
 [[milestone]]
 id = "M6"
 title = "Interoperability and compliance claims"
-goal = "Third-party dialects and corpus, metamodel coverage checked against ptc/22-03-13, resource limits, conversion tooling — and the four model compliance points claimed on verified evidence."
+goal = "Third-party dialects and corpus, metamodel coverage checked against ptc/22-03-13, resource limits, conversion tooling — and the four model compliance points claimed on verified evidence (claimed in slice 0074b; docs/sacm/compliance-points.md)."
 
 [[milestone]]
 id = "M7"
@@ -6133,44 +6133,331 @@ id = "SACM23-CP-002"
 area = "CP"
 milestone = "M6"
 title = "Argumentation Model compliance point"
-requirement = "Import and export XMI documents whose unit of interchange is Argumentation::ArgumentPackage, covering every Argumentation and Base feature, with constraints validated and lossless round trip."
-source = "formal/23-05-08 clause 2"
+requirement = "The Argumentation Model compliance point of SACM 2.3 §2.2 is claimed. A strict read reads without loss every document whose root is an ArgumentPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 11. The unit document `argumentation-unit.sacm.xmi` holds every concrete class and every property that the Argumentation and Base packages of ptc/22-03-13 declare (with the recorded corrections) and every AssertionDeclaration literal (asserted, the default, by an Assertion that gives none); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md."
+source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
-status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-021", "SACM23-VAL-022", "SACM23-XMI-009", "SACM23-XMI-029", "SACM23-VAL-023"]
+code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/argumentation-unit.sacm.xmi"]
+tests = [
+  "crates/sacm/tests/compliance_points.rs::sacm23_cp_002_the_argumentation_unit_document_reads_validates_and_is_its_own_strict_output",
+  "xtask/tests/compliance.rs::sacm23_cp_002_the_argumentation_unit_document_holds_every_class_and_property_of_the_model",
+]
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
+depends_on = [
+  "SACM23-BASE-001",
+  "SACM23-BASE-002",
+  "SACM23-BASE-003",
+  "SACM23-BASE-004",
+  "SACM23-BASE-005",
+  "SACM23-BASE-006",
+  "SACM23-BASE-007",
+  "SACM23-BASE-008",
+  "SACM23-BASE-009",
+  "SACM23-XMI-001",
+  "SACM23-XMI-002",
+  "SACM23-XMI-003",
+  "SACM23-XMI-004",
+  "SACM23-XMI-005",
+  "SACM23-XMI-006",
+  "SACM23-XMI-007",
+  "SACM23-XMI-008",
+  "SACM23-XMI-011",
+  "SACM23-XMI-012",
+  "SACM23-XMI-013",
+  "SACM23-XMI-014",
+  "SACM23-XMI-015",
+  "SACM23-XMI-016",
+  "SACM23-XMI-018",
+  "SACM23-XMI-019",
+  "SACM23-XMI-020",
+  "SACM23-XMI-021",
+  "SACM23-XMI-022",
+  "SACM23-XMI-024",
+  "SACM23-XMI-025",
+  "SACM23-XMI-026",
+  "SACM23-XMI-027",
+  "SACM23-XMI-029",
+  "SACM23-XMI-030",
+  "SACM23-VAL-001",
+  "SACM23-VAL-002",
+  "SACM23-VAL-003",
+  "SACM23-VAL-004",
+  "SACM23-VAL-007",
+  "SACM23-VAL-008",
+  "SACM23-VAL-009",
+  "SACM23-VAL-010",
+  "SACM23-VAL-011",
+  "SACM23-VAL-013",
+  "SACM23-VAL-014",
+  "SACM23-VAL-018",
+  "SACM23-VAL-020",
+  "SACM23-VAL-021",
+  "SACM23-VAL-022",
+  "SACM23-VAL-023",
+  "LIB-RT-002",
+  "LIB-COMPAT-001",
+  "LIB-COMPAT-007",
+  "LIB-API-008",
+  "LIB-API-011",
+  "LIB-SEC-001",
+  "LIB-SEC-003",
+  "LIB-TOOL-004",
+  "LIB-TOOL-023",
+  "SACM23-ARG-001",
+  "SACM23-ARG-002",
+  "SACM23-ARG-003",
+  "SACM23-ARG-004",
+  "SACM23-ARG-005",
+  "SACM23-ARG-006",
+  "SACM23-ARG-007",
+  "SACM23-ARG-008",
+  "SACM23-ARG-009",
+  "SACM23-ARG-010",
+  "SACM23-ARG-011",
+  "SACM23-ARG-012",
+  "SACM23-ARG-013",
+  "SACM23-ARG-014",
+  "SACM23-ARG-015",
+  "SACM23-XMI-009",
+  "SACM23-XMI-017",
+  "SACM23-VAL-005",
+  "SACM23-VAL-006",
+  "SACM23-VAL-012",
+  "SACM23-VAL-016",
+  "SACM23-VAL-019",
+  "LIB-RT-003",
+]
+acceptance = [
+  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_002_the_argumentation_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/argumentation-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `ArgumentPackage`.",
+  "`xtask/tests/compliance.rs::sacm23_cp_002_the_argumentation_unit_document_holds_every_class_and_property_of_the_model`: the completeness walk of the design brief over packages {Argumentation, Base}: 12 + 7 concrete classes seen; every property declared by a class of those packages seen; `needsSupport`, `assumed`, `axiomatic`, `defeated` and `asCited` each seen; one Assertion with no `assertionDeclaration`. Skipped without the spec, as the corpus test is.",
+  "CI's `SACM XML Schema` job prints `ok outputs/cp__argumentation-unit.sacm.xmi`.",
+  "`docs/sacm/compliance-points.md` is the conformance statement of section 5 of the design brief.",
+]
 
 [[row]]
 id = "SACM23-CP-003"
 area = "CP"
 milestone = "M6"
 title = "Artifact Model compliance point"
-requirement = "Import and export XMI documents whose unit of interchange is Artifact::ArtifactPackage, covering every Artifact and Base feature, with constraints validated and lossless round trip. A file using the ptc/22-03-13 spellings `ArtifactAssertedRelationship` and `occurece` is read tolerantly as SACM23-XMI-009 states; a strict read keeps them with SACM-XMI-013 Errors (the maintainer's M3 decision 3; D-STRICT's one exception, spec defects D17 and D19)."
-source = "formal/23-05-08 clause 2"
+requirement = "The Artifact Model compliance point of SACM 2.3 §2.3 is claimed. A strict read reads without loss every document whose root is an ArtifactPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 12. The unit document `artifact-unit.sacm.xmi` holds every concrete class and every property that the Artifact and Base packages of ptc/22-03-13 declare (with the recorded corrections); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md. A file using the ptc/22-03-13 spellings `ArtifactAssertedRelationship` and `occurece` is read tolerantly as SACM23-XMI-009 states; a strict read keeps them with SACM-XMI-013 Errors (D-STRICT's one exception, spec defects D17 and D19); the schema of LIB-TOOL-023 spells them as the text does."
+source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
-status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-XMI-009", "SACM23-VAL-017", "SACM23-XMI-029", "SACM23-VAL-023"]
+code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/artifact-unit.sacm.xmi"]
+tests = [
+  "crates/sacm/tests/compliance_points.rs::sacm23_cp_003_the_artifact_unit_document_reads_validates_and_is_its_own_strict_output",
+  "xtask/tests/compliance.rs::sacm23_cp_003_the_artifact_unit_document_holds_every_class_and_property_of_the_model",
+]
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
+depends_on = [
+  "SACM23-BASE-001",
+  "SACM23-BASE-002",
+  "SACM23-BASE-003",
+  "SACM23-BASE-004",
+  "SACM23-BASE-005",
+  "SACM23-BASE-006",
+  "SACM23-BASE-007",
+  "SACM23-BASE-008",
+  "SACM23-BASE-009",
+  "SACM23-XMI-001",
+  "SACM23-XMI-002",
+  "SACM23-XMI-003",
+  "SACM23-XMI-004",
+  "SACM23-XMI-005",
+  "SACM23-XMI-006",
+  "SACM23-XMI-007",
+  "SACM23-XMI-008",
+  "SACM23-XMI-011",
+  "SACM23-XMI-012",
+  "SACM23-XMI-013",
+  "SACM23-XMI-014",
+  "SACM23-XMI-015",
+  "SACM23-XMI-016",
+  "SACM23-XMI-018",
+  "SACM23-XMI-019",
+  "SACM23-XMI-020",
+  "SACM23-XMI-021",
+  "SACM23-XMI-022",
+  "SACM23-XMI-024",
+  "SACM23-XMI-025",
+  "SACM23-XMI-026",
+  "SACM23-XMI-027",
+  "SACM23-XMI-029",
+  "SACM23-XMI-030",
+  "SACM23-VAL-001",
+  "SACM23-VAL-002",
+  "SACM23-VAL-003",
+  "SACM23-VAL-004",
+  "SACM23-VAL-007",
+  "SACM23-VAL-008",
+  "SACM23-VAL-009",
+  "SACM23-VAL-010",
+  "SACM23-VAL-011",
+  "SACM23-VAL-013",
+  "SACM23-VAL-014",
+  "SACM23-VAL-018",
+  "SACM23-VAL-020",
+  "SACM23-VAL-021",
+  "SACM23-VAL-022",
+  "SACM23-VAL-023",
+  "LIB-RT-002",
+  "LIB-COMPAT-001",
+  "LIB-COMPAT-007",
+  "LIB-API-008",
+  "LIB-API-011",
+  "LIB-SEC-001",
+  "LIB-SEC-003",
+  "LIB-TOOL-004",
+  "LIB-TOOL-023",
+  "SACM23-ART-001",
+  "SACM23-ART-002",
+  "SACM23-ART-003",
+  "SACM23-ART-004",
+  "SACM23-ART-005",
+  "SACM23-ART-006",
+  "SACM23-ART-007",
+  "SACM23-ART-008",
+  "SACM23-ART-009",
+  "SACM23-ART-010",
+  "SACM23-ART-011",
+  "SACM23-ART-012",
+  "SACM23-ART-013",
+  "SACM23-XMI-009",
+  "LIB-RT-003",
+]
+acceptance = [
+  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_003_the_artifact_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/artifact-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `ArtifactPackage`.",
+  "`xtask/tests/compliance.rs::sacm23_cp_003_the_artifact_unit_document_holds_every_class_and_property_of_the_model`: the completeness walk of the design brief over packages {Artifact, Base}: 12 + 7 concrete classes seen; every property declared by a class of those packages seen. Skipped without the spec, as the corpus test is.",
+  "CI's `SACM XML Schema` job prints `ok outputs/cp__artifact-unit.sacm.xmi`.",
+  "`docs/sacm/compliance-points.md` is the conformance statement of section 5 of the design brief.",
+]
 
 [[row]]
 id = "SACM23-CP-004"
 area = "CP"
 milestone = "M6"
 title = "Terminology Model compliance point"
-requirement = "Import and export XMI documents whose unit of interchange is Terminology::TerminologyPackage, covering every Terminology and Base feature, with constraints validated and lossless round trip."
-source = "formal/23-05-08 clause 2"
+requirement = "The Terminology Model compliance point of SACM 2.3 §2.5 is claimed. A strict read reads without loss every document whose root is a TerminologyPackage (or its interface or binding) in the pinned namespace, valid against the SACM XML Schema of LIB-TOOL-023, within the read limits. A strict write of any such document is valid against that schema. Read, write, read gives an equal document. `validate` reports the constraints of clauses 8 and 10. The unit document `terminology-unit.sacm.xmi` holds every concrete class and every property that the Terminology and Base packages of ptc/22-03-13 declare (with the recorded corrections); it reads and validates with no diagnostic and is its own strict output. The limits are those of docs/sacm/compliance-points.md. §2.5 says 'this entire specification', copied from §2.4 (spec defect D29); the unit is the TerminologyPackage."
+source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
-status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021", "SACM23-XMI-028", "SACM23-XMI-029", "SACM23-VAL-023"]
+code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/terminology-unit.sacm.xmi"]
+tests = [
+  "crates/sacm/tests/compliance_points.rs::sacm23_cp_004_the_terminology_unit_document_reads_validates_and_is_its_own_strict_output",
+  "xtask/tests/compliance.rs::sacm23_cp_004_the_terminology_unit_document_holds_every_class_and_property_of_the_model",
+]
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
+depends_on = [
+  "SACM23-BASE-001",
+  "SACM23-BASE-002",
+  "SACM23-BASE-003",
+  "SACM23-BASE-004",
+  "SACM23-BASE-005",
+  "SACM23-BASE-006",
+  "SACM23-BASE-007",
+  "SACM23-BASE-008",
+  "SACM23-BASE-009",
+  "SACM23-XMI-001",
+  "SACM23-XMI-002",
+  "SACM23-XMI-003",
+  "SACM23-XMI-004",
+  "SACM23-XMI-005",
+  "SACM23-XMI-006",
+  "SACM23-XMI-007",
+  "SACM23-XMI-008",
+  "SACM23-XMI-011",
+  "SACM23-XMI-012",
+  "SACM23-XMI-013",
+  "SACM23-XMI-014",
+  "SACM23-XMI-015",
+  "SACM23-XMI-016",
+  "SACM23-XMI-018",
+  "SACM23-XMI-019",
+  "SACM23-XMI-020",
+  "SACM23-XMI-021",
+  "SACM23-XMI-022",
+  "SACM23-XMI-024",
+  "SACM23-XMI-025",
+  "SACM23-XMI-026",
+  "SACM23-XMI-027",
+  "SACM23-XMI-029",
+  "SACM23-XMI-030",
+  "SACM23-VAL-001",
+  "SACM23-VAL-002",
+  "SACM23-VAL-003",
+  "SACM23-VAL-004",
+  "SACM23-VAL-007",
+  "SACM23-VAL-008",
+  "SACM23-VAL-009",
+  "SACM23-VAL-010",
+  "SACM23-VAL-011",
+  "SACM23-VAL-013",
+  "SACM23-VAL-014",
+  "SACM23-VAL-018",
+  "SACM23-VAL-020",
+  "SACM23-VAL-021",
+  "SACM23-VAL-022",
+  "SACM23-VAL-023",
+  "LIB-RT-002",
+  "LIB-COMPAT-001",
+  "LIB-COMPAT-007",
+  "LIB-API-008",
+  "LIB-API-011",
+  "LIB-SEC-001",
+  "LIB-SEC-003",
+  "LIB-TOOL-004",
+  "LIB-TOOL-023",
+  "SACM23-TERM-001",
+  "SACM23-TERM-002",
+  "SACM23-TERM-003",
+  "SACM23-TERM-004",
+  "SACM23-TERM-005",
+  "SACM23-TERM-006",
+  "SACM23-TERM-007",
+  "SACM23-TERM-008",
+  "SACM23-XMI-028",
+  "SACM23-VAL-017",
+  "LIB-RT-003",
+]
+acceptance = [
+  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_004_the_terminology_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/terminology-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is a `TerminologyPackage`.",
+  "`xtask/tests/compliance.rs::sacm23_cp_004_the_terminology_unit_document_holds_every_class_and_property_of_the_model`: the completeness walk of the design brief over packages {Terminology, Base}: 7 + 7 concrete classes seen; every property declared by a class of those packages seen. Skipped without the spec, as the corpus test is.",
+  "CI's `SACM XML Schema` job prints `ok outputs/cp__terminology-unit.sacm.xmi`.",
+  "`docs/sacm/compliance-points.md` is the conformance statement of section 5 of the design brief.",
+]
 
 [[row]]
 id = "SACM23-CP-001"
 area = "CP"
 milestone = "M6"
 title = "Assurance Case Model compliance point (mandatory)"
-requirement = "Import and export XMI documents whose unit of interchange is SACM::AssuranceCasePackage, including nested assurance case packages, their interfaces and bindings, and all contained argumentation, artifact and terminology packages."
-source = "formal/23-05-08 clause 2"
+requirement = "The mandatory Assurance Case Model compliance point of SACM 2.3 §2.4 is claimed: the same four properties as SACM23-CP-002 to -004 (strict import without loss, schema-valid strict export, lossless round trip, constraints reported by `validate`) for every document whose root is an AssuranceCasePackage (or its interface or binding), with nested assurance case packages and the argument, artifact and terminology packages in them. `assurance-case-unit.sacm.xmi` holds every concrete class (41) and every property (60 in ptc/22-03-13, plus `Resource.location`) of the whole model. The limits are those of docs/sacm/compliance-points.md."
+source = "formal/23-05-08 clause 2 (pp. 4-5), quoted in docs/sacm/compliance-points.md; XMI 2.5.1 §2.2.1, clause 8; M6 decisions Q1 (the maintainer, 2026-11-19); ADR 0043; design brief target/slice-0074-design.md sections 2 and 5"
 kind = "compliance"
-status = "planned"
-depends_on = ["SACM23-CP-002", "SACM23-CP-003", "SACM23-CP-004", "SACM23-AC-001", "SACM23-AC-002", "SACM23-AC-003", "SACM23-VAL-015", "LIB-COMPAT-005", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-027", "SACM23-XMI-029"]
+code = ["docs/sacm/compliance-points.md", "crates/sacm/tests/data/sacm23/cp/assurance-case-unit.sacm.xmi", "README.md", "crates/sacm/README.md", "crates/sacm/src/lib.rs"]
+tests = [
+  "crates/sacm/tests/compliance_points.rs::sacm23_cp_001_the_assurance_case_unit_document_reads_validates_and_is_its_own_strict_output",
+  "xtask/tests/compliance.rs::sacm23_cp_001_the_assurance_case_unit_document_holds_every_class_and_property_of_the_model",
+]
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
+depends_on = [
+  "SACM23-CP-002",
+  "SACM23-CP-003",
+  "SACM23-CP-004",
+  "SACM23-AC-001",
+  "SACM23-AC-002",
+  "SACM23-AC-003",
+  "SACM23-VAL-015",
+  "SACM23-XMI-027",
+]
+acceptance = [
+  "`crates/sacm/tests/compliance_points.rs::sacm23_cp_001_the_assurance_case_unit_document_reads_validates_and_is_its_own_strict_output`: a strict `xmi::read` of `crates/sacm/tests/data/sacm23/cp/assurance-case-unit.sacm.xmi` gives no diagnostic and `has_preserved_content() == false`; `validate` returns none; a default `xmi::write` returns the fixture's bytes exactly; a tolerant read gives a `semantic_compare`-equal document; the root is an `AssuranceCasePackage`.",
+  "`xtask/tests/compliance.rs::sacm23_cp_001_the_assurance_case_unit_document_holds_every_class_and_property_of_the_model`: the completeness walk of the design brief over packages {Base, AssuranceCase, Artifact, Argumentation, Terminology}: 41 concrete classes seen; every property declared by a class of those packages seen. Skipped without the spec, as the corpus test is.",
+  "CI's `SACM XML Schema` job prints `ok outputs/cp__assurance-case-unit.sacm.xmi`.",
+  "`docs/sacm/compliance-points.md` is the conformance statement of section 5 of the design brief.",
+  "README.md's first paragraph, crates/sacm/README.md and the crate documentation (crates/sacm/src/lib.rs) carry the \"after\" wording of section 5 of the design brief; CHANGELOG.md has the `### Added` entry of section 6.",
+]
 
 [[row]]
 id = "SACM23-CP-005"

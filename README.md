@@ -1,8 +1,10 @@
 # libSACM
 
-A Rust library for **OMG SACM 2.3**, the [Structured Assurance Case
-Metamodel](https://www.omg.org/spec/SACM/2.3). The goal: read, validate, edit and write
-assurance cases as standard XMI.
+A Rust library that implements **OMG SACM 2.3**, the [Structured Assurance Case
+Metamodel](https://www.omg.org/spec/SACM/2.3): it reads, validates, edits and writes
+assurance cases as standard XMI. It claims the standard's four model compliance points
+(Assurance Case, Argumentation, Artifact and Terminology); the [conformance
+statement](docs/sacm/compliance-points.md) says what that covers and how it is checked.
 
 [![CI](https://github.com/lasrod/libSACM/actions/workflows/ci.yml/badge.svg)](https://github.com/lasrod/libSACM/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

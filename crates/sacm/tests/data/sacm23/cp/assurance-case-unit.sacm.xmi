@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case" gid="C-1" interface="case_api">
+  <name lang="en" content="Blender assurance case" />
+  <description xmi:id="case_d1">
+    <content>
+      <value lang="en" content="The assurance case of the kitchen blender" />
+    </content>
+  </description>
+  <note xmi:id="case_n1">
+    <content>
+      <value lang="en" content="Reviewed" />
+    </content>
+  </note>
+  <taggedValue xmi:id="case_tv1">
+    <content>
+      <value lang="en" content="draft" />
+    </content>
+    <key>
+      <value lang="en" content="status" />
+    </key>
+  </taggedValue>
+  <terminologyPackage xmi:id="terms" gid="T-1" interface="terms_api">
+    <name lang="en" content="Blender terminology" />
+    <description xmi:id="terms_d1">
+      <content>
+        <value lang="en" content="The terms of the blender case" />
+      </content>
+    </description>
+    <note xmi:id="terms_n1">
+      <content>
+        <value lang="en" content="Reviewed" />
+      </content>
+    </note>
+    <taggedValue xmi:id="terms_tv1">
+      <content>
+        <value lang="en" content="1.0" />
+      </content>
+      <key>
+        <value lang="en" content="version" />
+      </key>
+    </taggedValue>
+    <terminologyElement xmi:type="sacm:Category" xmi:id="parts">
+      <name lang="en" content="Parts" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Category" xmi:id="sharp_parts" category="parts">
+      <name lang="en" content="Sharp parts" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="any_part" isAbstract="true" value="part">
+      <name lang="en" content="Any part" />
+      <implementationConstraint xmi:id="terms_ic1">
+        <content>
+          <value lang="en" content="Name one part of the blender" />
+        </content>
+      </implementationConstraint>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" abstractForm="any_part" category="sharp_parts" origin="parts" value="blade" externalReference="https://example.org/glossary#blade">
+      <name lang="en" content="Blade" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="lid" value="lid">
+      <name lang="en" content="Lid" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="interlock_test" value="interlock test">
+      <name lang="en" content="Interlock test" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_guarded" element="blade lid" value="$Blade$ is covered by the $Lid$">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="blade" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyGroup" xmi:id="g_guarding" terminologyElement="blade lid">
+      <name lang="en" content="Guarding" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="terms_api" implements="terms">
+      <name lang="en" content="Public terms" />
+      <terminologyElement xmi:type="sacm:Term" xmi:id="api_blade" isCitation="true" citedElement="blade" value="blade">
+        <name lang="en" content="Blade" />
+      </terminologyElement>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackage" xmi:id="motor_terms">
+      <name lang="en" content="Motor terminology" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageBinding" xmi:id="terms_binding" participantPackage="terms_api motor_terms">
+      <name lang="en" content="Blender and motor terms" />
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage xmi:id="args" gid="A-1" interface="args_api">
+    <name lang="en" content="Blender argument" />
+    <description xmi:id="args_d1">
+      <content>
+        <value lang="en" content="Why the blender is safe to use" />
+      </content>
+    </description>
+    <note xmi:id="args_n1">
+      <content>
+        <value lang="en" content="Reviewed" />
+      </content>
+    </note>
+    <taggedValue xmi:id="args_tv1">
+      <content>
+        <value lang="en" content="draft" />
+      </content>
+      <key>
+        <value lang="en" content="status" />
+      </key>
+    </taggedValue>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c_pattern" isAbstract="true">
+      <name lang="en" content="A hazard is mitigated" />
+      <implementationConstraint xmi:id="args_ic1">
+        <content>
+          <value lang="en" content="Name the hazard" />
+        </content>
+      </implementationConstraint>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="c_pattern" metaClaim="c_meta">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="blade_guarded" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="needsSupport">
+      <name lang="en" content="The blade stops when the lid is open" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3" assertionDeclaration="assumed">
+      <name lang="en" content="The user reads the manual" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c4" assertionDeclaration="axiomatic">
+      <name lang="en" content="A stopped blade cannot cut" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c5" assertionDeclaration="defeated">
+      <name lang="en" content="The lid cannot be opened while the motor runs" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c_meta">
+      <name lang="en" content="The argument was reviewed" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1" structure="args">
+      <name lang="en" content="Argument over the interlock" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar1" referencedArtifactElement="interlock_report">
+      <name lang="en" content="Interlock test report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar2" referencedArtifactElement="testing">
+      <name lang="en" content="Interlock testing" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="ar3" referencedArtifactElement="report_file">
+      <name lang="en" content="User manual" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" reasoning="r1" source="c2 c4" target="c1">
+      <name lang="en" content="Safe because the blade stops" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i2" isCounter="true" source="c5" target="c2">
+      <name lang="en" content="The lid lock is no support" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" source="ar1" target="c2">
+      <name lang="en" content="Tested" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedContext" xmi:id="x1" source="ar3" target="c3">
+      <name lang="en" content="The manual in scope" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactSupport" xmi:id="s1" source="ar2" target="ar1">
+      <name lang="en" content="The testing backs the report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactContext" xmi:id="y1" source="ar3" target="ar1">
+      <name lang="en" content="The manual scopes the report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g_interlock" argumentElement="c2 e1">
+      <name lang="en" content="Interlock" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="args_api" implements="args">
+      <name lang="en" content="Public claims" />
+      <argumentElement xmi:type="sacm:Claim" xmi:id="api_c1" isCitation="true" citedElement="c1" assertionDeclaration="asCited">
+        <name lang="en" content="The blender is safe to use" />
+      </argumentElement>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageBinding" xmi:id="args_binding" participantPackage="args args_api">
+      <name lang="en" content="Argument binding" />
+    </argumentElement>
+  </argumentPackage>
+  <artifactPackage xmi:id="evidence" gid="E-1" interface="evidence_api">
+    <name lang="en" content="Blender evidence" />
+    <description xmi:id="evidence_d1">
+      <content>
+        <value lang="en" content="What backs the blender argument" />
+      </content>
+    </description>
+    <note xmi:id="evidence_n1">
+      <content>
+        <value lang="en" content="Reviewed" />
+      </content>
+    </note>
+    <taggedValue xmi:id="evidence_tv1">
+      <content>
+        <value lang="en" content="draft" />
+      </content>
+      <key>
+        <value lang="en" content="status" />
+      </key>
+    </taggedValue>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="report_pattern" isAbstract="true">
+      <name lang="en" content="A test report" />
+      <implementationConstraint xmi:id="evidence_ic1">
+        <content>
+          <value lang="en" content="Name the report" />
+        </content>
+      </implementationConstraint>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="interlock_report" abstractForm="report_pattern" version="1.2" date="2026-10-01">
+      <name lang="en" content="Interlock test report" />
+      <property xmi:id="confidential">
+        <name lang="en" content="Confidential" />
+      </property>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Activity" xmi:id="testing" startTime="2026-09-29T08:00:00Z" endTime="2026-09-30T16:00:00Z">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="interlock_test" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Event" xmi:id="report_issued" date="2026-10-01">
+      <name lang="en" content="Report issued" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Technique" xmi:id="fault_injection">
+      <name lang="en" content="Fault injection" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Participant" xmi:id="test_lab">
+      <name lang="en" content="Test laboratory" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Resource" xmi:id="report_file">
+      <name lang="en" content="Report file" />
+      <location>
+        <value lang="en" content="reports/interlock.pdf" />
+      </location>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="produced_by" source="interlock_report" target="testing test_lab">
+      <name lang="en" content="Produced by" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="g_report" artifactElement="interlock_report report_file">
+      <name lang="en" content="The report" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="evidence_api" implements="evidence">
+      <name lang="en" content="Public evidence" />
+      <artifactElement xmi:type="sacm:Artifact" xmi:id="api_report" isCitation="true" citedElement="interlock_report">
+        <name lang="en" content="Interlock test report" />
+      </artifactElement>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageBinding" xmi:id="evidence_binding" participantPackage="evidence evidence_api">
+      <name lang="en" content="Evidence binding" />
+    </artifactElement>
+  </artifactPackage>
+  <assuranceCasePackage xmi:id="motor_case">
+    <name lang="en" content="Motor assurance case" />
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="case_api" implements="case">
+    <name lang="en" content="Public case" />
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageBinding" xmi:id="case_binding" participantPackage="case_api motor_case">
+    <name lang="en" content="Blender and motor cases" />
+  </assuranceCasePackage>
+</sacm:AssuranceCasePackage>

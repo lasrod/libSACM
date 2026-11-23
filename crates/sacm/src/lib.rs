@@ -1,6 +1,13 @@
 //! Read, edit, validate and write assurance cases in the
 //! [OMG Structured Assurance Case Metamodel (SACM) 2.3][sacm].
 //!
+//! It claims the four model compliance points of SACM 2.3 clause 2 (Assurance
+//! Case, Argumentation, Artifact and Terminology): it reads and writes XMI
+//! documents valid against the SACM XML Schema, with that package as the top
+//! object. The
+//! [conformance statement](https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md)
+//! says what that covers and where it stops.
+//!
 //! An assurance case is a structured argument, backed by evidence, that a
 //! system is acceptably safe, secure or otherwise fit for its purpose. In
 //! SACM, the argument is made of claims, the relationships between them and

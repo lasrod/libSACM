@@ -76,10 +76,12 @@ Load the one that matches the task.
 
 | Point | Unit of interchange | Status in this project |
 |---|---|---|
-| Assurance Case Model (mandatory) | `AssuranceCasePackage` | target |
-| Argumentation Model | `ArgumentPackage` | target |
-| Artifact Model | `ArtifactPackage` | target |
-| Terminology Model | `TerminologyPackage` | target |
+| Assurance Case Model (mandatory) | `AssuranceCasePackage` | claimed (SACM23-CP-001) |
+| Argumentation Model | `ArgumentPackage` | claimed (SACM23-CP-002) |
+| Artifact Model | `ArtifactPackage` | claimed (SACM23-CP-003) |
+| Terminology Model | `TerminologyPackage` | claimed (SACM23-CP-004) |
 | SACM UML Profile | UML models | out of scope |
 
-A compliance point is claimed only when every matrix row it depends on is verified.
+A compliance point is claimed only while every matrix row it depends on is verified. The
+four were claimed in slice 0074b; `docs/sacm/compliance-points.md` is the conformance
+statement, and "the SACM XML Schema" is the one ADR 0043 generates.
