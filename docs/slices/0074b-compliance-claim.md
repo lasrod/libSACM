@@ -1,8 +1,8 @@
 ---
 slice: 0074b
 name: compliance-claim
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [SACM23-CP-001, SACM23-CP-002, SACM23-CP-003, SACM23-CP-004]
 mode: pr
 base: main (58283c5)
@@ -61,3 +61,4 @@ Left out: the SACM UML Profile point (D-SCOPE).
   - The lead applied the verifier's two blocks word for word, which point to the diagnostics catalog as the full list, and its SACM-XMI-003 catalog phrase. Docs only.
 - 2026-11-23 verify round 3 (fe32553): FAIL for all four rows, on one more corner. A nested `xmi:XMI` inside `xmi:XMI` is schema-valid and refused by a strict read, but the text said every SACM-XMI-003 case is "kept with an Error". The maintainer allowed a round 4 with a general sentence.
   - The lead applied the verifier's nested-`xmi:XMI` phrase and its catalog phrase (an empty reference element), and named that case in the list. The SACM-XMI-003 outcome is now worded generally: a strict read refuses such content or keeps it with an Error, as the catalog says for each case.
+- 2026-11-23 verify round 4 (168c6bb): PASS for all four rows. Record docs/verification/0074b-compliance-claim.md; the four points are verified and claimed. The lead updated the sacm-expert skill table (claimed) and the M6 goal.

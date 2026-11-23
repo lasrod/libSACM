@@ -48,7 +48,7 @@ goal = "Package interfaces and bindings for all four package families, with the 
 [[milestone]]
 id = "M6"
 title = "Interoperability and compliance claims"
-goal = "Third-party dialects and corpus, metamodel coverage checked against ptc/22-03-13, resource limits, conversion tooling — and the four model compliance points claimed on verified evidence."
+goal = "Third-party dialects and corpus, metamodel coverage checked against ptc/22-03-13, resource limits, conversion tooling — and the four model compliance points claimed on verified evidence (claimed in slice 0074b; docs/sacm/compliance-points.md)."
 
 [[milestone]]
 id = "M7"
@@ -6141,7 +6141,8 @@ tests = [
   "crates/sacm/tests/compliance_points.rs::sacm23_cp_002_the_argumentation_unit_document_reads_validates_and_is_its_own_strict_output",
   "xtask/tests/compliance.rs::sacm23_cp_002_the_argumentation_unit_document_holds_every_class_and_property_of_the_model",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
 depends_on = [
   "SACM23-BASE-001",
   "SACM23-BASE-002",
@@ -6246,7 +6247,8 @@ tests = [
   "crates/sacm/tests/compliance_points.rs::sacm23_cp_003_the_artifact_unit_document_reads_validates_and_is_its_own_strict_output",
   "xtask/tests/compliance.rs::sacm23_cp_003_the_artifact_unit_document_holds_every_class_and_property_of_the_model",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
 depends_on = [
   "SACM23-BASE-001",
   "SACM23-BASE-002",
@@ -6343,7 +6345,8 @@ tests = [
   "crates/sacm/tests/compliance_points.rs::sacm23_cp_004_the_terminology_unit_document_reads_validates_and_is_its_own_strict_output",
   "xtask/tests/compliance.rs::sacm23_cp_004_the_terminology_unit_document_holds_every_class_and_property_of_the_model",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
 depends_on = [
   "SACM23-BASE-001",
   "SACM23-BASE-002",
@@ -6436,7 +6439,8 @@ tests = [
   "crates/sacm/tests/compliance_points.rs::sacm23_cp_001_the_assurance_case_unit_document_reads_validates_and_is_its_own_strict_output",
   "xtask/tests/compliance.rs::sacm23_cp_001_the_assurance_case_unit_document_holds_every_class_and_property_of_the_model",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0074b-compliance-claim.md"
 depends_on = [
   "SACM23-CP-002",
   "SACM23-CP-003",
