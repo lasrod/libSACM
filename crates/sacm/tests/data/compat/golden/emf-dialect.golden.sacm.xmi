@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="assurance_case_package_1">
+  <name lang="en" content="Brake case" />
+  <argumentPackage xmi:id="argument_package_1">
+    <name lang="en" content="Brake arguments" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="claim_1">
+      <name lang="en" content="The brakes are safe" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="claim_2">
+      <name lang="en" content="The brakes were tested" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="asserted_inference_1" source="claim_2" target="claim_1">
+      <name lang="en" content="Testing supports safety" />
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

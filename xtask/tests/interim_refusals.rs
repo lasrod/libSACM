@@ -3,8 +3,8 @@
 //!
 //! Every `ReadError::Unsupported` of the `sacm` crate comes from one
 //! crate-private list, `crates/sacm/src/xmi/refusal.rs`, whose entries are
-//! labelled `Interim("ROW")`, `Tolerance("ROW")`, `Tolerated("ROW")`, `Limit`
-//! or `Defect`. Four checks keep that list honest:
+//! labelled `Interim("ROW")`, `Tolerated("ROW")`, `Limit` or `Defect`. Three
+//! checks keep that list honest:
 //!
 //! - (a) outside comments and `#[cfg(test)]` items, the token `Unsupported`
 //!   appears in `crates/sacm/src` only in `xmi/refusal.rs` and, in `xmi.rs`,
@@ -20,11 +20,15 @@
 //!   and all four for any other row. So no compliance point that interchanges
 //!   the content can be verified while the reader still refuses conforming
 //!   content it is to read;
-//! - (c) every `Tolerance("ROW")` names a row that exists and is not
-//!   `verified`;
-//! - (d) every `Tolerated("ROW")`, input a tolerant read reads under the row
+//! - (c) every `Tolerated("ROW")`, input a tolerant read reads under the row
 //!   (ADR 0041 D6), names a row that exists and whose status is not
 //!   `deferred` or `candidate` (LIB-COMPAT-004, acceptance 11).
+//!
+//! Until slice 0075a a fourth check held every `Tolerance("ROW")`, input a
+//! row was still to read in tolerant mode, to an open row. Its last entry,
+//! an `XMI` element in EMF's namespace, became `Tolerated("LIB-COMPAT-002")`
+//! when LIB-COMPAT-002 read it, and the kind went from the list (ADR 0044
+//! D1): an entry of it would not compile, so nothing is left to check.
 //!
 //! As in `repo_checks.rs`, each check is a function that returns the problems
 //! it finds, and every problem starts with a stable code in brackets, so a
@@ -567,34 +571,7 @@ fn interim_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
     problems
 }
 
-/// Check (c): every `Tolerance` row exists and is not verified.
-fn tolerance_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
-    let rows = matrix_rows(matrix);
-    let mut problems = Vec::new();
-    let tolerance = labelled_rows(list, "Tolerance");
-    if tolerance.is_empty() {
-        problems.push(problem(
-            "no-tolerance-rows",
-            format!("{LIST} names no Tolerance(\"ROW\")"),
-        ));
-    }
-    for (row, line) in tolerance {
-        match rows.get(&row) {
-            None => problems.push(problem(
-                "tolerance-row-unknown",
-                format!("{LIST}:{line}: Tolerance({row:?}) names no matrix row"),
-            )),
-            Some((status, _)) if status == "verified" => problems.push(problem(
-                "tolerance-row-verified",
-                format!("{LIST}:{line}: Tolerance({row:?}) names a verified row"),
-            )),
-            Some(_) => {}
-        }
-    }
-    problems
-}
-
-/// Check (d): every `Tolerated` row exists and is neither deferred nor a
+/// Check (c): every `Tolerated` row exists and is neither deferred nor a
 /// candidate (LIB-COMPAT-004, acceptance 11; ADR 0041 D6).
 fn tolerated_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
     let rows = matrix_rows(matrix);
@@ -1312,82 +1289,7 @@ fn lib_api_011_interim_check_ignores_rows_in_comments_and_tests() {
 }
 
 // ---------------------------------------------------------------------------
-// (c) every Tolerance row is open
-// ---------------------------------------------------------------------------
-
-#[test]
-fn lib_api_011_every_tolerance_row_exists_and_is_open() {
-    let problems = tolerance_problems(&list_text(), &matrix());
-    assert!(
-        problems.is_empty(),
-        "{ROW}: the Tolerance rows of {LIST}: {problems:#?}"
-    );
-}
-
-#[test]
-fn lib_api_011_tolerance_check_reports_an_unknown_row() {
-    let list = list_text();
-    let row = first_row(&list, "Tolerance");
-    let mutated = replace_all(
-        &list,
-        &format!("Tolerance(\"{row}\")"),
-        "Tolerance(\"LIB-NOPE-999\")",
-    );
-    let problems = tolerance_problems(&mutated, &matrix());
-    assert!(
-        !problems.is_empty()
-            && problem_codes(&problems)
-                .iter()
-                .all(|c| c == "tolerance-row-unknown"),
-        "{ROW}: a Tolerance row that does not exist: {problems:#?}"
-    );
-}
-
-#[test]
-fn lib_api_011_tolerance_check_reports_a_verified_row() {
-    let list = list_text();
-    let row = first_row(&list, "Tolerance");
-    let uses = labelled_rows(&list, "Tolerance")
-        .iter()
-        .filter(|(found, _)| *found == row)
-        .count();
-    let verified = with_row_value(&matrix(), &row, "status", toml::Value::from("verified"));
-    assert_only(
-        "a Tolerance row marked verified",
-        &tolerance_problems(&list, &verified),
-        "tolerance-row-verified",
-        uses,
-    );
-}
-
-#[test]
-fn lib_api_011_tolerance_check_reports_a_list_with_no_tolerance_rows() {
-    let list = replace_all(&list_text(), "Tolerance(\"", "Tolerance(r\"");
-    assert_only(
-        "no Tolerance(\"ROW\") left",
-        &tolerance_problems(&list, &matrix()),
-        "no-tolerance-rows",
-        1,
-    );
-}
-
-#[test]
-fn lib_api_011_tolerance_rows_are_not_checked_against_the_compliance_points() {
-    // A Tolerance row reads non-conforming input, so no compliance point
-    // waits for it; only Interim rows gate them.
-    let list = list_text();
-    let emptied = COMPLIANCE_POINTS.iter().fold(matrix(), |matrix, point| {
-        with_row_value(&matrix, point, "depends_on", toml::Value::Array(Vec::new()))
-    });
-    let problems = tolerance_problems(&list, &emptied);
-    assert!(
-        problems.is_empty(),
-        "{ROW}: the Tolerance check does not depend on the compliance points: {problems:#?}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// (d) every Tolerated row exists and is not deferred (LIB-COMPAT-004)
+// (c) every Tolerated row exists and is not deferred (LIB-COMPAT-004)
 // ---------------------------------------------------------------------------
 
 #[test]

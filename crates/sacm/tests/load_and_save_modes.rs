@@ -883,9 +883,12 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Preserved,
         ),
         text(
+            // XMI 2.4.1's: EMF's `http://www.omg.org/XMI`, which a tolerant
+            // read reads since slice 0075a, is LIB-COMPAT-002's
+            // (`emf_dialect.rs`).
             "an older XMI wrapper",
             format!(
-                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:sacm=\"{SACM_NS}\">\
+                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20110701\" xmlns:sacm=\"{SACM_NS}\">\
                  <sacm:ArgumentPackage xmlns:x=\"{XMI_NS}\" x:id=\"a\"/></xmi:XMI>"
             ),
             Unsupported,

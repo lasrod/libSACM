@@ -85,7 +85,7 @@ cargo xtask fetch-spec       # download the OMG SACM 2.3 and XMI 2.5.1 reference
 | Crate | What it is |
 |---|---|
 | [`sacm`](crates/sacm) | The library. |
-| [`sacm-cli`](crates/sacm-cli) | The `sacm` command-line tool: `version`, `validate` and `roundtrip`. |
+| [`sacm-cli`](crates/sacm-cli) | The `sacm` command-line tool: `version`, `validate`, `roundtrip` and `convert`. |
 | `xtask` | Repository tooling (`cargo xtask ...`); not published. |
 
 ## Links

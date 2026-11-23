@@ -13,10 +13,11 @@
 //!   rendered with the arguments, is the variable part of the `Display`;
 //!   every placeholder names an argument of the right kind; the arguments
 //!   come in the order the pattern first names them, `row` last and only on
-//!   the `Unsupported` templates of SACM-XMI-002 and -015 and on
+//!   the `Unsupported` templates of SACM-XMI-002 and -015 but
+//!   `SACM-XMI-015/not-xmi-element`, and on
 //!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
 //!   of their code; and the inputs and the templates no input reaches
-//!   together are the 100 refusal templates, once each.
+//!   together are the 102 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
@@ -65,6 +66,13 @@
 //! SACM-XMI-007, whose code no input gives any more, which gives 100. Their
 //! inputs read: `refusal_codes.rs::sacm23_xmi_029_no_entry_is_interim`.
 //!
+//! Slice 0075a reads the dialect EMF writes (LIB-COMPAT-002, ADR 0044 D1): it
+//! adds `SACM-XMI-015/not-xmi-element`, for an `XMI` element in neither XMI
+//! namespace, a limit with no row, and `SACM-XMI-015/emf-xmi-namespace`, for
+//! any other name in EMF's XMI namespace read strictly, which gives 102. The
+//! label of SACM-XMI-015 with a row is `(strict mode never reads it; ROW
+//! reads it in tolerant mode)` since.
+//!
 //! Slice 0072 also changes the English of the three `SACM-XML-002` templates, which
 //! name ISO-8859-1 now, and the label of SACM-XMI-002 and SACM-XMI-008 with
 //! a row, `(strict mode never reads it; ROW reads it in tolerant mode)`
@@ -97,8 +105,10 @@ const NS: &str = concat!(
 /// and adds `SACM-XMI-001/xmi-namespace-root` and
 /// `SACM-XMI-003/wrapper-element` (SACM23-XMI-019, ADR 0042), and 100 once
 /// slice 0073b removes the four `Unsupported` templates of SACM-XMI-007,
-/// whose links it reads (SACM23-XMI-029, ADR 0040 amendment 1).
-const REFUSAL_TEMPLATES: usize = 100;
+/// whose links it reads (SACM23-XMI-029, ADR 0040 amendment 1), and 102 once
+/// slice 0075a adds `SACM-XMI-015/not-xmi-element` and
+/// `SACM-XMI-015/emf-xmi-namespace` (LIB-COMPAT-002, ADR 0044 D1).
+const REFUSAL_TEMPLATES: usize = 102;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -604,7 +614,27 @@ fn cases() -> Vec<Case> {
             ),
             &[("element", t("xmi:XMI")), ("row", t("LIB-COMPAT-002"))],
             "the element {element:?} is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element",
-            "the reader cannot represent the input at line 1, column 1: the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)",
+            "the reader cannot represent the input at line 1, column 1: the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)",
+        ),
+        read(
+            "SACM-XMI-015/not-xmi-element",
+            format!(
+                "<x:XMI xmlns:x=\"http://www.omg.org/spec/XMI/20110701\" xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+                 <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></x:XMI>"
+            ),
+            &[("element", t("x:XMI"))],
+            "the element {element:?} is in neither the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" nor \"http://www.omg.org/XMI\", so it is not read as the XMI element",
+            "the reader cannot represent the input at line 1, column 1: the element \"x:XMI\" is in neither the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" nor \"http://www.omg.org/XMI\", so it is not read as the XMI element (a limit of this version)",
+        ),
+        read(
+            "SACM-XMI-015/emf-xmi-namespace",
+            format!(
+                "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"http://www.omg.org/XMI\" xmi:id=\"p\">\
+                 <name content=\"p\"/></sacm:ArgumentPackage>"
+            ),
+            &[("name", t("xmi:id")), ("row", t("LIB-COMPAT-002"))],
+            "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\"",
+            "the reader cannot represent the input at line 1, column 109: the name \"xmi:id\" is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" (strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)",
         ),
         // --- WriteError::Invalid, SACM-XMI-016 -----------------------------------------
         write(
@@ -1225,14 +1255,13 @@ fn render(template: &str, english: &str, arguments: &[(&str, Value)]) -> String 
 fn label(code: &str, row: Option<&str>) -> Option<String> {
     match (code, row) {
         // Since slice 0072 a tolerant read reads them (ADR 0041 D6).
-        ("SACM-XMI-002" | "SACM-XMI-008", Some(row)) => Some(format!(
+        // Since slice 0075a SACM-XMI-015 with a row is read too (ADR 0044 D1).
+        ("SACM-XMI-002" | "SACM-XMI-008" | "SACM-XMI-015", Some(row)) => Some(format!(
             "(strict mode never reads it; {row} reads it in tolerant mode)"
         )),
-        ("SACM-XMI-015", Some(row)) => Some(format!(
-            "(strict mode never reads it; {row} is to read it in tolerant mode)"
-        )),
-        // SACM-XMI-008 without a row: a SACM 2.4 root.
-        ("SACM-XML-002" | "SACM-SEC-002" | "SACM-XMI-008", None) => {
+        // SACM-XMI-008 without a row: a SACM 2.4 root; SACM-XMI-015 without
+        // one: an `XMI` element in neither XMI namespace.
+        ("SACM-XML-002" | "SACM-SEC-002" | "SACM-XMI-008" | "SACM-XMI-015", None) => {
             Some("(a limit of this version)".to_owned())
         }
         ("SACM-XMI-003", None) => Some("(a defect in the input)".to_owned()),
@@ -1290,7 +1319,8 @@ fn check_row(case: &Case) {
     );
     // Of SACM-XMI-008, only a root of an older revision names its row; a
     // SACM 2.4 root is a limit (slice 0072).
-    let takes_row = matches!(code_of(template), "SACM-XMI-002" | "SACM-XMI-015")
+    let takes_row = (matches!(code_of(template), "SACM-XMI-002" | "SACM-XMI-015")
+        && template != "SACM-XMI-015/not-xmi-element")
         || template == "SACM-XMI-008/other-revision-root";
     if takes_row {
         assert_eq!(
@@ -1315,7 +1345,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 100, once each.
+    // The inputs and the templates without one are the 102, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

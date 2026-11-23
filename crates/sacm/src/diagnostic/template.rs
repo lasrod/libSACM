@@ -241,6 +241,12 @@ templates! {
     XMI_015_NOT_XMI_NAMESPACE = XMI_WRAPPER_NAMESPACE, Unread, "SACM-XMI-015/not-xmi-namespace",
         [Text("element"), Text("row")],
         "the element {element:?} is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element";
+    XMI_015_NOT_XMI_ELEMENT = XMI_WRAPPER_NAMESPACE, Unread, "SACM-XMI-015/not-xmi-element",
+        [Text("element")],
+        "the element {element:?} is in neither the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" nor \"http://www.omg.org/XMI\", so it is not read as the XMI element";
+    XMI_015_EMF_XMI_NAMESPACE = XMI_WRAPPER_NAMESPACE, Unread, "SACM-XMI-015/emf-xmi-namespace",
+        [Text("name"), Text("row")],
+        "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\"";
     XMI_016_SCHEMA_ERROR = XMI_STRICT_SAVE_INVALID, Write("Invalid"), "SACM-XMI-016/schema-error",
         [Text("first_code"), Text("first_id")],
         "the document cannot be written in strict mode: 1 schema error, {first_code} on {first_id:?}";
@@ -567,6 +573,15 @@ templates! {
     XMI_011_VERSION_ON_ROOT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-root",
         [Text("value"), Text("class"), Text("id")],
         "the xmi:version {value:?} of the {class} {id:?} is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
+    XMI_015_EMF_XMI_NAMESPACE_READ = XMI_WRAPPER_NAMESPACE, Diagnostic, "SACM-XMI-015/emf-xmi-namespace-read",
+        [Text("name")],
+        "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\", so the XMI names of the document in it are read as XMI 2.5.1's, which write writes";
+    XMI_017_PATHS_READ = XMI_FRAGMENT_PATH, Diagnostic, "SACM-XMI-017/paths-read",
+        [Count("count"), Text("first")],
+        "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each names an element of the document, so it is read as that element's id, which write writes";
+    XMI_017_PATHS_PARTLY_READ = XMI_FRAGMENT_PATH, Diagnostic, "SACM-XMI-017/paths-partly-read",
+        [Count("count"), Text("first"), Count("kept")],
+        "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each that names an element of the document is read as that element's id, which write writes, and those that name none ({kept}) are kept as written";
     ID_002_EMPTY_ID = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id",
         [Text("class"), Text("id")],
         "the xmi:id of the {class} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read with the generated id {id:?}, which write writes";
@@ -820,6 +835,7 @@ mod tests {
     fn takes_row(template: &Template) -> bool {
         template.carrier == Carrier::Unread
             && matches!(template.code.as_str(), "SACM-XMI-002" | "SACM-XMI-015")
+            && template.id != "SACM-XMI-015/not-xmi-element"
             || template.id == "SACM-XMI-008/other-revision-root"
     }
 
@@ -859,13 +875,15 @@ mod tests {
         // and, in its fix round, SACM-XMI-003/proxy-of-linked-root; slice
         // 0073b removed the four refusals and four kept forms of
         // SACM-XMI-007 (SACM23-XMI-029; ADR 0040 amendment 1), and, in its
-        // fix round, added SACM-XMI-010/xsi-type-on-proxy.
-        assert_eq!(count, 206, "LIB-API-017: the number of templates");
+        // fix round, added SACM-XMI-010/xsi-type-on-proxy; slice 0075a added
+        // two refusal and three diagnostic templates (LIB-COMPAT-002; ADR
+        // 0044).
+        assert_eq!(count, 211, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 106, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 109, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

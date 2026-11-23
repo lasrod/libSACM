@@ -5,14 +5,14 @@
 //! functionality matrix (`docs/matrix/functionality-matrix.md`) for what is
 //! planned.
 //!
-//! Exit codes: 0 when the check passed; 1 when it ran and failed (for
-//! `validate`, an Error diagnostic, or a strict refusal of a file a tolerant
-//! read opens; for `roundtrip`, a refused strict save, output that does not
-//! read back, or a difference); 2 when the tool could not do the job (a usage
-//! error, an I/O error, or input it cannot read: for `validate`, input
-//! neither a strict nor a tolerant read opens; for `roundtrip`, input that
-//! `xmi::read` refuses). stdout carries the result; stderr carries only what
-//! stopped the command.
+//! Exit codes: 0 when the check passed or the file was converted; 1 when it
+//! ran and failed (for `validate`, an Error diagnostic, or a strict refusal
+//! of a file a tolerant read opens; for `roundtrip` and `convert`, a refused
+//! strict save, output that does not read back, or a difference); 2 when the
+//! tool could not do the job (a usage error, an I/O error, or input it cannot
+//! read: for `validate`, input neither a strict nor a tolerant read opens;
+//! for `roundtrip` and `convert`, input that `xmi::read` refuses). stdout
+//! carries the result; stderr carries only what stopped the command.
 
 mod json;
 
@@ -64,6 +64,15 @@ enum Command {
     /// trip is faithful, 1 when it is not, and 2 when the file cannot be read
     /// or the output cannot be written.
     Roundtrip(RoundtripArgs),
+    /// Convert a SACM XMI file to strict SACM 2.3, refusing when that would
+    /// lose content.
+    ///
+    /// Reads the file tolerantly, writes it in strict mode, reads that back
+    /// strictly and compares, and writes OUT only when nothing is lost. Lists
+    /// every read Warning and Error. Exits 0 when converted, 1 when the strict
+    /// output would lose content or not read back unchanged, and 2 when the
+    /// file cannot be read or the output cannot be written.
+    Convert(ConvertArgs),
 }
 
 #[derive(Debug, Args)]
@@ -77,8 +86,8 @@ struct ValidateArgs {
     /// Read in tolerant mode, which also opens a file a strict read refuses
     /// for a bad value or an untyped child, reporting it as Warnings; it
     /// still refuses a DOCTYPE, malformed XML, a root outside SACM or in SACM
-    /// 2.4, a repeated `xmi:id`, an encoding it cannot decode and input over
-    /// the read limits. The summary says
+    /// 2.4, an XMI element in an XMI namespace it does not read, a repeated
+    /// `xmi:id`, an encoding it cannot decode and input over the read limits. The summary says
     /// "readable", never "valid".
     #[arg(long, conflicts_with = "strict")]
     tolerant: bool,
@@ -98,6 +107,16 @@ struct RoundtripArgs {
     /// Write the strict output here, only when the round trip is faithful.
     #[arg(short = 'o', value_name = "OUT")]
     output: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct ConvertArgs {
+    /// The SACM XMI file to convert.
+    #[arg(value_name = "IN")]
+    input: PathBuf,
+    /// Write the strict SACM 2.3 output here, only when nothing is lost.
+    #[arg(short = 'o', value_name = "OUT", required = true)]
+    output: PathBuf,
 }
 
 /// The report format of `validate`.
@@ -178,6 +197,7 @@ fn run(cli: &Cli, out: &mut impl Write, err: &mut impl Write) -> Result<u8, Fail
         ),
         Command::Validate(args) => run_validate(args, out, err),
         Command::Roundtrip(args) => run_roundtrip(args, out, err),
+        Command::Convert(args) => run_convert(args, out, err),
     };
     written
         .map(|()| code)
@@ -385,54 +405,115 @@ fn run_roundtrip(
         Ok(output) => output.into_document(),
         Err(refusal) => return (NOT_DONE, report_unreadable(&name, &refusal, err)),
     };
+    let failed = format!("{name}: round trip failed");
+    let text = match strict_round_trip(&document, &failed, out) {
+        Ok(text) => text,
+        Err(stopped) => return stopped,
+    };
+    if let Some(path) = &args.output {
+        if let Err(stopped) = write_output(path, &text, err) {
+            return stopped;
+        }
+    }
+    (PASSED, writeln!(out, "{name}: round trip ok"))
+}
 
+/// `sacm convert` (LIB-CLI-004, ADR 0023 amendment 2): a tolerant read, the
+/// strict round trip of [`strict_round_trip`], and `<OUT>` written only when
+/// nothing is lost. Every read Warning and Error is listed first: what the
+/// conversion normalised, or why it refuses.
+fn run_convert(
+    args: &ConvertArgs,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> (u8, io::Result<()>) {
+    let name = file_name(&args.input);
+    let output = match read_file(&args.input, Mode::Tolerant) {
+        Ok(output) => output,
+        Err(refusal) => return (NOT_DONE, report_unreadable(&name, &refusal, err)),
+    };
+    let listed = output
+        .diagnostics()
+        .iter()
+        .filter(|diagnostic| diagnostic.severity() != Severity::Info)
+        .try_for_each(|diagnostic| writeln!(out, "{diagnostic}"));
+    let failed = format!("{name}: not converted");
+    let text = match strict_round_trip(output.document(), &failed, out) {
+        Ok(text) => text,
+        Err((code, written)) => return (code, listed.and(written)),
+    };
+    if let Err((code, written)) = write_output(&args.output, &text, err) {
+        return (code, listed.and(written));
+    }
+    let target = file_name(&args.output);
+    let written = listed.and_then(|()| writeln!(out, "{name}: converted to {target}"));
+    (PASSED, written)
+}
+
+/// The strict output of `document`, when it survives a strict save and a
+/// strict reload unchanged: the save to memory, the reload, and
+/// `compare::semantic_compare` of the two (LIB-CLI-003, LIB-CLI-004).
+/// Otherwise it writes what failed, each line ending with `failed`, the
+/// command's wording such as `<file>: round trip failed`, and returns the
+/// exit code with the result of writing: each schema Error of a refused
+/// save, then `<failed>: <refusal>`; or what [`check_reload`] writes; or
+/// what [`write_differences`] writes.
+fn strict_round_trip(
+    document: &Document,
+    failed: &str,
+    out: &mut impl Write,
+) -> Result<String, (u8, io::Result<()>)> {
     // The strict save, to memory.
-    let text = match xmi::write(&document, &WriteOptions::default()) {
+    let text = match xmi::write(document, &WriteOptions::default()) {
         Ok(text) => text,
         Err(error) => {
             let written = error
                 .diagnostics()
                 .iter()
                 .try_for_each(|diagnostic| writeln!(out, "{diagnostic}"))
-                .and_then(|()| writeln!(out, "{name}: round trip failed: {error}"));
-            return (FAILED, written);
+                .and_then(|()| writeln!(out, "{failed}: {error}"));
+            return Err((FAILED, written));
         }
     };
 
     // The strict reload.
     let strict = ReadOptions::default().with_mode(Mode::Strict);
     let reloaded = xmi::read(text.as_bytes(), &strict);
-    let back = match check_reload(&name, &reloaded, out) {
-        Ok(back) => back,
-        Err(failed) => return failed,
-    };
+    let back = check_reload(failed, &reloaded, out)?;
 
-    let differences = compare::semantic_compare(&document, back);
+    let differences = compare::semantic_compare(document, back);
     if !differences.is_empty() {
-        return (FAILED, write_differences(&name, &differences, out));
+        return Err(report_differences(failed, &differences, out));
     }
+    Ok(text)
+}
 
-    if let Some(path) = &args.output {
-        if let Err(error) = fs::write(path, &text) {
-            let written = writeln!(
-                err,
-                "sacm: {}: cannot write the output: {error}",
-                path.display()
-            );
-            return (NOT_DONE, written);
-        }
-    }
-    (PASSED, writeln!(out, "{name}: round trip ok"))
+/// Writes `text` to `path`; on failure, writes
+/// `sacm: <path>: cannot write the output: <error>` to `err` and returns
+/// the exit code with the result of writing.
+fn write_output(
+    path: &std::path::Path,
+    text: &str,
+    err: &mut impl Write,
+) -> Result<(), (u8, io::Result<()>)> {
+    fs::write(path, text).map_err(|error| {
+        let written = writeln!(
+            err,
+            "sacm: {}: cannot write the output: {error}",
+            path.display()
+        );
+        (NOT_DONE, written)
+    })
 }
 
 /// Checks the strict reload of the output: the document it read back, when
 /// it read with no Error diagnostic. Otherwise it writes each Error's line,
-/// then `<file>: round trip failed: the strict output reads back with N
-/// errors`, or, when it does not read at all, `<file>: round trip failed:
-/// the strict output does not read back: <refusal>`, and returns the exit
+/// then `<failed>: the strict output reads back with N errors`, or, when it
+/// does not read at all, `<failed>: the strict output does not read back:
+/// <refusal>`, where `failed` is the command's wording, and returns the exit
 /// code with the result of writing.
 fn check_reload<'a>(
-    name: &str,
+    failed: &str,
     reloaded: &'a Result<xmi::ReadOutput, ReadError>,
     out: &mut impl Write,
 ) -> Result<&'a Document, (u8, io::Result<()>)> {
@@ -441,7 +522,7 @@ fn check_reload<'a>(
         Err(error) => {
             let written = writeln!(
                 out,
-                "{name}: round trip failed: the strict output does not read back: {error}"
+                "{failed}: the strict output does not read back: {error}"
             );
             return Err((FAILED, written));
         }
@@ -460,7 +541,7 @@ fn check_reload<'a>(
         .and_then(|()| {
             writeln!(
                 out,
-                "{name}: round trip failed: the strict output reads back with {} {}",
+                "{failed}: the strict output reads back with {} {}",
                 errors.len(),
                 plural(errors.len(), "error", "errors")
             )
@@ -468,10 +549,20 @@ fn check_reload<'a>(
     Err((FAILED, written))
 }
 
-/// Writes each difference's line, then
-/// `<file>: round trip failed: N differences`.
+/// The failure of a round trip that gives `differences`, which is not
+/// empty: exit 1, after [`write_differences`].
+fn report_differences(
+    failed: &str,
+    differences: &[Difference],
+    out: &mut impl Write,
+) -> (u8, io::Result<()>) {
+    (FAILED, write_differences(failed, differences, out))
+}
+
+/// Writes each difference's line, then `<failed>: N differences`, where
+/// `failed` is the command's wording.
 fn write_differences(
-    name: &str,
+    failed: &str,
     differences: &[Difference],
     out: &mut impl Write,
 ) -> io::Result<()> {
@@ -481,7 +572,7 @@ fn write_differences(
     let count = differences.len();
     writeln!(
         out,
-        "{name}: round trip failed: {count} {}",
+        "{failed}: {count} {}",
         plural(count, "difference", "differences")
     )
 }
@@ -508,18 +599,77 @@ mod tests {
             },
         ];
         let mut out = Vec::new();
-        assert!(write_differences("case.sacm.xmi", &differences, &mut out).is_ok());
+        assert!(
+            write_differences("case.sacm.xmi: round trip failed", &differences, &mut out).is_ok()
+        );
         let text = String::from_utf8(out).unwrap_or_default();
         let mut expected: Vec<String> = differences.iter().map(ToString::to_string).collect();
         expected.push("case.sacm.xmi: round trip failed: 2 differences".to_owned());
         assert_eq!(text.lines().collect::<Vec<_>>(), expected);
 
         let mut out = Vec::new();
-        assert!(write_differences("case.sacm.xmi", &differences[..1], &mut out).is_ok());
+        assert!(
+            write_differences(
+                "case.sacm.xmi: round trip failed",
+                &differences[..1],
+                &mut out
+            )
+            .is_ok()
+        );
         let text = String::from_utf8(out).unwrap_or_default();
         assert_eq!(
             text.lines().last(),
             Some("case.sacm.xmi: round trip failed: 1 difference")
+        );
+    }
+
+    // The reload and difference wording of `convert` (LIB-CLI-004, ADR 0023
+    // amendment 2). A correct library gives neither, so the binary cannot be
+    // driven into them.
+    #[test]
+    fn the_convert_wording_says_not_converted() {
+        let differences = vec![Difference::RightOnly {
+            id: ElementId::from("c1"),
+            kind: ElementKind::Claim,
+        }];
+        let mut out = Vec::new();
+        let (code, written) =
+            report_differences("case.sacm.xmi: not converted", &differences, &mut out);
+        assert!(code == FAILED && written.is_ok());
+        let text = String::from_utf8(out).unwrap_or_default();
+        assert_eq!(
+            text.lines().collect::<Vec<_>>(),
+            [
+                differences[0].to_string().as_str(),
+                "case.sacm.xmi: not converted: 1 difference"
+            ]
+        );
+
+        let strict = ReadOptions::default().with_mode(Mode::Strict);
+        let failed = xmi::read(typed(2, false).as_bytes(), &strict);
+        let (code, lines) = reload_as("f: not converted", &failed);
+        assert_eq!(code, Some(FAILED));
+        assert_eq!(lines.len(), 3);
+        assert_eq!(
+            lines.last().map(String::as_str),
+            Some("f: not converted: the strict output reads back with 2 errors")
+        );
+
+        let unreadable = xmi::read(b"<r></s>", &strict);
+        let refusal = unreadable
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert_ne!(refusal, "");
+        assert_eq!(
+            reload_as("f: not converted", &unreadable),
+            (
+                Some(FAILED),
+                vec![format!(
+                    "f: not converted: the strict output does not read back: {refusal}"
+                )]
+            )
         );
     }
 
@@ -606,8 +756,17 @@ mod tests {
     /// The lines `check_reload` writes for `reloaded`, and its exit code
     /// when it fails.
     fn reload(reloaded: &Result<xmi::ReadOutput, ReadError>) -> (Option<u8>, Vec<String>) {
+        reload_as("f: round trip failed", reloaded)
+    }
+
+    /// The lines `check_reload` writes for `reloaded` with the wording
+    /// `failed`, and its exit code when it fails.
+    fn reload_as(
+        failed: &str,
+        reloaded: &Result<xmi::ReadOutput, ReadError>,
+    ) -> (Option<u8>, Vec<String>) {
         let mut out = Vec::new();
-        let code = match check_reload("f", reloaded, &mut out) {
+        let code = match check_reload(failed, reloaded, &mut out) {
             Ok(_) => None,
             Err((code, written)) => {
                 assert!(written.is_ok());

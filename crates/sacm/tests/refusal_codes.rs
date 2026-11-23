@@ -37,9 +37,10 @@ const CATALOG: &str = "docs/sacm/diagnostics.md";
 
 /// The number of live codes once slice 0063 adds its six (acceptance 9),
 /// slice 0065 SACM-EXPR-001 (SACM23-VAL-009), slice 0068 SACM-PKG-002
-/// (SACM23-VAL-023), and slice 0072 SACM-SEC-003 (LIB-SEC-003) and
-/// SACM-XMI-008 (LIB-COMPAT-004).
-const LIVE_CODES: usize = 45;
+/// (SACM23-VAL-023), slice 0072 SACM-SEC-003 (LIB-SEC-003) and
+/// SACM-XMI-008 (LIB-COMPAT-004), and slice 0075a SACM-XMI-017
+/// (LIB-COMPAT-002).
+const LIVE_CODES: usize = 46;
 
 /// The codes slice 0063 makes live, with the constant each row names.
 const NEW_LIVE: [(&str, &str); 6] = [
@@ -547,8 +548,8 @@ mod api {
             (
                 "OtherXmiNamespace",
                 format!(
-                    "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
-                     <sacm:ArgumentPackage x:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
+                    "<x:XMI xmlns:x=\"http://www.omg.org/spec/XMI/20110701\" xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+                     <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></x:XMI>"
                 )
                 .into_bytes(),
                 "SACM-XMI-015",
@@ -794,9 +795,11 @@ mod api {
             "{ROW}: location()"
         );
         assert_eq!(error.code().as_str(), "SACM-XMI-015", "{ROW}: code()");
+        // Since slice 0075a, an `XMI` element in neither XMI namespace is a
+        // limit of this version, with no row (ADR 0044 D1).
         assert_eq!(
             error.template(),
-            "SACM-XMI-015/not-xmi-namespace",
+            "SACM-XMI-015/not-xmi-element",
             "{ROW}: template()"
         );
         let arguments: Vec<(&str, ArgumentValue)> = error
@@ -805,17 +808,13 @@ mod api {
             .map(|argument| (argument.name(), argument.value().clone()))
             .collect();
         let text = |value: &str| ArgumentValue::Text(value.to_owned());
-        assert_eq!(
-            arguments,
-            [("element", text("XMI")), ("row", text("LIB-COMPAT-002"))],
-            "{ROW}: arguments()"
-        );
+        assert_eq!(arguments, [("element", text("XMI"))], "{ROW}: arguments()");
         assert_eq!(
             error.to_string(),
             "the reader cannot represent the input at line 1, column 1: the element \"XMI\" is \
-             not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read \
-             as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in \
-             tolerant mode)",
+             in neither the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" nor \
+             \"http://www.omg.org/XMI\", so it is not read as the XMI element (a limit of this \
+             version)",
             "{ROW}: Display"
         );
         // The cross-document proxy it sampled until slice 0073b is held, in

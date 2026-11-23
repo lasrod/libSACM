@@ -87,3 +87,23 @@ tolerant acceptance is never presented as conformance).
 - **JSON `"format"` stays 1,** because no release has shipped format 1.
 - **`roundtrip`** keeps its tolerant default: it converts a file to the strict form and
   does not report conformance.
+
+## Amendment 2 (the maintainer, 2026-11-23; LIB-CLI-004, slice 0075a)
+
+`sacm convert <IN> -o <OUT>` converts a readable SACM file to strict SACM 2.3, and refuses
+when that would lose content (ADR 0044).
+
+- **Pipeline.** As `roundtrip`'s: a tolerant read, a strict write to memory, a strict reload
+  and `compare::semantic_compare`. `<OUT>` is written only when the strict save succeeds,
+  the output reads back with no Error, and there is no difference.
+- **Output.** On stdout, every read Warning and Error as its `Display` line (what the
+  conversion normalised, or why it refuses), then `<IN>: converted to <OUT>` or
+  `<IN>: not converted: …`. No Info line.
+- **Exit codes.** 0 converted; 1 refused, reloaded with an Error, or different, with `<OUT>`
+  neither created nor changed; 2 for an unreadable or refused input, an unwritable output or
+  invalid arguments, on stderr in `roundtrip`'s form.
+- **Flags.** `-o` is required. There is no `--strict` and no `--format`. `convert` never
+  reports conformance; that is `validate`'s job.
+- **Kept content** that SACM 2.3 lacks is refused, not discarded. A later explicit discard
+  (LIB-EDIT-016, deferred) can add an opt-in flag without a break (the maintainer,
+  2026-11-23).

@@ -22,6 +22,11 @@ use std::collections::HashMap;
 pub(super) const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
 /// The XMI 2.5.1 namespace.
 pub(super) const XMI_NS: &str = crate::model::XMI_NS;
+/// The XMI namespace EMF writes (`ExtendedMetaData.XMI_URI`), which is no
+/// XMI version's (XMI 2.5.1 §7.5.3): a tolerant read reads the XMI element
+/// and the attributes `id`, `type`, `idref`, `version`, `uuid` and `label`
+/// in it as XMI 2.5.1's (LIB-COMPAT-002, ADR 0044 D1).
+pub(super) const EMF_XMI_NS: &str = "http://www.omg.org/XMI";
 /// The prefix written for [`SACM_NS`].
 pub(super) const SACM_PREFIX: &str = "sacm";
 /// The prefix written for [`XMI_NS`].
