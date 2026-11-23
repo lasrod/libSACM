@@ -92,18 +92,20 @@ standard leaves a gap:
     value given twice for a single-valued property, or a multi-valued property given both
     as an attribute and as elements (SACM-MULT-001); a Boolean that is no `xsd:boolean`
     (SACM-ENUM-001); a contained object with no `xmi:type` where its property's type is
-    abstract (SACM-XMI-005).
-  - A strict read keeps as preserved content with an Error, so that a strict write refuses
-    the document (SACM-XMI-006), and a tolerant read keeps with a Warning, content that does
-    not conform where it stands (SACM-XMI-003; the diagnostics catalog lists every case).
-    Among them: an `xmi:type` that names no concrete class the property admits, or a root's
-    `xmi:type` that names another class; an attribute or child that the object's class lacks
-    but another class of the property has, such as `isCounter` on a Claim; an `href` or
+    abstract (SACM-XMI-005); an `xmi:XMI` element inside `xmi:XMI`, which a tolerant read
+    keeps outside every element (SACM-XMI-003).
+  - Other content that does not conform where it stands is SACM-XMI-003; the diagnostics
+    catalog lists every case and says what each mode does with it. A strict read refuses
+    it, or keeps it as preserved content with an Error, so that a strict write refuses the
+    document (SACM-XMI-006); a tolerant read keeps it with a Warning. Among them: an
+    `xmi:type` that names no concrete class the property admits, or a root's `xmi:type`
+    that names another class; an attribute or child that the object's class lacks but
+    another class of the property has, such as `isCounter` on a Claim; an `href` or
     `xmi:idref` on a root, on a `name`, `content`, `key`, `location` or `value`, or on an
-    element that also has content, and both on one reference element; a same-file proxy
-    that names no root, a root of a class its property or its `xmi:type` does not admit, a
-    root with an `href` or `xmi:idref` of its own, or a root another proxy names too, and
-    each proxy of a cycle.
+    element that also has content, and both on one reference element; a reference element
+    with neither; a same-file proxy that names no root, a root of a class its property or
+    its `xmi:type` does not admit, a root with an `href` or `xmi:idref` of its own, or a
+    root another proxy names too, and each proxy of a cycle.
   - The model's spelling `ArtifactAssertedRelationship` as an `xmi:type` is kept by a strict
     read with a SACM-XMI-013 Error, and read as `ArtifactAssetRelationship` by a tolerant
     read (SACM23-XMI-009).
