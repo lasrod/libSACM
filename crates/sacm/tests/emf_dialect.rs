@@ -75,11 +75,16 @@ const J2: &str = concat!(
 /// The label of a strict refusal of what LIB-COMPAT-002 reads (ADR 0041 D6).
 const TOLERATED: &str = "(strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)";
 
-/// How long one read may take: a linear read of the inputs of
+/// How long one read may take: a linear namespace scan of the attributes of
 /// [`lib_compat_002_path_resolution_and_the_namespace_scan_are_linear`]
-/// takes well under that, and one that rescans per token or per attribute
-/// takes minutes (the pattern of `lib_compat_004_type_checks_are_linear`).
+/// takes well under that, and one that compares each name against the
+/// earlier ones takes far longer (the pattern of
+/// `lib_compat_004_type_checks_are_linear`).
 const DEADLINE: Duration = Duration::from_secs(5);
+
+/// The budget holds a debug read of 100,000 elements on a slow runner, and
+/// a per-token rescan of the children takes far longer.
+const LINEAR_DEADLINE: Duration = Duration::from_secs(30);
 
 // --- Helpers ---------------------------------------------------------------------
 
@@ -293,16 +298,21 @@ fn assert_xmi_015(
     );
 }
 
-fn read_in_time(what: &str, input: String, mode: Mode) -> Result<ReadOutput, ReadError> {
+fn read_in_time(
+    what: &str,
+    input: String,
+    mode: Mode,
+    deadline: Duration,
+) -> Result<ReadOutput, ReadError> {
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         // The receiver is gone only after the deadline has already failed the test.
         let _ = sender.send(xmi::read(input.as_bytes(), &options(mode)));
     });
-    match receiver.recv_timeout(DEADLINE) {
+    match receiver.recv_timeout(deadline) {
         Ok(result) => result,
         Err(RecvTimeoutError::Timeout) => {
-            panic!("{ROW}: {what}: a {mode:?} read did not return within {DEADLINE:?}")
+            panic!("{ROW}: {what}: a {mode:?} read did not return within {deadline:?}")
         }
         Err(RecvTimeoutError::Disconnected) => panic!("{ROW}: {what}: a {mode:?} read panicked"),
     }
@@ -1354,7 +1364,7 @@ fn lib_compat_002_path_resolution_and_the_namespace_scan_are_linear() {
         );
     }
     input.push_str("</sacm:ArgumentPackage>");
-    let output = match read_in_time(what, input, Mode::Tolerant) {
+    let output = match read_in_time(what, input, Mode::Tolerant, LINEAR_DEADLINE) {
         Ok(output) => output,
         Err(error) => panic!("{ROW}: {what}: refused: {error}"),
     };
@@ -1383,7 +1393,7 @@ fn lib_compat_002_path_resolution_and_the_namespace_scan_are_linear() {
     }
     input.push_str("<v:y e:z=\"1\"/></sacm:ArgumentPackage>");
     let at = position_of(&input, "e:z=");
-    let error = match read_in_time(what, input, Mode::Strict) {
+    let error = match read_in_time(what, input, Mode::Strict, DEADLINE) {
         Ok(output) => panic!(
             "{ROW}: {what}: a strict read returns a document, with {} diagnostics",
             output.diagnostics().len()

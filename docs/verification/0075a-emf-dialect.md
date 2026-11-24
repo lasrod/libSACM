@@ -33,6 +33,7 @@
 | Blocking | LIB-COMPAT-002 | Stale rustdoc in `xmi.rs` about which `XMI` elements are refused. | The verifier's six passages (round 1). |
 | Non-blocking | LIB-CLI-004 | The exit-1 help said "would lose content". | Reworded with the verifier's text. |
 | Non-blocking | LIB-COMPAT-002 | The `sacm-expert` reference had no EMF entry. | Two bullets added. |
+| Non-blocking | LIB-COMPAT-002 | After PASS, the linearity test timed out at 5 s on macOS CI and in the mutants baseline; its path half reads 100,000 elements in a debug build. | That half's budget is 30 s; the per-token rescan mutant takes 226 s and still fails. Inputs and assertions are unchanged. |
 | Non-blocking | LIB-COMPAT-002 | 3 equivalent mutants; EMF path proxies are not resolved; the `xmi-namespace-root` template wording; an EMF-namespace Difference opens nothing; the PR-diff survivor at `roots.rs:4462`, from before the slice. | `docs/follow-ups.md`. |
 
 **Lesson.** A namespace rule that says "anywhere" must be checked against the places
