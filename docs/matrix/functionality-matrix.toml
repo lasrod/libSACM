@@ -5934,7 +5934,8 @@ tests = [
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_only_an_unqualified_target_is_open",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_idref_in_open_content_reserves_no_generated_id",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0075a-emf-dialect.md"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-005", "SACM23-XMI-002", "LIB-COMPAT-004", "SACM23-XMI-019", "SACM23-XMI-030", "SACM23-BASE-009"]
 acceptance = [
   "In `crates/sacm/tests/emf_dialect.rs` (hand-written fixtures; the goldens G1, G2, J1, J2 of the design brief): `lib_compat_002_the_emf_fixture_reads_tolerantly_and_writes_its_golden_strict_output`: Read `tests/data/compat/emf-dialect.xmi` (golden sample G1) tolerantly. Diagnostics, as (code, severity, template, count): SACM-XMI-004 Info `generated-id` 5; SACM-XMI-008 Warning `other-revision` 1, at (3,1); SACM-XMI-011 Info `version-on-root` 1, at (3,37); SACM-XMI-015 Warning `emf-xmi-namespace-read` 1, at (3,37), `name` \"xmi:version\", affected []; SACM-XMI-013 Warning `package-role-read` 3; SACM-XMI-010 Warning `xsi-type` 3; SACM-XMI-017 Warning `paths-read` 1, at (13,70), `count` 2, `first` \"//@argumentPackage.0/@argumentationElement.1\", affected [\"asserted_inference_1\"]. Ids: `assurance_case_package_1`, `argument_package_1`, `claim_1`, `claim_2`, `asserted_inference_1`. `sources()` == [claim_2] and `targets()` == [claim_1]. `validate` gives nothing. The strict write equals golden G2 byte for byte (both write modes). It reads back strictly with no diagnostic and is `==` to the tolerant read. A strict read of G1 is `Unsupported` SACM-XMI-008 at (3,1), because the root namespace comes first.",
@@ -6198,7 +6199,8 @@ tests = [
   "crates/sacm-cli/tests/convert.rs::lib_cli_004_invalid_arguments_exit_2_with_usage",
   "crates/sacm-cli/tests/convert.rs::lib_cli_004_the_help_lists_convert",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0075a-emf-dialect.md"
 depends_on = ["LIB-CLI-003", "SACM23-XMI-008", "LIB-COMPAT-004", "LIB-COMPAT-002"]
 acceptance = [
   "In `crates/sacm-cli/tests/convert.rs`, run in `tests/data`, with the expected lines taken from the library: `lib_cli_004_a_clean_file_converts_to_its_strict_output`: `clean.sacm.xmi`: exit 0; stdout exactly `clean.sacm.xmi: converted to <OUT>`. `<OUT>` bytes equal `xmi::write(strict)`, and are identical across runs.",

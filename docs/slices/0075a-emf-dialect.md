@@ -1,8 +1,8 @@
 ---
 slice: 0075a
 name: emf-dialect
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-002, LIB-CLI-004]
 mode: pr
 base: main (d3c21f0)
@@ -67,3 +67,4 @@ Left out, to slice 0075b: foreign subclasses (LIB-COMPAT-017) and the corpus cla
 
   LIB-CLI-004 passes, held only on its dependency. The PR-diff survivor at roots.rs:4462 is non-blocking and predates the slice; it is to be triaged. The loop stopped here: the maintainer reviews PR #104 before a third round (2026-11-24). The verifier's full report is in this session's transcript; F1 to F7 have exact inputs and expected results.
 - 2026-11-24 round 3, approved by the maintainer: the builder added tests F1 to F7 only, with no production change. They kill m05, m09, s03, s06, s07, s09, s11, s18 and s22, and all 41 `emf_dialect` tests pass. The PR-diff survivor at roots.rs:4462 is added to the release follow-up, with the control that kills it.
+- 2026-11-24 verification round 3 PASS for both rows: `docs/verification/0075a-emf-dialect.md`. Both rows are verified.
