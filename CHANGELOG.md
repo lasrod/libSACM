@@ -202,7 +202,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `ReadOptions::subclass`, `SacmElement::subclass`, `model::Subclass` and the template
   `SACM-XMI-003/subclass-type-kept` [LIB-COMPAT-017].
 - The corpus claim: five files from three tool families (ACEditor, Epsilon and the EMF
-  SACM implementation) read, check and write back without loss, the GSN-typed ones with
+  SACM implementation) open, check and write back without loss, the GSN-typed ones with
   the subclass declarations an application would give; interoperability evidence, not
   conformance (`docs/compat/corpus.md`, "What LIB-COMPAT-005 claims") [LIB-COMPAT-005].
 

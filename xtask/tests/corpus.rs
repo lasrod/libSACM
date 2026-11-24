@@ -565,6 +565,8 @@ struct Claimed {
     /// The strict write's `PreservedContent`: how many elements, and the
     /// first.
     strict: (usize, &'static str),
+    /// How many SACM-XMI-003 `element-kept` Warnings the read reports.
+    kept_whole: usize,
 }
 
 /// Files 7, 8, 9, 12 and 13 of the corpus.
@@ -575,6 +577,7 @@ const CLAIMED: [Claimed; 5] = [
         paths: Some(35),
         elements: 81,
         strict: (20, "implementation_constraint_1"),
+        kept_whole: 0,
     },
     Claimed {
         name: "epsilon-sacm-example.model",
@@ -582,6 +585,7 @@ const CLAIMED: [Claimed; 5] = [
         paths: None,
         elements: 1,
         strict: (1, "argument_package_1"),
+        kept_whole: 39,
     },
     Claimed {
         name: "epsilon-untitled.model",
@@ -589,6 +593,7 @@ const CLAIMED: [Claimed; 5] = [
         paths: None,
         elements: 1,
         strict: (1, "_KK-doAP4EeeNssncY22Lrw"),
+        kept_whole: 4,
     },
     Claimed {
         name: "sysmline-easy-example.assurancecase",
@@ -596,6 +601,7 @@ const CLAIMED: [Claimed; 5] = [
         paths: Some(46),
         elements: 139,
         strict: (46, "argument_package_1"),
+        kept_whole: 0,
     },
     Claimed {
         name: "sysmini-quan.assurancecase",
@@ -603,6 +609,7 @@ const CLAIMED: [Claimed; 5] = [
         paths: Some(23),
         elements: 75,
         strict: (25, "artifact_1"),
+        kept_whole: 1,
     },
 ];
 
@@ -654,6 +661,13 @@ fn lib_compat_005_the_files_of_three_tool_families_read_and_write_back_without_l
         assert_eq!(
             paths, expected,
             "{ROW_005}: {name}: the SACM-XMI-017 diagnostics"
+        );
+
+        // The elements kept whole.
+        assert_eq!(
+            count_of(found, "SACM-XMI-003/element-kept"),
+            file.kept_whole,
+            "{ROW_005}: {name}: the number of SACM-XMI-003 element-kept Warnings"
         );
 
         // The elements read.

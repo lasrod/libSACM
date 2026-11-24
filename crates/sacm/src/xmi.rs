@@ -1525,7 +1525,8 @@ impl ReadOptions {
     /// element's `xmi:type`, and a strict write refuses the element. A
     /// package root keeps a type naming a declared subclass of its own class
     /// the same way; its class still comes from its element name. A
-    /// declaration never applies to a proxy, nor to a type in the root's SACM
+    /// declaration never applies to a proxy, nor to an element that carries a
+    /// type in both XMI namespaces, nor to a type in the root's SACM
     /// namespaces or in SACM 2.3's, and an empty `namespace` matches no type.
     /// A strict read ignores every declaration. A later declaration of the
     /// same class replaces this one.

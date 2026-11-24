@@ -4773,13 +4773,17 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
 /// root of `kind`, name, in tolerant mode (LIB-COMPAT-017; slice 0075b Q1):
 /// when each names a class the application declared a subclass of `kind`,
 /// all the same class, whatever their prefixes; the first gives the prefix
-/// and the location. `None` otherwise: each type is then read or kept as
-/// without declarations.
+/// and the location. `None` otherwise, and for a root that carries `type`
+/// in both XMI namespaces ([`types_in_both_xmi_namespaces`]): each type is
+/// then read or kept as without declarations.
 fn root_subclass(
     found: &Findings<'_, '_>,
     root: Node<'_, '_>,
     kind: ElementKind,
 ) -> Option<Declared> {
+    if types_in_both_xmi_namespaces(root) {
+        return None;
+    }
     let mut subclass: Option<Declared> = None;
     for attribute in root
         .attributes()
@@ -5265,10 +5269,11 @@ fn child_kind(
                 Typed::Class(ElementKind::ArtifactAssetRelationship)
             }
             // A class the application declared a subclass, in tolerant mode
-            // only (LIB-COMPAT-017, ADR 0044 D3).
+            // only (LIB-COMPAT-017, ADR 0044 D3), unless the child carries
+            // `type` in both XMI namespaces.
             None => match declared_subclass(found, node, &attribute) {
-                Some(declared) => Typed::Subclass(declared),
-                None => return Ok(ChildKind::Preserve),
+                Some(declared) if !types_in_both_xmi_namespaces(node) => Typed::Subclass(declared),
+                _ => return Ok(ChildKind::Preserve),
             },
         };
         // Type attributes agree only when they name the same class; the
@@ -6561,6 +6566,19 @@ fn reads_xmi(node: Node<'_, '_>, attribute: &Attribute<'_, '_>, local: &str) -> 
             .attributes()
             .find(|first| is_xmi(first, local))
             .is_some_and(|first| first.range_qname() == attribute.range_qname())
+}
+
+/// Whether `node` carries `type` in both XMI namespaces, EMF's and XMI
+/// 2.5.1's. The reader takes the first as its type and keeps the other as
+/// written ([`reads_xmi`]), so no declaration applies to it: a subclass read
+/// from it would be written as an `xmi:type` beside the kept one, and the
+/// file written would not be well-formed (LIB-COMPAT-017).
+fn types_in_both_xmi_namespaces(node: Node<'_, '_>) -> bool {
+    let typed_in = |uri: &str| {
+        node.attributes()
+            .any(|attribute| attribute.namespace() == Some(uri) && attribute.name() == "type")
+    };
+    typed_in(XMI_NS) && typed_in(EMF_XMI_NS)
 }
 
 /// Whether `attribute` is `xmi:<local>`: in an XMI namespace

@@ -17,7 +17,7 @@ base: main (6b8411c)
   SACM class and keeps the class, which a tolerant save writes back. Strict mode ignores
   the declarations.
 - **LIB-COMPAT-005.** What the fetched corpus shows: five files from three tool families
-  read, check and write back without loss. This is interoperability evidence, not
+  open, check and write back without loss. This is interoperability evidence, not
   conformance. D-CORPUS closes Q-INTEROP.
 
 Left out: LIB-COMPAT-019, the tolerant write of an undeclared kept foreign type (filed in
@@ -52,3 +52,20 @@ this slice, its own slice next).
   confirmed by the lead: every failure is a compile error on the missing API
   (`ReadOptions::with_subclass`/`subclass`, `model::Subclass`, `SacmElement::subclass`).
   Tests cited, both rows `tests-failing`. Builder step 2 started.
+- 2026-11-25 step 2 done (builder), commit 93fad0d, draft PR #105, CI 45487617250. Lead
+  gate green (3226 workspace, 497 xtask, corpus not skipped). Both rows `implemented`.
+  - Four tests added for surviving hand mutants: `a_root_reads_a_subclass_only_when_its_types_agree`,
+    `types_with_one_name_in_two_namespaces_disagree`,
+    `a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespace`,
+    `a_subclass_counts_its_namespace_text_against_the_size_limit`.
+  - Pre-existing test changed: `xtask/tests/message_templates.rs` `DIAGNOSTIC_TEMPLATES`
+    109 → 110 (the design's LIB-API-018 count); lead accepted.
+  - Deviations from the design, lead accepted: S2's type agreement also applies to a
+    root (else two `xmi:type`s); S5's `xml:` prefix case cannot occur (roxmltree does
+    not resolve it in a value), so it is kept as an attribute; the `xmlns` and
+    empty-namespace guards were unreachable (the input layer refuses both) and removed.
+- 2026-11-25 verify round 1: LIB-COMPAT-017 FAIL (B1: a declared subclass on an element
+  typed in both XMI namespaces writes two `xmi:type`s, unreadable); LIB-COMPAT-005 PASS
+  (waits on -017). Fix round: guard + test
+  `lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations`, rustdoc
+  and requirement wording, corpus `kept_whole` counts, CHANGELOG and `Preserved` wording.

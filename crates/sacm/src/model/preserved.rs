@@ -26,9 +26,8 @@ pub(crate) const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
 /// The preserved content of one element, its holder, or of the document
 /// outside its elements: attributes after the typed ones (for the document,
 /// on `xmi:XMI`), in input order, and children placed among its typed
-/// children (for the document, among the roots), and, for an element, the
-/// class outside SACM 2.3 it was read as a subclass of its kind as
-/// (LIB-COMPAT-017).
+/// children (for the document, among the roots), and, for an element read
+/// as a declared subclass of its kind, that class (LIB-COMPAT-017).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Preserved {
     /// The class outside SACM 2.3 that a tolerant read read the holder as a

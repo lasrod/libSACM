@@ -21,8 +21,9 @@
 //!   its element name (D-ROOT-NAME);
 //! - a tolerant write writes the class back as the element's `xmi:type`; a
 //!   strict write refuses the element (SACM-XMI-006);
-//! - a declaration never applies to a proxy, nor to a type in the root's
-//!   SACM namespaces or in SACM 2.3's, and a strict read ignores every
+//! - a declaration never applies to a proxy, nor to an element that carries
+//!   a type in both XMI namespaces, nor to a type in the root's SACM
+//!   namespaces or in SACM 2.3's, and a strict read ignores every
 //!   declaration.
 //!
 //! G3 is `tests/data/compat/subclasses.xmi` and G4 its tolerant write with
@@ -1709,6 +1710,94 @@ fn lib_compat_017_a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespac
         "{ROW}: {what}: the type is not kept as an attribute: {}",
         brief(output.diagnostics())
     );
+}
+
+/// An element whose start tag carries `type` in both XMI namespaces, EMF's
+/// and XMI 2.5.1's, reads as without declarations: the reader takes the
+/// first as its type and keeps the second as written, so a subclass read
+/// from it would be written back beside a second `xmi:type`, and the file
+/// would not open (verifier round 1, B1).
+#[test]
+fn lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations() {
+    let open = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{EMF_NS}\" \
+         xmlns:x=\"{XMI_NS}\" xmlns:p=\"urn:p\""
+    );
+    let child_input = format!(
+        "{open} xmi:id=\"a\"><argumentElement xmi:type=\"p:Prop\" x:type=\"sacm:Claim\" \
+         xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+    );
+    let root_input = format!("{open} xmi:type=\"p:Bundle\" x:type=\"p:Bundle\" xmi:id=\"a\"/>");
+    for (what, input, declared) in [
+        (
+            "a child typed in both XMI namespaces",
+            child_input,
+            ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim),
+        ),
+        (
+            "a root typed in both XMI namespaces",
+            root_input,
+            ReadOptions::default().with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
+        ),
+    ] {
+        // (i) The read with the declaration is the read without it.
+        assert_reads_as_without(what, &input, &declared);
+        let output = read_with(what, &input, &declared);
+        assert!(
+            with_subclass(output.document()).is_empty(),
+            "{ROW}: {what}: the read gives a subclass()"
+        );
+        // (ii) Its tolerant write opens, with the declaration, as ==.
+        assert_writes_back(what, output.document(), &declared);
+    }
+}
+
+/// Only `type` in both XMI namespaces turns the declarations off: an element
+/// typed in XMI 2.5.1's namespace that carries another attribute in EMF's
+/// still reads as its declared subclass, as a child and as a root (added
+/// for a surviving hand mutation of fix round 1).
+#[test]
+fn lib_compat_017_a_type_in_one_xmi_namespace_beside_another_xmi_attribute_reads_as_a_subclass() {
+    let open = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+         xmlns:e=\"{EMF_NS}\" xmlns:p=\"urn:p\""
+    );
+    let child_input = format!(
+        "{open} xmi:id=\"a\"><argumentElement xmi:type=\"p:Prop\" e:note=\"n\" \
+         xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+    );
+    let root_input = format!("{open} xmi:type=\"p:Bundle\" e:note=\"n\" xmi:id=\"a\"/>");
+    for (what, input, declared, id, class) in [
+        (
+            "a child typed in XMI 2.5.1's namespace beside an EMF attribute",
+            child_input,
+            ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim),
+            "c1",
+            "Prop",
+        ),
+        (
+            "a root typed in XMI 2.5.1's namespace beside an EMF attribute",
+            root_input,
+            ReadOptions::default().with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
+            "a",
+            "Bundle",
+        ),
+    ] {
+        let output = read_with(what, &input, &declared);
+        assert_eq!(
+            class_of(element(what, output.document(), id)),
+            Some(("urn:p".to_owned(), class.to_owned())),
+            "{ROW}: {what}: {id} has not the subclass {class}: {}",
+            brief(output.diagnostics())
+        );
+        assert_eq!(
+            with_template(output.diagnostics(), KEPT).len(),
+            1,
+            "{ROW}: {what}: not one {KEPT}: {}",
+            brief(output.diagnostics())
+        );
+        assert_writes_back(what, output.document(), &declared);
+    }
 }
 
 /// A subclass's namespace text, its URI and its binding, counts against the
