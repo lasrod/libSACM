@@ -1,8 +1,8 @@
 ---
 slice: 0075b
 name: foreign-subclasses
-state: in-progress
-step: implementation
+state: done
+step: done
 rows: [LIB-COMPAT-017, LIB-COMPAT-005]
 mode: pr
 base: main (6b8411c)
@@ -69,3 +69,5 @@ this slice, its own slice next).
   (waits on -017). Fix round: guard + test
   `lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations`, rustdoc
   and requirement wording, corpus `kept_whole` counts, CHANGELOG and `Preserved` wording.
+- 2026-11-25 verify round 2 at 0845d61: PASS for both rows. Record
+  `docs/verification/0075b-foreign-subclasses.md`; both rows `verified`.

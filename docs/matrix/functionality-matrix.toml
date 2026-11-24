@@ -6089,7 +6089,8 @@ tests = [
   "xtask/tests/corpus.rs::lib_compat_005_an_absent_corpus_skips_naming_this_row",
 ]
 code = ["docs/compat/corpus.md"]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0075b-foreign-subclasses.md"
 depends_on = ["LIB-COMPAT-002", "LIB-COMPAT-015", "LIB-COMPAT-017", "SACM23-TERM-005"]
 notes = "SACM23-ART-010 was dropped from depends_on in slice 0075b: no claimed file holds an ArtifactAssetRelationship. SACM23-TERM-005 stays: file 7 holds 3 Expressions."
 acceptance = [
@@ -7448,7 +7449,8 @@ tests = [
   "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_in_one_xmi_namespace_beside_another_xmi_attribute_reads_as_a_subclass",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model.rs", "crates/sacm/src/model/subclass.rs", "crates/sacm/src/model/preserved.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/diagnostic/template.rs", "docs/sacm/diagnostics.md"]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0075b-foreign-subclasses.md"
 depends_on = ["LIB-COMPAT-001", "LIB-COMPAT-002", "LIB-COMPAT-003", "LIB-COMPAT-004"]
 notes = "Promoted into M6 by the maintainer, 2026-11-19 (M6 decisions Q7); slice 0075b. Was a candidate: the GSN layer the maintainer plans may need it, to read files in the SCSC v2.2 or SACM 2.4 Annex A style; whether it does depends on which GSN style that layer follows (an open question for when it starts)."
 acceptance = [
