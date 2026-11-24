@@ -16,6 +16,15 @@
 //!
 //! Not checked here: CI's wiring (the cached fetch and `SACM_CORPUS_DIR`) and
 //! the findings table of `docs/compat/corpus.md`, which the verifier reviews.
+//!
+//! The `lib_compat_005_*` tests check what the corpus shows (LIB-COMPAT-005,
+//! "What LIB-COMPAT-005 claims" in `docs/compat/corpus.md`): five files of
+//! three tool families, `ACEditor` (7), Epsilon (8, 9) and `wrwei/SACM` (12, 13),
+//! read tolerantly, have no dangling reference and write back without loss.
+//! Files 12 and 13 are read with the subclass declarations an application
+//! would give for their GSN classes (LIB-COMPAT-017), test data here as an
+//! application's would be. This is interoperability evidence, not
+//! conformance: no file is SACM 2.3 XMI (D-STRICT, D-CORPUS).
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -27,11 +36,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sacm::compare::semantic_compare;
 use sacm::diagnostic::Diagnostic;
+use sacm::model::ElementKind;
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 use xtask::fetch::{Artifact, CORPUS, CORPUS_DEST, sha256_hex};
 
 const ROW: &str = "LIB-COMPAT-015";
+
+/// The row of the corpus claim (slice 0075b).
+const ROW_005: &str = "LIB-COMPAT-005";
+
+/// The GSN namespace that files 12 and 13 type SACM roles with.
+const GSN: &str = "http://acwg.org/3.0/gsn";
 
 /// The fetch command, quoted in every message.
 const FETCH: &str = "run `cargo xtask fetch-corpus`";
@@ -56,8 +72,10 @@ enum Located {
 
 /// The corpus directory: `configured` (the value of `SACM_CORPUS_DIR`) if
 /// set, else `default`. When one of `files` is absent from it: an error when
-/// the directory was configured, a skip otherwise.
+/// the directory was configured, a skip otherwise. Every message names
+/// `row`, the row whose test asks.
 fn locate(
+    row: &str,
     configured: Option<OsString>,
     default: PathBuf,
     files: &[Artifact],
@@ -65,7 +83,7 @@ fn locate(
     let (dir, was_configured) = match configured {
         Some(value) if value.is_empty() => {
             return Err(format!(
-                "{ROW}: SACM_CORPUS_DIR is set but empty; unset it or {FETCH}"
+                "{row}: SACM_CORPUS_DIR is set but empty; unset it or {FETCH}"
             ));
         }
         Some(value) => (PathBuf::from(value), true),
@@ -76,12 +94,12 @@ fn locate(
     };
     if was_configured {
         Err(format!(
-            "{ROW}: {} is missing; {FETCH}",
+            "{row}: {} is missing; {FETCH}",
             dir.join(missing.file_name).display()
         ))
     } else {
         Ok(Located::Skip(format!(
-            "SKIPPED {ROW}: the corpus is not at {}; {FETCH}",
+            "SKIPPED {row}: the corpus is not at {}; {FETCH}",
             dir.display()
         )))
     }
@@ -105,15 +123,15 @@ fn check_hashes(dir: &Path, files: &[Artifact]) -> Result<(), String> {
 }
 
 /// The corpus directory for this run, its hashes checked, or `None` after
-/// printing a SKIPPED notice. Panics when a configured corpus is incomplete
-/// or a file has another hash.
+/// printing a SKIPPED notice naming `row`. Panics when a configured corpus is
+/// incomplete or a file has another hash.
 ///
 /// The notice goes straight to the process's stderr: the test harness
 /// captures `eprintln!` and hides it for a passing test, so a skip would
 /// look like a pass.
-fn corpus() -> Option<PathBuf> {
+fn corpus(row: &str) -> Option<PathBuf> {
     let default = xtask::repo_root().join(CORPUS_DEST);
-    match locate(std::env::var_os("SACM_CORPUS_DIR"), default, CORPUS) {
+    match locate(row, std::env::var_os("SACM_CORPUS_DIR"), default, CORPUS) {
         Ok(Located::Found(dir)) => {
             if let Err(message) = check_hashes(&dir, CORPUS) {
                 panic!("{message}");
@@ -331,7 +349,7 @@ fn files_table(doc: &str) -> Vec<Vec<String>> {
 
 #[test]
 fn lib_compat_015_the_corpus_report_equals_the_one_in_docs_compat_corpus_md() {
-    let Some(dir) = corpus() else {
+    let Some(dir) = corpus(ROW) else {
         return;
     };
     let actual = report(&dir);
@@ -346,7 +364,7 @@ fn lib_compat_015_the_corpus_report_equals_the_one_in_docs_compat_corpus_md() {
 
 #[test]
 fn lib_compat_015_the_corpus_report_is_the_same_on_a_second_run() {
-    let Some(dir) = corpus() else {
+    let Some(dir) = corpus(ROW) else {
         return;
     };
     let first = report(&dir);
@@ -388,7 +406,7 @@ fn lib_compat_015_an_absent_corpus_is_skipped_unless_configured() {
 
     // Not configured, a file absent: skipped, with a notice naming the fetch.
     assert_eq!(
-        locate(None, dir.clone(), CORPUS),
+        locate(ROW, None, dir.clone(), CORPUS),
         Ok(Located::Skip(format!(
             "SKIPPED LIB-COMPAT-015: the corpus is not at {}; run `cargo xtask fetch-corpus`",
             dir.display()
@@ -398,6 +416,7 @@ fn lib_compat_015_an_absent_corpus_is_skipped_unless_configured() {
     // Configured, a file absent: an error naming the first absent file.
     assert_eq!(
         locate(
+            ROW,
             Some(dir.clone().into_os_string()),
             PathBuf::from("unused"),
             CORPUS
@@ -410,7 +429,7 @@ fn lib_compat_015_an_absent_corpus_is_skipped_unless_configured() {
     );
     // Configured but empty: an error.
     assert_eq!(
-        locate(Some(OsString::new()), dir.clone(), CORPUS),
+        locate(ROW, Some(OsString::new()), dir.clone(), CORPUS),
         Err(
             "LIB-COMPAT-015: SACM_CORPUS_DIR is set but empty; unset it or run `cargo xtask \
              fetch-corpus`"
@@ -426,12 +445,13 @@ fn lib_compat_015_an_absent_corpus_is_skipped_unless_configured() {
             .unwrap_or_else(|e| panic!("{ROW}: write {}: {e}", artifact.file_name));
     }
     assert_eq!(
-        locate(None, dir.clone(), CORPUS),
+        locate(ROW, None, dir.clone(), CORPUS),
         Ok(Located::Found(dir.clone())),
         "{ROW}: a complete default corpus is found"
     );
     assert_eq!(
         locate(
+            ROW,
             Some(dir.clone().into_os_string()),
             PathBuf::from("unused"),
             CORPUS
@@ -482,4 +502,320 @@ fn lib_compat_015_the_files_table_lists_every_corpus_file_in_order() {
             artifact.file_name
         );
     }
+}
+
+// --- LIB-COMPAT-005: the corpus claim -------------------------------------------------
+
+/// The declarations an application would give for the GSN classes of files
+/// 12 and 13 (LIB-COMPAT-017): test data, as an application's would be.
+fn gsn_options() -> ReadOptions {
+    [
+        ("Module", ElementKind::ArgumentPackage),
+        ("Goal", ElementKind::Claim),
+        ("Context", ElementKind::Claim),
+        ("Assumption", ElementKind::Claim),
+        ("Justification", ElementKind::Claim),
+        ("AwayGoal", ElementKind::Claim),
+        ("Strategy", ElementKind::ArgumentReasoning),
+        ("Solution", ElementKind::ArtifactReference),
+        ("SupportedBy", ElementKind::AssertedInference),
+        ("InContextOf", ElementKind::AssertedContext),
+    ]
+    .into_iter()
+    .fold(ReadOptions::default(), |options, (name, kind)| {
+        options.with_subclass(GSN, name, kind)
+    })
+}
+
+/// The bytes of the corpus file `name` in `dir`.
+fn corpus_file(dir: &Path, name: &str) -> Vec<u8> {
+    assert!(
+        CORPUS.iter().any(|artifact| artifact.file_name == name),
+        "{ROW_005}: setup: {name} is not a corpus file"
+    );
+    let path = dir.join(name);
+    fs::read(&path).unwrap_or_else(|e| panic!("{ROW_005}: read {}: {e}", path.display()))
+}
+
+/// The tolerant read of `name` with `options`, which must succeed.
+fn claimed_read(dir: &Path, name: &str, options: &ReadOptions) -> ReadOutput {
+    xmi::read(&corpus_file(dir, name), options)
+        .unwrap_or_else(|error| panic!("{ROW_005}: {name}: the tolerant read refuses it: {error}"))
+}
+
+/// How many diagnostics of `found` have the template `template`.
+fn count_of(found: &[Diagnostic], template: &str) -> usize {
+    found
+        .iter()
+        .filter(|diagnostic| diagnostic.template() == template)
+        .count()
+}
+
+/// One row of the per-file table of "What LIB-COMPAT-005 claims".
+struct Claimed {
+    /// The corpus file.
+    name: &'static str,
+    /// Whether it is read with [`gsn_options`], else with default options.
+    gsn: bool,
+    /// The `count` of its one SACM-XMI-017 `paths-read`, or `None` for no
+    /// SACM-XMI-017.
+    paths: Option<u64>,
+    /// `document().elements().count()`.
+    elements: usize,
+    /// The strict write's `PreservedContent`: how many elements, and the
+    /// first.
+    strict: (usize, &'static str),
+    /// How many SACM-XMI-003 `element-kept` Warnings the read reports.
+    kept_whole: usize,
+}
+
+/// Files 7, 8, 9, 12 and 13 of the corpus.
+const CLAIMED: [Claimed; 5] = [
+    Claimed {
+        name: "aceditor-hbs-default.sacm2",
+        gsn: false,
+        paths: Some(35),
+        elements: 81,
+        strict: (20, "implementation_constraint_1"),
+        kept_whole: 0,
+    },
+    Claimed {
+        name: "epsilon-sacm-example.model",
+        gsn: false,
+        paths: None,
+        elements: 1,
+        strict: (1, "argument_package_1"),
+        kept_whole: 39,
+    },
+    Claimed {
+        name: "epsilon-untitled.model",
+        gsn: false,
+        paths: None,
+        elements: 1,
+        strict: (1, "_KK-doAP4EeeNssncY22Lrw"),
+        kept_whole: 4,
+    },
+    Claimed {
+        name: "sysmline-easy-example.assurancecase",
+        gsn: true,
+        paths: Some(46),
+        elements: 139,
+        strict: (46, "argument_package_1"),
+        kept_whole: 0,
+    },
+    Claimed {
+        name: "sysmini-quan.assurancecase",
+        gsn: true,
+        paths: Some(23),
+        elements: 75,
+        strict: (25, "artifact_1"),
+        kept_whole: 1,
+    },
+];
+
+#[test]
+fn lib_compat_005_the_files_of_three_tool_families_read_and_write_back_without_loss() {
+    let Some(dir) = corpus(ROW_005) else {
+        return;
+    };
+    for file in &CLAIMED {
+        let name = file.name;
+        let options = if file.gsn {
+            gsn_options()
+        } else {
+            ReadOptions::default()
+        };
+        let output = claimed_read(&dir, name, &options);
+        let found = output.diagnostics();
+
+        // One SACM-XMI-015, a Warning emf-xmi-namespace-read.
+        let namespace: Vec<(&str, &str)> = found
+            .iter()
+            .filter(|diagnostic| diagnostic.code().as_str() == "SACM-XMI-015")
+            .map(|diagnostic| (diagnostic.severity().as_str(), diagnostic.template()))
+            .collect();
+        assert_eq!(
+            namespace,
+            [("warning", "SACM-XMI-015/emf-xmi-namespace-read")],
+            "{ROW_005}: {name}: not exactly one SACM-XMI-015 Warning emf-xmi-namespace-read"
+        );
+
+        // The SACM-XMI-017s: none, or one paths-read with its count.
+        let paths: Vec<(&str, Option<u64>)> = found
+            .iter()
+            .filter(|diagnostic| diagnostic.code().as_str() == "SACM-XMI-017")
+            .map(|diagnostic| {
+                let count = diagnostic
+                    .arguments()
+                    .iter()
+                    .find(|argument| argument.name() == "count")
+                    .and_then(|argument| argument.value().as_count());
+                (diagnostic.template(), count)
+            })
+            .collect();
+        let expected: Vec<(&str, Option<u64>)> = file
+            .paths
+            .map(|count| ("SACM-XMI-017/paths-read", Some(count)))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            paths, expected,
+            "{ROW_005}: {name}: the SACM-XMI-017 diagnostics"
+        );
+
+        // The elements kept whole.
+        assert_eq!(
+            count_of(found, "SACM-XMI-003/element-kept"),
+            file.kept_whole,
+            "{ROW_005}: {name}: the number of SACM-XMI-003 element-kept Warnings"
+        );
+
+        // The elements read.
+        let document = output.document();
+        assert_eq!(
+            document.elements().count(),
+            file.elements,
+            "{ROW_005}: {name}: the number of elements read"
+        );
+
+        // No dangling reference.
+        let dangling = validation::validate(document)
+            .iter()
+            .filter(|diagnostic| diagnostic.code().as_str() == "SACM-REF-001")
+            .count();
+        assert_eq!(
+            dangling, 0,
+            "{ROW_005}: {name}: validate reports SACM-REF-001"
+        );
+
+        // A tolerant write reads back, with the same options, with no
+        // difference.
+        let text = xmi::write(document, &WriteOptions::default().with_mode(Mode::Tolerant))
+            .unwrap_or_else(|error| {
+                panic!("{ROW_005}: {name}: the tolerant write refuses it: {error}")
+            });
+        let back = xmi::read(text.as_bytes(), &options).unwrap_or_else(|error| {
+            panic!("{ROW_005}: {name}: the tolerant write does not read back: {error}")
+        });
+        let differences = semantic_compare(document, back.document());
+        assert!(
+            differences.is_empty(),
+            "{ROW_005}: {name}: the tolerant write reads back with differences: {differences:?}"
+        );
+
+        // The strict write refuses the preserved content.
+        let strict = match xmi::write(document, &WriteOptions::default()) {
+            Err(WriteError::PreservedContent { elements, .. }) => (
+                elements.len(),
+                elements
+                    .first()
+                    .map(|id| id.as_str().to_owned())
+                    .unwrap_or_default(),
+            ),
+            Err(error) => {
+                panic!("{ROW_005}: {name}: the strict write is not PreservedContent: {error:?}")
+            }
+            Ok(_) => panic!("{ROW_005}: {name}: the strict write writes it"),
+        };
+        assert_eq!(
+            strict,
+            (file.strict.0, file.strict.1.to_owned()),
+            "{ROW_005}: {name}: the elements the strict write names (how many, the first)"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_005_the_gsn_typed_elements_read_as_their_declared_sacm_classes() {
+    let Some(dir) = corpus(ROW_005) else {
+        return;
+    };
+    let options = gsn_options();
+    for (name, counts, kept, whole) in [
+        (
+            "sysmline-easy-example.assurancecase",
+            &[
+                ("Assumption", 1),
+                ("Context", 6),
+                ("Goal", 8),
+                ("InContextOf", 9),
+                ("Justification", 1),
+                ("Module", 1),
+                ("Solution", 4),
+                ("Strategy", 2),
+                ("SupportedBy", 14),
+            ][..],
+            46,
+            0,
+        ),
+        (
+            "sysmini-quan.assurancecase",
+            &[
+                ("AwayGoal", 1),
+                ("Context", 2),
+                ("Goal", 7),
+                ("InContextOf", 2),
+                ("Module", 1),
+                ("Solution", 1),
+                ("Strategy", 1),
+                ("SupportedBy", 9),
+            ][..],
+            24,
+            1,
+        ),
+    ] {
+        let output = claimed_read(&dir, name, &options);
+        let mut by_name: BTreeMap<String, usize> = BTreeMap::new();
+        for element in output.document().elements() {
+            let Some(class) = element.subclass() else {
+                continue;
+            };
+            assert_eq!(
+                class.namespace(),
+                GSN,
+                "{ROW_005}: {name}: {} has a subclass outside the GSN namespace",
+                element.id()
+            );
+            assert_eq!(
+                Some(element.kind()),
+                options.subclass(GSN, class.name()),
+                "{ROW_005}: {name}: {}, a {}, is not of its declared kind",
+                element.id(),
+                class.name()
+            );
+            *by_name.entry(class.name().to_owned()).or_default() += 1;
+        }
+        let expected: BTreeMap<String, usize> = counts
+            .iter()
+            .map(|(class, count)| ((*class).to_owned(), *count))
+            .collect();
+        assert_eq!(
+            by_name, expected,
+            "{ROW_005}: {name}: the elements read as GSN subclasses, by name"
+        );
+        let found = output.diagnostics();
+        assert_eq!(
+            (
+                count_of(found, "SACM-XMI-003/subclass-type-kept"),
+                count_of(found, "SACM-XMI-003/element-kept"),
+            ),
+            (kept, whole),
+            "{ROW_005}: {name}: the subclass-type-kept and element-kept Warnings"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_005_an_absent_corpus_skips_naming_this_row() {
+    let empty = TempDir::new("lib-compat-005-absent");
+    let dir = empty.0.clone();
+    assert_eq!(
+        locate(ROW_005, None, dir.clone(), CORPUS),
+        Ok(Located::Skip(format!(
+            "SKIPPED LIB-COMPAT-005: the corpus is not at {}; run `cargo xtask fetch-corpus`",
+            dir.display()
+        ))),
+        "{ROW_005}: an absent corpus that is not configured is skipped with a notice naming the \
+         row"
+    );
 }

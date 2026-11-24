@@ -17,6 +17,7 @@ implementation. Their original discussion is linked where it exists.
 | D-TERM | The public API and docs use SACM terminology only. GSN terms (goal, strategy, solution, context node, away goal, module) never name SACM concepts. A GSN mapping, if ever offered, lives outside the `sacm` crate. |
 | D-NOLAYOUT | Diagram layout, coordinates and visual state are not SACM and have no place in the model or in strict output. |
 | D-API | The first external interface is a Rust API plus the `sacm` CLI. Other bindings (C, Python, WASM) wait until the model API is stable. |
+| D-CORPUS | No file that another tool wrote is committed. Third-party SACM files are fetched, pinned by commit and SHA-256, into the git-ignored `third_party/corpus/` (`cargo xtask fetch-corpus`, LIB-COMPAT-015), and the tests that read them skip when they are absent; what a committed test needs from them is reproduced in hand-written fixtures. What the fetched corpus shows is LIB-COMPAT-005's claim (`docs/compat/corpus.md`). This answers Q-INTEROP (M6 decisions Q10, the maintainer, 2026-11-19). |
 
 ## Data integrity
 
@@ -77,6 +78,4 @@ Background for each is in [reference/specification-defects.md](reference/specifi
 Recorded so they are not decided by accident in code. The lead raises them with the
 maintainer when a slice needs them.
 
-| ID | Question | Needed by |
-|---|---|---|
-| Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |
+None.

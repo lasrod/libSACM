@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-COMPAT-017: elements typed with classes of an application's profile, urn:example:profile, under SACM 2.3 roles: Bundle (declared an ArgumentPackage), Proposition (a Claim) with an attribute of the profile, and Step (an AssertedInference). Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile" xmi:id="case">
+  <name lang="en" content="Brake case"/>
+  <argumentPackage xmi:type="p:Bundle" xmi:id="arguments">
+    <name lang="en" content="Brake arguments"/>
+    <argumentElement xmi:type="p:Proposition" xmi:id="c1" p:weight="high">
+      <name lang="en" content="The brakes are safe"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name lang="en" content="The brakes were tested"/>
+    </argumentElement>
+    <argumentElement xmi:type="p:Step" xmi:id="i1" source="c2" target="c1">
+      <name lang="en" content="Testing supports safety"/>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

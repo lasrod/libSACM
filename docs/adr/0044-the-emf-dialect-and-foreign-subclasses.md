@@ -60,6 +60,9 @@ class in a SACM role is not valid against the SACM XML Schema (rule 4f, Annex B.
     the element, as for any preserved content.
   - A declaration never retypes a class of the root's SACM family, a root or a proxy. A
     strict read ignores the declarations.
+  - A root's type that names a class the application declared a subclass of the root's own
+    class is read as the root's subclass; the root's class still comes from its element name
+    (the maintainer, 2026-11-24, slice 0075b Q1).
   - The crate names no foreign class (D-TERM): an application gives its own declarations.
 - **D4.** A subclass type is reported as SACM-XMI-003 (`subclass-type-kept`), one per element,
   not under a new code: it is content SACM 2.3 does not have, kept.

@@ -2,8 +2,10 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
-//! that a tolerant or a strict read, or a strict write, gives (slice 0073b
+//! `## Message templates` table, 110 in all: 38 that `validate` gives and 72
+//! that a tolerant or a strict read, or a strict write, gives (slice 0075b
+//! adds `SACM-XMI-003/subclass-type-kept`, which a tolerant read with a
+//! subclass declaration gives, LIB-COMPAT-017, ADR 0044 D4; slice 0073b
 //! removes the four kept forms of SACM-XMI-007, whose links SACM23-XMI-029
 //! reads, and adds `SACM-XMI-010/xsi-type-on-proxy`, ADR 0040 amendment 1;
 //! slice 0073a
@@ -65,8 +67,9 @@ const NS: &str = concat!(
 /// SACM23-XMI-030; ADR 0042), and slice 0073b removes the four kept forms of
 /// SACM-XMI-007 and adds `SACM-XMI-010/xsi-type-on-proxy` (SACM23-XMI-029;
 /// ADR 0040 amendment 1), and slice 0075a adds three for the EMF dialect
-/// (LIB-COMPAT-002; ADR 0044).
-const DIAGNOSTIC_TEMPLATES: usize = 109;
+/// (LIB-COMPAT-002; ADR 0044), and slice 0075b one for a declared subclass
+/// (LIB-COMPAT-017; ADR 0044 D4).
+const DIAGNOSTIC_TEMPLATES: usize = 110;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -167,6 +170,9 @@ fn n(count: u64) -> Value {
 enum Step {
     /// A tolerant read of the input.
     Tolerant(String),
+    /// A tolerant read of the input with the subclass declaration of
+    /// [`declared`] (LIB-COMPAT-017).
+    Declared(String),
     /// A strict read of the input, which reads it.
     Strict(String),
     /// `validate` of the document a tolerant read of the input returns.
@@ -995,7 +1001,7 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 71 templates a read, or a strict write's check of XMI metadata, gives,
+/// The 72 templates a read, or a strict write's check of XMI metadata, gives,
 /// in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
@@ -1006,7 +1012,40 @@ fn reader_cases() -> Vec<Case> {
     cases.extend(namespace_cases());
     cases.extend(metadata_cases());
     cases.extend(emf_cases());
+    cases.extend(subclass_cases());
     cases
+}
+
+/// The options of a [`Step::Declared`] read: tolerant, with the class
+/// `Proposition` of `urn:example:profile` declared a subclass of Claim.
+fn declared() -> ReadOptions {
+    ReadOptions::default().with_subclass(
+        "urn:example:profile",
+        "Proposition",
+        sacm::model::ElementKind::Claim,
+    )
+}
+
+/// The template of slice 0075b (LIB-COMPAT-017; ADR 0044 D3, D4): an element
+/// typed with a class the application declared a subclass of its kind.
+fn subclass_cases() -> Vec<Case> {
+    vec![case(
+        "SACM-XMI-003/subclass-type-kept",
+        Step::Declared(format!(
+            "<sacm:ArgumentPackage{NS} xmlns:p=\"urn:example:profile\" xmi:id=\"p\">\
+             <name content=\"p\"/>\
+             <argumentElement xmi:type=\"p:Proposition\" xmi:id=\"c1\"><name content=\"c1\"/>\
+             </argumentElement></sacm:ArgumentPackage>"
+        )),
+        (WARNING, "LIB-COMPAT-017", Some("7.8.6")),
+        &[
+            ("type", t("p:Proposition")),
+            ("class", t("Claim")),
+            ("id", t("c1")),
+        ],
+        "the type {type:?} of the {class} {id:?} is not SACM 2.3, but the application declared it a subclass of {class}, so the element is read as {class} and its type is kept as preserved content, which a tolerant write writes back and a strict write refuses",
+        "the type \"p:Proposition\" of the Claim \"c1\" is not SACM 2.3, but the application declared it a subclass of Claim, so the element is read as Claim and its type is kept as preserved content, which a tolerant write writes back and a strict write refuses",
+    )]
 }
 
 /// The three templates of slice 0075a (LIB-COMPAT-002; ADR 0044 D1, D2): the
@@ -2339,6 +2378,10 @@ fn diagnostics(case: &Case) -> Vec<Diagnostic> {
     };
     match &case.step {
         Step::Tolerant(input) => read(input, Mode::Tolerant),
+        Step::Declared(input) => match xmi::read(input.as_bytes(), &declared()) {
+            Ok(output) => output.diagnostics().to_vec(),
+            Err(error) => panic!("{ROW}: {template}: a declared read refuses {input}: {error}"),
+        },
         Step::Strict(input) => read(input, Mode::Strict),
         Step::Validate(input) => validation::validate(&tolerant_document(template, input)),
         Step::Write(input) => {

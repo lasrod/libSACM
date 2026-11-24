@@ -168,6 +168,7 @@
 //! # let _ = rewrite;
 //! ```
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::diagnostic::template;
@@ -1349,7 +1350,7 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
     let text = input::decode(input)?;
     limits::scan(&text, &limits)?;
     let tree = input::parse(&text, &limits)?;
-    let (document, mut diagnostics) = roots::read(&text, &tree, mode, &limits)?;
+    let (document, mut diagnostics) = roots::read(&text, &tree, options)?;
     diagnostics.sort();
     Ok(ReadOutput {
         document,
@@ -1386,7 +1387,9 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   package roots within its [`Limits`]: in SACM 2.3, an older revision's
 ///   or a SACM-like namespace (LIB-COMPAT-004). It also accepts recognised
 ///   variations, the dialect EMF writes among them (its XMI namespace
-///   `http://www.omg.org/XMI` and its fragment paths, LIB-COMPAT-002), and
+///   `http://www.omg.org/XMI` and its fragment paths, LIB-COMPAT-002), reads
+///   elements typed with classes the application declares subclasses of SACM
+///   2.3 classes ([`ReadOptions::with_subclass`], LIB-COMPAT-017), and
 ///   keeps every construct a strict read refuses but a malformed or unsafe
 ///   input, a repeated `xmi:id`, an encoding, a SACM 2.4 root, an `XMI`
 ///   element in another XMI namespace and a limit, as preserved content; it
@@ -1424,14 +1427,21 @@ pub enum Mode {
     Strict,
     /// Opens every well-formed SACM file within its [`Limits`]: a read keeps
     /// what a strict read refuses, with a Warning, reads a root in an older
-    /// SACM revision's or a SACM-like namespace as SACM 2.3, and the dialect
-    /// EMF writes as XMI 2.5.1, and a write writes the document as it is
-    /// held.
+    /// SACM revision's or a SACM-like namespace as SACM 2.3, the dialect EMF
+    /// writes as XMI 2.5.1, and elements typed with classes the application
+    /// declares subclasses of SACM 2.3 classes as those classes, and a write
+    /// writes the document as it is held.
     Tolerant,
 }
 
 /// How [`read`] reads a document: in which [`Mode`], tolerant by default,
-/// and under which [`Limits`], the defaults by default (LIB-SEC-003).
+/// under which [`Limits`], the defaults by default (LIB-SEC-003), and which
+/// classes outside SACM 2.3 the application declares subclasses of SACM 2.3
+/// classes, none by default ([`with_subclass`](Self::with_subclass),
+/// LIB-COMPAT-017).
+///
+/// Options compare and hash by content: the order in which declarations are
+/// made does not matter.
 ///
 /// ```
 /// use sacm::xmi::{self, Mode, ReadOptions};
@@ -1449,14 +1459,20 @@ pub struct ReadOptions {
     mode: Mode,
     /// The limits to read under.
     limits: Limits,
+    /// The declared subclasses: by namespace URI, then by class name, the
+    /// SACM 2.3 class each is a subclass of (LIB-COMPAT-017, ADR 0044 D3).
+    /// Ordered maps, so `==` and `Hash` do not depend on call order.
+    subclasses: BTreeMap<String, BTreeMap<String, ElementKind>>,
 }
 
 impl Default for ReadOptions {
-    /// Reads in [`Mode::Tolerant`], under the default [`Limits`].
+    /// Reads in [`Mode::Tolerant`], under the default [`Limits`], with no
+    /// declared subclass.
     fn default() -> Self {
         Self {
             mode: Mode::Tolerant,
             limits: Limits::default(),
+            subclasses: BTreeMap::new(),
         }
     }
 }
@@ -1494,6 +1510,82 @@ impl ReadOptions {
     #[must_use]
     pub fn limits(&self) -> Limits {
         self.limits
+    }
+
+    /// These options, declaring the class `name` of the namespace
+    /// `namespace` a subclass of the SACM 2.3 class `kind` (LIB-COMPAT-017,
+    /// ADR 0044 D3).
+    ///
+    /// A tolerant read then reads a child element typed with that class
+    /// (`xmi:type` or `xsi:type`, matched by namespace URI and local name),
+    /// under a role that admits `kind`, as an element of `kind`. It keeps the
+    /// class as preserved content of the element, which
+    /// [`SacmElement::subclass`](crate::model::SacmElement::subclass) gives,
+    /// with a SACM-XMI-003 Warning: a tolerant write writes it back as the
+    /// element's `xmi:type`, and a strict write refuses the element. A
+    /// package root keeps a type naming a declared subclass of its own class
+    /// the same way; its class still comes from its element name. A
+    /// declaration never applies to a proxy, nor to an element that carries a
+    /// type in both XMI namespaces, nor to a type in the root's SACM
+    /// namespaces or in SACM 2.3's, and an empty `namespace` matches no type.
+    /// A strict read ignores every declaration. A later declaration of the
+    /// same class replaces this one.
+    ///
+    /// SACM 2.3's own extension mechanism is the `TaggedValue` (§8.12); a
+    /// file typed with foreign classes is not SACM 2.3 XMI (XMI 2.5.1
+    /// §7.8.6, Annex B.2), so reading one is a tolerance the application asks
+    /// for.
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile"
+    ///     xmi:id="arguments">
+    ///   <argumentElement xmi:type="p:Proposition" xmi:id="c1"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let options = ReadOptions::default()
+    ///     .with_subclass("urn:example:profile", "Proposition", ElementKind::Claim);
+    /// let output = xmi::read(input, &options)?;
+    /// let claim = output.document().get("c1").expect("c1 is read");
+    /// assert_eq!(claim.kind(), ElementKind::Claim);
+    /// assert_eq!(claim.subclass().map(|class| class.name()), Some("Proposition"));
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn with_subclass(
+        mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        kind: ElementKind,
+    ) -> Self {
+        self.subclasses
+            .entry(namespace.into())
+            .or_default()
+            .insert(name.into(), kind);
+        self
+    }
+
+    /// The SACM 2.3 class that the class `name` of the namespace `namespace`
+    /// is declared a subclass of, if it is
+    /// ([`with_subclass`](Self::with_subclass)).
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    /// use sacm::xmi::ReadOptions;
+    ///
+    /// let options = ReadOptions::default()
+    ///     .with_subclass("urn:example:profile", "Step", ElementKind::AssertedInference);
+    /// assert_eq!(
+    ///     options.subclass("urn:example:profile", "Step"),
+    ///     Some(ElementKind::AssertedInference)
+    /// );
+    /// assert_eq!(options.subclass("urn:example:profile", "Proposition"), None);
+    /// ```
+    #[must_use]
+    pub fn subclass(&self, namespace: &str, name: &str) -> Option<ElementKind> {
+        self.subclasses.get(namespace)?.get(name).copied()
     }
 }
 

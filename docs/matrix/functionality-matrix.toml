@@ -6080,11 +6080,24 @@ id = "LIB-COMPAT-005"
 area = "COMPAT"
 milestone = "M6"
 title = "Third-party corpus"
-requirement = "Files produced by at least two independent SACM tools import, validate and semantically round-trip; each committed file carries its licence and a NOTICE entry, or is replaced by a minimized hand-written reproduction."
-source = "Interop evidence; Q-INTEROP"
+requirement = "Files that tools independent of this crate wrote are read, validated and written back without loss. The evidence is in the fetched corpus (LIB-COMPAT-015; no third-party file is committed, D-CORPUS): the files of ACEditor (7), Epsilon (8, 9) and the EMF SACM implementation wrwei/SACM (12, 13). Each reads tolerantly with exactly one SACM-XMI-015 Warning, `validate` reports no SACM-REF-001, and its tolerant write reads back with no `semantic_compare` difference. File 7 reads all 35 of its EMF fragment paths. Files 12 and 13 type SACM roles with `http://acwg.org/3.0/gsn` classes. With the subclass declarations an application would give for those classes (LIB-COMPAT-017), they read 46 and 24 such elements as SACM 2.3 elements, keep none of them whole, and read all 46 and 23 of their paths. `docs/compat/corpus.md` states the claim and its per-file facts (\"What LIB-COMPAT-005 claims\"). An absent corpus skips the tests, as for LIB-COMPAT-015."
+source = "formal/23-05-08 §2.4 (p. 4) \"Software that conforms to the specification at the Assurance Case Model compliance point shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel defined in this entire specification.\" (the corpus files do not, so this is interoperability evidence, not conformance); D-CORPUS (closes Q-INTEROP; M6 decisions Q10, the maintainer, 2026-11-19); ADR 0044; LIB-COMPAT-015 (the fetched corpus); corpus files 7, 8, 9, 12 and 13"
 kind = "compliance"
-status = "planned"
-depends_on = ["LIB-COMPAT-002", "SACM23-ART-010", "SACM23-TERM-005"]
+tests = [
+  "xtask/tests/corpus.rs::lib_compat_005_the_files_of_three_tool_families_read_and_write_back_without_loss",
+  "xtask/tests/corpus.rs::lib_compat_005_the_gsn_typed_elements_read_as_their_declared_sacm_classes",
+  "xtask/tests/corpus.rs::lib_compat_005_an_absent_corpus_skips_naming_this_row",
+]
+code = ["docs/compat/corpus.md"]
+status = "verified"
+verification = "docs/verification/0075b-foreign-subclasses.md"
+depends_on = ["LIB-COMPAT-002", "LIB-COMPAT-015", "LIB-COMPAT-017", "SACM23-TERM-005"]
+notes = "SACM23-ART-010 was dropped from depends_on in slice 0075b: no claimed file holds an ArtifactAssetRelationship. SACM23-TERM-005 stays: file 7 holds 3 Expressions."
+acceptance = [
+  "`lib_compat_005_the_files_of_three_tool_families_read_and_write_back_without_loss`: for files 7, 8 and 9 (default options) and 12 and 13 (the GSN declarations), the facts of the per-file table: a tolerant read, one SACM-XMI-015, the SACM-XMI-017 count, the element count, no SACM-REF-001, a write-back with no difference, and the strict write's `PreservedContent` count and first id.",
+  "`lib_compat_005_the_gsn_typed_elements_read_as_their_declared_sacm_classes`: files 12 and 13 with the declarations: the per-name counts of `subclass()`, each element of its declared kind, `subclass-type-kept` 46 / 24, `element-kept` 0 / 1.",
+  "`lib_compat_005_an_absent_corpus_skips_naming_this_row`: `locate` with no configured directory and a missing file gives the SKIPPED notice naming LIB-COMPAT-005.",
+]
 
 [[row]]
 id = "LIB-TOOL-004"
@@ -7412,12 +7425,49 @@ id = "LIB-COMPAT-017"
 area = "COMPAT"
 milestone = "M6"
 title = "Foreign subclasses of SACM classes"
-requirement = "An application can declare that an element type in a foreign namespace is a subclass of a SACM 2.3 class (for example a GSN profile's Goal as a Claim), and a tolerant `xmi::read` then reads such an element as that SACM class, keeping its declared type and the attributes SACM lacks as preserved content, so a tolerant save writes it back unchanged. The crate names no foreign class itself (D-TERM). A strict read refuses such an element as today."
-source = "SCSC GSN Metamodel v2.2 (2021, CC BY 4.0) and SACM 2.4 Beta1 Annex A, which define GSN classes as subclasses of SACM classes; corpus files 12 and 13 (`http://acwg.org/3.0/gsn` types in SACM roles); the maintainer, 2026-11-17"
+requirement = "An application declares, with `ReadOptions::with_subclass(namespace, name, kind)`, that the class `name` of the namespace `namespace` is a subclass of the SACM 2.3 class `kind` (ADR 0044 D3). A tolerant `xmi::read` then reads a child element whose type (`xmi:type` or `xsi:type`, matched by namespace URI and local name, whatever its prefix) is that class, under a role that admits `kind`, as an element of `kind`. It holds the class as preserved content of the element, which `SacmElement::subclass()` gives, and reports one SACM-XMI-003 Warning `subclass-type-kept` per element (ADR 0044 D4). Attributes and children of the element that SACM 2.3 lacks are kept as preserved content, as for any element (LIB-COMPAT-003). A tolerant `xmi::write` writes the class back as the element's `xmi:type`; a strict write refuses the element as preserved content (SACM-XMI-006). A root's type that names a class declared a subclass of the root's own class is read as the root's subclass; the root's class still comes from its element name (D-ROOT-NAME). A declaration never applies to a proxy, nor to an element that carries a type in both XMI namespaces, nor to a type in the root's SACM namespaces or in SACM 2.3's, and a strict read ignores every declaration. The crate names no foreign class (D-TERM)."
+source = "XMI 2.5.1 §7.8.6 (p. 19) \"If the org.omg.xmi.allowMetamodelExtension tag is set to true, then the name of the type is replaced by \"xmi:Any\": this declaration enables any object to be serialized, enhancing the extensibility of models.\", §8.2.1 rule 4f (p. 51), §7.11.1 Table 7.1 (p. 28) \"allowing subclasses outside the metamodel to be substituted\", Annex B.2 (p. 104) \"org.omg.xmi.allowMetamodelExtension = false (removes need for xmi:Any) [this is actually the default value]\"; ptc/22-03-13 (no org.omg.xmi tag, so a role's candidates are SACM's own classes and this is a tolerance, D-STRICT); formal/23-05-08 §2.4 (p. 4), §8.12 (p. 21) \"This is a simple extension mechanism to allow users to add attributes to each element beyond those already specified in SACM.\"; SCSC GSN Metamodel v2.2 and SACM 2.4 Beta1 Annex A (interop evidence); corpus files 12 and 13; M6 decisions Q7 (the maintainer, 2026-11-19); ADR 0044 D3, D4; slice 0075b Q1 (the maintainer, 2026-11-24: a root keeps its declared subclass)"
 kind = "xmi"
-status = "planned"
-depends_on = ["LIB-COMPAT-002", "LIB-COMPAT-004"]
+tests = [
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_declared_subclasses_read_as_their_sacm_classes_and_write_back_their_golden",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_strict_read_ignores_the_declarations",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_without_a_declaration_the_element_is_kept_whole",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_strict_write_refuses_a_subclass_element_as_preserved_content",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_class_its_role_does_not_admit_or_a_proxy_is_kept_whole",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_only_its_own_subclass",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_is_matched_by_namespace_and_name_whatever_its_prefix",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_the_written_prefix_is_the_types_unless_the_writer_binds_it_otherwise",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_read_options_hold_one_class_per_declared_name_and_compare_by_content",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_subclass_moves_copies_deletes_and_compares_with_its_element",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_an_emf_file_with_subclass_types_reads_resolves_its_paths_and_writes_back",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_the_template_renders_and_serializes",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_root_reads_a_subclass_only_when_its_types_agree",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_types_with_one_name_in_two_namespaces_disagree",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespace",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_subclass_counts_its_namespace_text_against_the_size_limit",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_in_one_xmi_namespace_beside_another_xmi_attribute_reads_as_a_subclass",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model.rs", "crates/sacm/src/model/subclass.rs", "crates/sacm/src/model/preserved.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/diagnostic/template.rs", "docs/sacm/diagnostics.md"]
+status = "verified"
+verification = "docs/verification/0075b-foreign-subclasses.md"
+depends_on = ["LIB-COMPAT-001", "LIB-COMPAT-002", "LIB-COMPAT-003", "LIB-COMPAT-004"]
 notes = "Promoted into M6 by the maintainer, 2026-11-19 (M6 decisions Q7); slice 0075b. Was a candidate: the GSN layer the maintainer plans may need it, to read files in the SCSC v2.2 or SACM 2.4 Annex A style; whether it does depends on which GSN style that layer follows (an open question for when it starts)."
+acceptance = [
+  "`lib_compat_017_declared_subclasses_read_as_their_sacm_classes_and_write_back_their_golden`: G3 read tolerantly with the three declarations gives the kinds, `subclass()` values, holders and references of the brief and exactly its four diagnostics (three `subclass-type-kept`, one `attribute-kept`); `validate` gives nothing; the tolerant write equals G4, which reads back `==` and re-writes to G4.",
+  "`lib_compat_017_a_strict_read_ignores_the_declarations`: a strict read of G3 with the declarations equals one without, in document and diagnostics: one Error `element-kept` at (5,3).",
+  "`lib_compat_017_without_a_declaration_the_element_is_kept_whole`: a tolerant read of G3 with default options gives one Warning `element-kept` at (5,3), `elements()` == [case], and no `subclass()`.",
+  "`lib_compat_017_a_strict_write_refuses_a_subclass_element_as_preserved_content`: `WriteError::PreservedContent` with `elements` [arguments, c1, i1], and its Display.",
+  "`lib_compat_017_a_class_its_role_does_not_admit_or_a_proxy_is_kept_whole`: a declared kind the role does not admit gives `element-kept` and no `subclass-type-kept`; a proxy (`href` or `xmi:idref`) with a declared type reads as with default options.",
+  "`lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_only_its_own_subclass`: a SACM 2.3 class, a SACM family type naming no class, an older revision's family and a document element in a foreign namespace read as without declarations; a root typed with a declared subclass of its own class reads it as `subclass()`, writes it back as its `xmi:type` with its binding and reads back `==`; a root typed with a subclass of another kind keeps it as `attribute-kept`.",
+  "`lib_compat_017_a_type_is_matched_by_namespace_and_name_whatever_its_prefix`: the nine cases of the brief (another prefix, `xsi:type`, white space, agreeing and disagreeing `xmi:type`/`xsi:type`, an EMF document; an unprefixed or wrongly cased name is kept whole), each read case writing back and reading back `==`.",
+  "`lib_compat_017_the_written_prefix_is_the_types_unless_the_writer_binds_it_otherwise`: a type prefix `sacm` bound to the profile is written `ns1`, the same `ns1` as a renamed preserved attribute, and reads back `==`.",
+  "`lib_compat_017_read_options_hold_one_class_per_declared_name_and_compare_by_content`: replacement, lookup, `==` and hash independent of call order, the other setters keep the declarations, and the auto traits.",
+  "`lib_compat_017_a_subclass_moves_copies_deletes_and_compares_with_its_element`: move, copy and delete keep `subclass()` with the element; a subclass package moved to the roots writes its `xmi:type` and reads back `==`; a changed subclass compares as one `PreservedContent` difference.",
+  "`lib_compat_017_an_emf_file_with_subclass_types_reads_resolves_its_paths_and_writes_back`: G5 read tolerantly gives the 20 diagnostics of the brief, resolves both paths, and writes G6, which reads back `==`.",
+  "`lib_compat_017_the_template_renders_and_serializes`: the sentence and argument names (`type`, `class`, `id`) of `SACM-XMI-003/subclass-type-kept`, and JSON golden J3.",
+  "`lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations`: a child and a root typed in both XMI namespaces read with a declaration as without it, in document and diagnostics, and write back readable and `==`.",
+]
 
 [[row]]
 id = "LIB-COMPAT-018"
@@ -7432,12 +7482,24 @@ depends_on = ["LIB-COMPAT-004"]
 notes = "Deferred: SACM 2.4 is a Beta (adoption shown as September 2026), and reading it is a conversion question, not a namespace one; revisit when 2.4 is formal."
 
 [[row]]
+id = "LIB-COMPAT-019"
+area = "COMPAT"
+milestone = "M6"
+title = "A kept type attribute writes back readable, complete XMI"
+requirement = "A tolerant `xmi::write` of an element that keeps a foreign type attribute (`xmi:type` or `xsi:type` naming a class that is not SACM's and not a declared subclass) as preserved content writes well-formed XMI that binds every prefix the kept value names to its namespace and has at most one `xmi:type` per element, also after an edit moves the element to or from the roots; the output reads back tolerantly as the same document, with the element still an element."
+source = "Found by the designer of slice 0075b (2026-11-24, measured on 4e67af3); D-PRESERVE; D-ROOT-NAME; XML 1.0 (Fifth Edition) §3.1 WFC: Unique Att Spec \"No attribute name may appear more than once in the same start-tag or empty-element tag.\"; Namespaces in XML 1.0 §5 (a prefix must be declared)"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-003", "LIB-COMPAT-017"]
+notes = "Three defects, all in tolerant mode without declarations: (1) a root's kept `xmi:type=\"p:Bundle\"` is written without the binding of `p`; (2) an `ArgumentPackageBinding` root with a kept `xmi:type`, moved under an AssuranceCasePackage, is written with `xmi:type` twice, which does not read back; (3) an ArgumentPackage root moved into a role writes only the kept type, so a re-read keeps the whole package as preserved content. Declared subclasses (LIB-COMPAT-017) avoid all three. Its own slice after 0075b; (2) makes a tolerant save unreadable."
+
+[[row]]
 id = "LIB-COMPAT-015"
 area = "COMPAT"
 milestone = "M3"
 title = "Real files are read"
 requirement = "`cargo xtask fetch-corpus` downloads SACM files that tools other than this crate wrote, at URLs pinned to a commit with SHA-256 pins (`CORPUS` in `xtask/src/fetch.rs`), into the git-ignored `third_party/corpus/`, with the policy of `fetch-spec`; they are never committed. An xtask test reads each file tolerantly and strictly, validates the document a tolerant read returns, writes it back tolerantly and reads that back, and reports per file the outcome of each step, the diagnostics by code and severity with counts, and whether the write-back reads back semantically equal. The report is deterministic; `docs/compat/corpus.md` holds the list and the report, which the test checks. A file that a mode refuses is recorded as refused, not a failure. Every refusal or loss the report shows is mapped in `docs/compat/corpus.md` to a matrix row or a note, or is fixed."
-source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); SACM 2.3 formal/23-05-08 §2.4 \"Software that conforms to the specification at the Assurance Case Model compliance point shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel defined in this entire specification.\"; LIB-TOOL-002 (pinned fetch); LIB-SEC-006 (a fetched corpus skipped when absent); LIB-COMPAT-005 (the committed corpus, M6); assurance-forge `docs/sacm/sacm-interop-corpus.md` at b0a0f0d (its corpus, which this list extends)"
+source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); SACM 2.3 formal/23-05-08 §2.4 \"Software that conforms to the specification at the Assurance Case Model compliance point shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel defined in this entire specification.\"; LIB-TOOL-002 (pinned fetch); LIB-SEC-006 (a fetched corpus skipped when absent); LIB-COMPAT-005 (the corpus claim, M6); assurance-forge `docs/sacm/sacm-interop-corpus.md` at b0a0f0d (its corpus, which this list extends)"
 kind = "xmi"
 status = "verified"
 verification = "docs/verification/0054-real-files.md"

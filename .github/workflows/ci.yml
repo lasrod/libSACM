@@ -155,7 +155,7 @@ jobs:
         with:
           path: third_party/corpus
           key: corpus-${{ hashFiles('xtask/src/fetch.rs') }}
-      - name: The SACM corpus (LIB-COMPAT-015)
+      - name: The SACM corpus (LIB-COMPAT-015, LIB-COMPAT-005)
         if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
         env:
           SACM_CORPUS_DIR: ${{ github.workspace }}/third_party/corpus

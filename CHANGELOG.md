@@ -195,6 +195,16 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `sacm convert <IN> -o <OUT>`: reads a file tolerantly, lists every read Warning and
   Error, and writes it as strict SACM 2.3 only when the strict output reads back unchanged;
   it exits 1, writing nothing, when the conversion would lose content [LIB-CLI-004].
+- Foreign subclasses: `ReadOptions::with_subclass(namespace, name, kind)` declares a class
+  outside SACM 2.3 a subclass of a SACM 2.3 class, and a tolerant read then reads elements
+  typed with it as that class, keeping the class as preserved content, which a tolerant
+  write writes back as the `xmi:type` and a strict write refuses (ADR 0044 D3, D4).
+  `ReadOptions::subclass`, `SacmElement::subclass`, `model::Subclass` and the template
+  `SACM-XMI-003/subclass-type-kept` [LIB-COMPAT-017].
+- The corpus claim: five files from three tool families (ACEditor, Epsilon and the EMF
+  SACM implementation) open, check and write back without loss, the GSN-typed ones with
+  the subclass declarations an application would give; interoperability evidence, not
+  conformance (`docs/compat/corpus.md`, "What LIB-COMPAT-005 claims") [LIB-COMPAT-005].
 
 ### Changed
 

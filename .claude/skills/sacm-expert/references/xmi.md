@@ -46,6 +46,9 @@ single-constant change plus golden-file refresh.
 - EMF fragment paths (`//@role.N`, `/N`) in reference ends, same-document `href`s and
   `expression`s are read as the ids they name, with one SACM-XMI-017 Warning; strict
   resolves none (ADR 0044 D2).
+- Foreign classes in SACM roles: kept whole, unless the application declares them
+  subclasses (`ReadOptions::with_subclass`, LIB-COMPAT-017), when they are read as the
+  declared class and their type is kept (ADR 0044 D3, D4).
 
 Not tolerant-only: an `xmi:XMI` wrapper is accepted in both modes (see Root above), and
 the default XMI schema also allows references as child elements (rule 2c) and
