@@ -59,7 +59,7 @@
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
-//! | `read` refuses | a DOCTYPE, malformed XML, no SACM 2.3 package root (a root in another SACM namespace included), a repeated or empty `xmi:id`, a value given twice, a value that is no literal, an untyped child under an abstract role, a C++ name or text shape, what the reader cannot represent ([`ReadError::Unsupported`]), and input over its [`Limits`] | a DOCTYPE, malformed XML, no SACM package root (a root outside SACM, a SACM 2.4 root, an `XMI` element outside XMI 2.5.1, or an XMI-namespace document element), a repeated `xmi:id`, an encoding it cannot decode, input over its [`Limits`], and the parser's capacity |
+//! | `read` refuses | a DOCTYPE, malformed XML, no SACM 2.3 package root (a root in another SACM namespace included), a repeated or empty `xmi:id`, a value given twice, a value that is no literal, an untyped child under an abstract role, a C++ name or text shape, what the reader cannot represent ([`ReadError::Unsupported`]), and input over its [`Limits`] | a DOCTYPE, malformed XML, no SACM package root (a root outside SACM, a SACM 2.4 root, an `XMI` element in neither XMI 2.5.1's namespace nor `http://www.omg.org/XMI`, or another element of an XMI namespace as the document element), a repeated `xmi:id`, an encoding it cannot decode, input over its [`Limits`], and the parser's capacity |
 //! | `read` keeps as preserved content | content that does not conform where it stands, with SACM-XMI-003 as an Error | the same, with SACM-XMI-003 as a Warning; a root in an older SACM revision's or a SACM-like namespace is read as SACM 2.3, with SACM-XMI-008 or SACM-XMI-002; and every other strict refusal, at its construct, with one Warning at the strict refusal's location: SACM-ENUM-001, SACM-MULT-001 (the first occurrence is read), SACM-XMI-005, SACM-ID-002 (an element gets a generated id), and SACM-XMI-003 for content on or in `xmi:XMI` |
 //! | `write` refuses | no root; preserved content ([`WriteError::PreservedContent`]); output that would not be schema-valid: an `xmi:id` that is no `NCName` or a reference to no `xmi:id` it writes ([`WriteError::Invalid`]); a character XML 1.0 cannot represent | no root; a character XML 1.0 cannot represent |
 //!
@@ -963,6 +963,64 @@ pub use limits::{Limit, Limits};
 /// # Ok::<(), ReadError>(())
 /// ```
 ///
+/// # The EMF dialect
+///
+/// Most SACM tools are built on EMF, which binds `xmi` to
+/// `http://www.omg.org/XMI`, no XMI version's namespace (XMI 2.5.1 §7.5.3),
+/// and names same-document targets by fragment paths such as
+/// `//@argumentPackage.0/@argumentElement.3` or `/1` instead of `xmi:id`s
+/// (§7.10.2). A tolerant read reads that dialect (LIB-COMPAT-002, ADR 0044
+/// D1, D2):
+///
+/// - the `XMI` element, and the attributes `id`, `type`, `idref`, `version`,
+///   `uuid` and `label` in `http://www.omg.org/XMI`, as XMI 2.5.1's, with one
+///   SACM-XMI-015 Warning per document at the first name in that namespace.
+///   Any other name in it is kept as written (SACM-XMI-003), and an element
+///   carrying the same XMI attribute in both namespaces reads the first;
+/// - a token of a reference end's attribute, the fragment of a
+///   same-document `href` and an `ExpressionLangString`'s `expression` that
+///   begin with `/` and equal no `xmi:id`, as the id of the element they
+///   name: an element read as an element, the root of a resolved same-file
+///   proxy, or a preserved element with an `xmi:id`. One SACM-XMI-017
+///   Warning per document counts them; one that names nothing is kept as
+///   written, and [`validation::validate`](crate::validation::validate)
+///   reports it (SACM-REF-001). Paths inside preserved content are never
+///   rewritten.
+///
+/// Both saves write XMI 2.5.1 and ids. A strict read refuses any name in
+/// `http://www.omg.org/XMI` outside the content of an `xmi:Extension` or of
+/// a Difference's `target`, which XMI.xsd leaves open and both modes keep as
+/// written, as [`ReadError::Unsupported`] (SACM-XMI-015), and resolves no
+/// path. Both modes refuse an `XMI` element in any other
+/// namespace, or in none.
+///
+/// ```
+/// use sacm::diagnostic::Code;
+/// use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteOptions};
+///
+/// let emf = br#"<sacm:ArgumentPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI"
+///     xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmi:id="p">
+///   <name content="Arguments"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="Safe"/></argumentElement>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2"><name content="Tested"/></argumentElement>
+///   <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1"
+///       source="//@argumentElement.1" target="//@argumentElement.0"><name content="By test"/></argumentElement>
+/// </sacm:ArgumentPackage>"#;
+/// let output = xmi::read(emf, &ReadOptions::default())?;
+/// let inference = output.document().get("i1").ok_or("not read")?;
+/// assert_eq!((inference.sources()[0].as_str(), inference.targets()[0].as_str()), ("c2", "c1"));
+/// let codes: Vec<Code> = output.diagnostics().iter().map(|d| d.code()).collect();
+/// assert!(codes.contains(&Code::XMI_WRAPPER_NAMESPACE) && codes.contains(&Code::XMI_FRAGMENT_PATH));
+/// let text = xmi::write(output.document(), &WriteOptions::default())?;
+/// assert!(text.contains(r#"source="c2" target="c1""#) && !text.contains("http://www.omg.org/XMI\""));
+///
+/// let strict = ReadOptions::default().with_mode(Mode::Strict);
+/// let error = xmi::read(emf, &strict).unwrap_err();
+/// assert!(matches!(error, ReadError::Unsupported { .. }));
+/// assert_eq!(error.code(), Code::XMI_WRAPPER_NAMESPACE);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
 /// # Errors
 ///
 /// The checks run in this order, and the first failure is returned:
@@ -1001,13 +1059,19 @@ pub use limits::{Limit, Limits};
 ///    a sweep (LIB-SEC-005) checks only that these checks agree with the
 ///    parser's tree;
 /// 10. the roots, in two passes. First the names and namespaces: an `XMI`
-///     element outside the XMI 2.5.1 namespace, or any other XMI-namespace
-///     element, as the document element is `Unsupported`; an `xmi:XMI` element
+///     element in neither XMI 2.5.1's namespace nor `http://www.omg.org/XMI`
+///     is `Unsupported`, and so, in strict mode, is one in
+///     `http://www.omg.org/XMI`; any other element of either namespace as the
+///     document element is `InvalidRoot`; an `xmi:XMI` element
 ///     with no root is `NoPackage`; otherwise the first root not named as a
 ///     package kind, or in no namespace or one that does not name SACM, is
 ///     `InvalidRoot`; then the first root in the SACM 2.4 namespace, and in
 ///     strict mode in an older SACM revision's or a SACM-like one, is
 ///     `Unsupported` (see [Other SACM namespaces](#other-sacm-namespaces)).
+///     Then, in strict mode, the first element or attribute name in
+///     `http://www.omg.org/XMI` outside the content of an `xmi:Extension` or
+///     of a Difference's `target`, in document order, is `Unsupported`,
+///     before any id is read (see [The EMF dialect](#the-emf-dialect)).
 ///     Then, in document order, the `xmi:XMI` element's
 ///     attributes, each root with its content, and the content beside it
 ///     (`Unsupported`). An element's start tag (its role, type, kind and id)
@@ -1029,8 +1093,8 @@ pub use limits::{Limit, Limits};
 ///
 /// A tolerant read refuses only `Doctype`, `Malformed`, `InvalidRoot`,
 /// `NoPackage`, `DuplicateId`, `LimitExceeded`, and `Unsupported` for an
-/// encoding, the parser's capacity, a SACM 2.4 root, an `XMI` element outside
-/// XMI 2.5.1 or an XMI-namespace document element; it keeps every other construct listed
+/// encoding, the parser's capacity, a SACM 2.4 root or an `XMI` element in
+/// neither XMI 2.5.1's namespace nor `http://www.omg.org/XMI`; it keeps every other construct listed
 /// below, with a Warning (see [Diagnostics](#diagnostics)), so those
 /// refusals are a strict read's only. The refusals:
 ///
@@ -1044,7 +1108,8 @@ pub use limits::{Limit, Limits};
 /// - [`ReadError::InvalidRoot`] (SACM-XMI-001): a root's local name is not
 ///   one of the twelve SACM package kinds, or the root is in no namespace or
 ///   one whose URI does not contain `sacm`, or the document element is in
-///   the XMI namespace but is not `xmi:XMI`.
+///   an XMI namespace (XMI 2.5.1's or `http://www.omg.org/XMI`) but is not
+///   `xmi:XMI`.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
 /// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements (names,
@@ -1090,20 +1155,19 @@ pub use limits::{Limit, Limits};
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
 /// - [`ReadError::Unsupported`] (the code a tolerant read keeps the input
 ///   with: SACM-XMI-003; the code a tolerant
-///   read reads it with: SACM-XMI-002 or SACM-XMI-008; or SACM-XMI-008,
-///   SACM-XMI-015, SACM-XML-002 or SACM-SEC-002 for what both modes refuse;
-///   LIB-API-017): well-formed input a strict read
+///   read reads it with: SACM-XMI-002, SACM-XMI-008 or SACM-XMI-015; or
+///   SACM-XMI-008, SACM-XMI-015, SACM-XML-002 or SACM-SEC-002 for what both
+///   modes refuse; LIB-API-017): well-formed input a strict read
 ///   does not read, and that it does not keep as preserved content
 ///   (LIB-API-011). Its reason ends with one label that says why:
 ///   `(a limit of this version)` for a limit, `(strict mode never reads it;
-///   ROW is to read it in tolerant mode)` for input that only tolerant mode
-///   is to read, as a tolerance, `(strict mode never reads it; ROW reads it
-///   in tolerant mode)` for input a tolerant read reads (which need not be
-///   defective: a document in another SACM namespace is not, D-NS-PIN), and
-///   `(a defect in the input)` for input that does not conform and that a
-///   strict read refuses. A tolerant read refuses only the limits, a SACM
-///   2.4 root and an `XMI` element outside XMI 2.5.1, reads a root in
-///   another SACM namespace, and keeps the rest (SACM-XMI-003). No
+///   ROW reads it in tolerant mode)` for input a tolerant read reads (which
+///   need not be defective: a document in another SACM namespace is not,
+///   D-NS-PIN), and `(a defect in the input)` for input that does not
+///   conform and that a strict read refuses. A tolerant read refuses only
+///   the limits, a SACM 2.4 root and an `XMI` element in an XMI namespace
+///   it does not read, reads a root in another SACM namespace and the XMI
+///   names EMF writes, and keeps the rest (SACM-XMI-003). No
 ///   conforming input is refused as not read yet: XMI metadata and every
 ///   link form are read (SACM23-XMI-019, SACM23-XMI-029). In this release
 ///   they are:
@@ -1111,10 +1175,11 @@ pub use limits::{Limit, Limits};
 ///     declared encoding other than UTF-8, ASCII or ISO-8859-1 in input
 ///     without a UTF-16 mark, more than 65,535 distinct namespace bindings or
 ///     2³² attributes, and a root in the SACM 2.4 namespace (LIB-COMPAT-018);
-///   - in strict mode, roots a tolerant read reads: one in an older SACM
-///     revision's namespace or a SACM-like one (LIB-COMPAT-004);
-///   - tolerances not read yet: an `XMI` element outside the
-///     XMI 2.5.1 namespace, such as an older XMI revision's (LIB-COMPAT-002).
+///   - an `XMI` element in neither XMI 2.5.1's namespace nor EMF's
+///     `http://www.omg.org/XMI`, such as XMI 2.4.1's, or in none;
+///   - in strict mode, input a tolerant read reads: a root in an older SACM
+///     revision's namespace or a SACM-like one (LIB-COMPAT-004), and any
+///     name in EMF's XMI namespace (LIB-COMPAT-002).
 ///     The spellings of SACM23-XMI-009 are no refusal: a strict read keeps
 ///     each as preserved content with a SACM-XMI-013 Error (see
 ///     [Spellings](crate::xmi::read#spellings));
@@ -1320,9 +1385,11 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 /// - [`Tolerant`](Self::Tolerant) opens every well-formed file with SACM
 ///   package roots within its [`Limits`]: in SACM 2.3, an older revision's
 ///   or a SACM-like namespace (LIB-COMPAT-004). It also accepts recognised
-///   variations, and keeps every construct a strict read refuses but a
-///   malformed or unsafe input, a repeated `xmi:id`, an encoding, a SACM 2.4
-///   root and a limit, as preserved content; it
+///   variations, the dialect EMF writes among them (its XMI namespace
+///   `http://www.omg.org/XMI` and its fragment paths, LIB-COMPAT-002), and
+///   keeps every construct a strict read refuses but a malformed or unsafe
+///   input, a repeated `xmi:id`, an encoding, a SACM 2.4 root, an `XMI`
+///   element in another XMI namespace and a limit, as preserved content; it
 ///   reports each as a Warning, and never an Error. A tolerant write writes
 ///   the document as it is held, preserved content included.
 ///
@@ -1357,8 +1424,9 @@ pub enum Mode {
     Strict,
     /// Opens every well-formed SACM file within its [`Limits`]: a read keeps
     /// what a strict read refuses, with a Warning, reads a root in an older
-    /// SACM revision's or a SACM-like namespace as SACM 2.3, and a write
-    /// writes the document as it is held.
+    /// SACM revision's or a SACM-like namespace as SACM 2.3, and the dialect
+    /// EMF writes as XMI 2.5.1, and a write writes the document as it is
+    /// held.
     Tolerant,
 }
 
@@ -1446,7 +1514,9 @@ impl ReadOptions {
 /// SACM-MULT-001 for a repeat, SACM-XMI-005 for an untyped child,
 /// SACM-ID-002 for an empty `xmi:id`, and
 /// SACM-XMI-008 and SACM-XMI-002 for a root in an older SACM revision's or a
-/// SACM-like namespace (LIB-COMPAT-004), each a Warning (see [`read`]).
+/// SACM-like namespace (LIB-COMPAT-004), and SACM-XMI-015 and SACM-XMI-017
+/// for the XMI namespace and the fragment paths EMF writes (LIB-COMPAT-002),
+/// each a Warning (see [`read`]).
 ///
 /// # Examples
 ///
@@ -1573,7 +1643,8 @@ const _: () = {
 /// holding at least two) holds for a refusal of [`read`], not for a record.
 ///
 /// The first five, `LimitExceeded`, and `Unsupported` for an encoding, the
-/// parser's capacity, a SACM 2.4 root or an `XMI` element outside XMI 2.5.1,
+/// parser's capacity, a SACM 2.4 root or an `XMI` element in neither XMI
+/// 2.5.1's namespace nor `http://www.omg.org/XMI`,
 /// are refused in both modes. The rest
 /// are refused in strict mode only: a tolerant read keeps the construct as
 /// preserved content with a Warning of the variant's code, or, for
@@ -1734,25 +1805,28 @@ pub enum ReadError {
     /// refuses rather than keep as preserved content (LIB-API-011, ADR
     /// 0033). A tolerant read refuses only an
     /// encoding, the parser's capacity, a SACM 2.4 root and an `XMI` element
-    /// outside XMI 2.5.1, reads a root in an older SACM revision's or a
-    /// SACM-like namespace (LIB-COMPAT-004), and keeps the rest with
+    /// in neither XMI 2.5.1's namespace nor `http://www.omg.org/XMI`, reads a
+    /// root in an older SACM revision's or a SACM-like namespace
+    /// (LIB-COMPAT-004) and the XMI names EMF writes in
+    /// `http://www.omg.org/XMI` (LIB-COMPAT-002), and keeps the rest with
     /// SACM-XMI-003 (ADR 0035 D1, D2).
     ///
     /// Its [`code`](ReadError::code) is the code a tolerant read gives the
     /// same input (LIB-API-017): SACM-XMI-003
     /// for a defect, SACM-XMI-008 and SACM-XMI-002 for a root in an older
     /// SACM revision's or a SACM-like namespace, which a tolerant read reads
-    /// with a Warning of that code; and, for what both modes refuse,
-    /// SACM-XMI-008 for a SACM 2.4 root, SACM-XMI-015 for an `XMI`
-    /// element outside XMI 2.5.1, SACM-XML-002 for an encoding and
-    /// SACM-SEC-002 for a parser limit.
+    /// with a Warning of that code, and SACM-XMI-015 for a name in EMF's
+    /// XMI namespace, which a tolerant read reads with that code; and, for
+    /// what both modes refuse, SACM-XMI-008 for a SACM 2.4 root,
+    /// SACM-XMI-015 for an `XMI` element in another namespace, SACM-XML-002
+    /// for an encoding and SACM-SEC-002 for a parser limit.
     ///
     /// The reason ends with exactly one label: `(a limit of this version;
     /// ROW reads it)` for conforming input the matrix row ROW is to read,
     /// `(a limit of this version)` for a limit such as an encoding, `(strict
-    /// mode never reads it; ROW is to read it in tolerant mode)` for input
-    /// strict mode never reads and that ROW is to read as a tolerance, which
-    /// need not be defective (such as a document in another SACM namespace,
+    /// mode never reads it; ROW reads it in tolerant mode)` for input strict
+    /// mode never reads and that a tolerant read reads under ROW, which need
+    /// not be defective (such as a document in another SACM namespace,
     /// D-NS-PIN), and `(a defect in the input)` for input that does not
     /// conform and that a strict read refuses, such as an attribute on the
     /// `xmi:XMI` element. Content that does not conform where it stands is

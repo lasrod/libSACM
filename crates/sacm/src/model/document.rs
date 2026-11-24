@@ -4473,6 +4473,11 @@ impl Text {
         self.id = id;
     }
 
+    /// Replaces the value at `index`, if there is one, by `map` of it.
+    pub(crate) fn map_value(&mut self, index: usize, map: impl FnOnce(&LangString) -> LangString) {
+        self.value.map_value(index, map);
+    }
+
     /// Sets the XMI metadata of the role element; empty is none.
     pub(crate) fn set_metadata(&mut self, metadata: Preserved) {
         self.metadata = (!metadata.is_empty()).then(|| Box::new(metadata));

@@ -136,7 +136,7 @@
       "line": 1,
       "column": 1
     },
-    "reason": "the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)"
+    "reason": "the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)"
   },
   {
     "type": "Unsupported",

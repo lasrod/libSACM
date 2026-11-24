@@ -2,7 +2,7 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 106 in all: 38 that `validate` gives and 68
+//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
 //! that a tolerant or a strict read, or a strict write, gives (slice 0073b
 //! removes the four kept forms of SACM-XMI-007, whose links SACM23-XMI-029
 //! reads, and adds `SACM-XMI-010/xsi-type-on-proxy`, ADR 0040 amendment 1;
@@ -64,8 +64,9 @@ const NS: &str = concat!(
 /// kept forms of SACM-XMI-014 and adds eight (SACM23-XMI-019,
 /// SACM23-XMI-030; ADR 0042), and slice 0073b removes the four kept forms of
 /// SACM-XMI-007 and adds `SACM-XMI-010/xsi-type-on-proxy` (SACM23-XMI-029;
-/// ADR 0040 amendment 1).
-const DIAGNOSTIC_TEMPLATES: usize = 106;
+/// ADR 0040 amendment 1), and slice 0075a adds three for the EMF dialect
+/// (LIB-COMPAT-002; ADR 0044).
+const DIAGNOSTIC_TEMPLATES: usize = 109;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -994,7 +995,7 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 68 templates a read, or a strict write's check of XMI metadata, gives,
+/// The 71 templates a read, or a strict write's check of XMI metadata, gives,
 /// in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
@@ -1004,7 +1005,57 @@ fn reader_cases() -> Vec<Case> {
     cases.extend(kept_cases());
     cases.extend(namespace_cases());
     cases.extend(metadata_cases());
+    cases.extend(emf_cases());
     cases
+}
+
+/// The three templates of slice 0075a (LIB-COMPAT-002; ADR 0044 D1, D2): the
+/// XMI namespace EMF writes, read as XMI 2.5.1's, and its fragment paths,
+/// all read or some kept.
+fn emf_cases() -> Vec<Case> {
+    let emf = |body: &str| {
+        format!(
+            "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"http://www.omg.org/XMI\" \
+             xmi:id=\"p\"><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
+        )
+    };
+    let paths = |source: &str| {
+        package(&format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"/>\
+             <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" source=\"{source}\" \
+             target=\"c0\"/>"
+        ))
+    };
+    vec![
+        case(
+            "SACM-XMI-015/emf-xmi-namespace-read",
+            tolerant(emf("")),
+            (WARNING, "LIB-COMPAT-002", Some("7.5.3")),
+            &[("name", t("xmi:id"))],
+            "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\", so the XMI names of the document in it are read as XMI 2.5.1's, which write writes",
+            "the name \"xmi:id\" is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\", so the XMI names of the document in it are read as XMI 2.5.1's, which write writes",
+        ),
+        case(
+            "SACM-XMI-017/paths-read",
+            tolerant(paths("//@argumentElement.0")),
+            (WARNING, "LIB-COMPAT-002", Some("7.10.2")),
+            &[("count", n(1)), ("first", t("//@argumentElement.0"))],
+            "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each names an element of the document, so it is read as that element's id, which write writes",
+            "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define (1 in all, the first \"//@argumentElement.0\"); each names an element of the document, so it is read as that element's id, which write writes",
+        ),
+        case(
+            "SACM-XMI-017/paths-partly-read",
+            tolerant(paths("//@argumentElement.0 //@argumentElement.7")),
+            (WARNING, "LIB-COMPAT-002", Some("7.10.2")),
+            &[
+                ("count", n(2)),
+                ("first", t("//@argumentElement.0")),
+                ("kept", n(1)),
+            ],
+            "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each that names an element of the document is read as that element's id, which write writes, and those that name none ({kept}) are kept as written",
+            "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define (2 in all, the first \"//@argumentElement.0\"); each that names an element of the document is read as that element's id, which write writes, and those that name none (1) are kept as written",
+        ),
+    ]
 }
 
 /// The `xmi:XMI` wrapper holding the AssuranceCasePackage `case`, which holds

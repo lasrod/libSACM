@@ -5,26 +5,26 @@
 //! links SACM23-XMI-029 reads, since slice 0068 reads an `href` with a
 //! document part; XMI metadata until slice 0073a read it, SACM23-XMI-019),
 //! and input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
-//! crate-private list whose entries are `Interim(row)`, `Tolerance(row)`,
-//! `Tolerated(row)` (slice 0072, ADR 0041 D6), `Limit` or `Defect`, and its
-//! reason ends with exactly one label:
+//! crate-private list whose entries are `Interim(row)`, `Tolerated(row)`
+//! (slice 0072, ADR 0041 D6), `Limit` or `Defect`, and its reason ends with
+//! exactly one label:
 //!
 //! - `(a limit of this version; ROW reads it)` for `Interim(ROW)`;
-//! - `(a limit of this version)` for `Limit`;
-//! - `(strict mode never reads it; ROW is to read it in tolerant mode)`
-//!   for `Tolerance(ROW)`: input strict mode does not read, which need not
-//!   be defective, such as an `XMI` element in another XMI namespace;
+//! - `(a limit of this version)` for `Limit`, such as an `XMI` element in
+//!   neither XMI namespace (ADR 0044 D1);
 //! - `(strict mode never reads it; ROW reads it in tolerant mode)` for
-//!   `Tolerated(ROW)`: input a tolerant read reads, such as a root in an
-//!   older SACM revision's namespace or a SACM-like one (LIB-COMPAT-004,
-//!   D-NS-PIN);
+//!   `Tolerated(ROW)`: input a tolerant read reads, which need not be
+//!   defective, such as a root in an older SACM revision's namespace or a
+//!   SACM-like one (LIB-COMPAT-004, D-NS-PIN), or a name in the XMI
+//!   namespace EMF writes (LIB-COMPAT-002). The kind `Tolerance(ROW)`, input
+//!   a row was still to read, went with its last entry in slice 0075a;
 //! - `(a defect in the input)` for `Defect`.
 //!
 //! One input (or a few, where the entry covers several constructs) per entry
 //! of the list, read in strict mode, is refused with that entry's label. A
 //! tolerant read refuses only the limits, a SACM 2.4 root, an `XMI` element
-//! in another namespace, reads a `Tolerated`
-//! root, and keeps the rest as preserved content with a Warning
+//! in neither XMI namespace, reads what a `Tolerated` entry names, and
+//! keeps the rest as preserved content with a Warning
 //! (ADR 0035; tested in `tolerant_read.rs`). Two
 //! entries have no input: a parser capacity limit (`Capacity`) and a failed
 //! insert into the document (`Unheld`), which no well-formed input of a
@@ -65,11 +65,6 @@ const LABEL_OPENINGS: [&str; 3] = [
     "(strict mode never reads it",
     "(a defect in the input",
 ];
-
-/// The label of `Tolerance(row)`.
-fn tolerance(row: &str) -> String {
-    format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
-}
 
 /// The label of `Tolerated(row)` (ADR 0041 D6).
 fn tolerated(row: &str) -> String {
@@ -294,19 +289,31 @@ fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
     );
 }
 
-// --- Tolerance: LIB-COMPAT-002; the spellings SACM23-XMI-009 reads -----------------
+// --- Tolerated: LIB-COMPAT-002; the spellings SACM23-XMI-009 reads -----------------
 
 #[test]
 fn lib_api_011_an_xmi_element_outside_the_xmi_2_5_1_namespace_names_lib_compat_002() {
+    // EMF's XMI namespace, which a tolerant read reads since slice 0075a
+    // (ADR 0044 D1): the XMI element, and any other name in it.
     let input = format!(
         "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
          <sacm:ArgumentPackage x:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
     );
     assert_text_refused_with(
-        "OtherXmiNamespace",
-        "an XMI element in the XMI 2.0 namespace",
+        "EmfXmiNamespace",
+        "an XMI element in EMF's XMI namespace",
         &input,
-        &tolerance("LIB-COMPAT-002"),
+        &tolerated("LIB-COMPAT-002"),
+    );
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"http://www.omg.org/XMI\" \
+         xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
+    );
+    assert_text_refused_with(
+        "EmfXmiNamespace",
+        "an xmi:id in EMF's XMI namespace",
+        &input,
+        &tolerated("LIB-COMPAT-002"),
     );
 }
 
@@ -501,13 +508,13 @@ fn lib_api_011_the_refused_entries_are_unsupported_in_both_modes() {
             LIMIT.to_owned(),
         ),
         (
-            "OtherXmiNamespace: an XMI element in the XMI 2.0 namespace",
+            "OtherXmiNamespace: an XMI element in XMI 2.4.1's namespace",
             format!(
-                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
-                 <sacm:ArgumentPackage x:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
+                "<x:XMI xmlns:x=\"http://www.omg.org/spec/XMI/20110701\" xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+                 <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></x:XMI>"
             )
             .into_bytes(),
-            tolerance("LIB-COMPAT-002"),
+            LIMIT.to_owned(),
         ),
     ];
     for (what, input, label) in &cases {

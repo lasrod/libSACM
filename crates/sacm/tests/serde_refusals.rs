@@ -332,7 +332,7 @@ const DUPLICATE_ID: &str = r#"{"type":"DuplicateId","code":"SACM-ID-001","templa
 /// with SACM-XMI-014, until slice 0073a made it `InvalidRoot`,
 /// SACM23-XMI-019; a `TerminologyPackageInterface` root until slice 0067
 /// read it, SACM23-TERM-007).
-const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-015","template":"SACM-XMI-015/not-xmi-namespace","arguments":{"element":"xmi:XMI","row":"LIB-COMPAT-002"},"location":{"line":1,"column":1},"reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)"}"#;
+const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-015","template":"SACM-XMI-015/not-xmi-namespace","arguments":{"element":"xmi:XMI","row":"LIB-COMPAT-002"},"location":{"line":1,"column":1},"reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)"}"#;
 
 const NO_ROOT: &str = r#"{"type":"NoRoot","code":"SACM-XMI-001","template":"SACM-XMI-001/no-root-to-write","arguments":{}}"#;
 
@@ -611,9 +611,9 @@ fn lib_api_017_a_record_s_display_renders_its_template_not_its_reason() {
         (
             "Unsupported",
             UNSUPPORTED,
-            r#""reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)""#,
-            "so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to \
-             read it in tolerant mode)",
+            r#""reason":"the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 reads it in tolerant mode)""#,
+            "so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 \
+             reads it in tolerant mode)",
         ),
     ] {
         let other = valid.replacen(reason, r#""reason":"other""#, 1);

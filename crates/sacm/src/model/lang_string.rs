@@ -598,6 +598,13 @@ impl MultiLangString {
     pub fn push(&mut self, value: LangString) {
         self.values.push(value);
     }
+
+    /// Replaces the value at `index`, if there is one, by `map` of it.
+    pub(crate) fn map_value(&mut self, index: usize, map: impl FnOnce(&LangString) -> LangString) {
+        if let Some(value) = self.values.get_mut(index) {
+            *value = map(value);
+        }
+    }
 }
 
 impl From<LangString> for MultiLangString {

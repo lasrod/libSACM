@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-004: sacm convert of the dialect EMF writes, a copy of crates/sacm/tests/data/compat/emf-dialect.xmi (LIB-COMPAT-002): the XMI namespace http://www.omg.org/XMI with xmi:version 2.0, SACM 2.2 per-package namespaces, xsi:type, the role spelling argumentationElement, no xmi:id, and references by EMF fragment path. It converts, listing each read Warning, to crates/sacm/tests/data/compat/golden/emf-dialect.golden.sacm.xmi. Hand-written; no third-party content. -->
+<assurancecase:AssuranceCasePackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:assurancecase="http://omg.sacm/2.2/assurancecase" xmlns:argumentation="http://omg.sacm/2.2/argumentation">
+  <name lang="en" content="Brake case"/>
+  <argumentPackage>
+    <name lang="en" content="Brake arguments"/>
+    <argumentationElement xsi:type="argumentation:Claim">
+      <name lang="en" content="The brakes are safe"/>
+    </argumentationElement>
+    <argumentationElement xsi:type="argumentation:Claim">
+      <name lang="en" content="The brakes were tested"/>
+    </argumentationElement>
+    <argumentationElement xsi:type="argumentation:AssertedInference" source="//@argumentPackage.0/@argumentationElement.1" target="//@argumentPackage.0/@argumentationElement.0">
+      <name lang="en" content="Testing supports safety"/>
+    </argumentationElement>
+  </argumentPackage>
+</assurancecase:AssuranceCasePackage>

@@ -73,8 +73,10 @@ const HEADING: &str = "## Message templates";
 /// `SACM-XMI-003/wrapper-element` (Unread) (SACM23-XMI-019, ADR 0042): Read
 /// 76, Unread 21, Write 7; and slice 0073b removes the four Unread templates
 /// of SACM-XMI-007 (SACM23-XMI-029, ADR 0040 amendment 1): Read 76, Unread
-/// 17, Write 7.
-const REFUSAL_TEMPLATES: usize = 100;
+/// 17, Write 7; and slice 0075a adds `SACM-XMI-015/not-xmi-element` and
+/// `/emf-xmi-namespace` (Unread; LIB-COMPAT-002, ADR 0044 D1): Read 76,
+/// Unread 19, Write 7.
+const REFUSAL_TEMPLATES: usize = 102;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
@@ -91,8 +93,10 @@ const ROW_018: &str = "LIB-API-018";
 /// SACM23-XMI-030; ADR 0042); slice 0073b removes the four kept forms of
 /// SACM-XMI-007, which leaves 67 from the reader, and its fix round adds
 /// `SACM-XMI-010/xsi-type-on-proxy`, which gives 68 (SACM23-XMI-029, ADR
-/// 0040 amendment 1).
-const DIAGNOSTIC_TEMPLATES: usize = 106;
+/// 0040 amendment 1); slice 0075a adds `SACM-XMI-015/emf-xmi-namespace-read`
+/// and `SACM-XMI-017/paths-read` and `/paths-partly-read`, which gives 71
+/// (LIB-COMPAT-002, ADR 0044).
+const DIAGNOSTIC_TEMPLATES: usize = 109;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.

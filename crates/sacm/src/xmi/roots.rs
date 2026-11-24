@@ -12,8 +12,12 @@
 //! roots are read in two passes over a tree roxmltree has accepted:
 //!
 //! 1. Every root is classified by its local name alone. An `XMI` element
-//!    outside the XMI namespace, or any other XMI-namespace element, as the
-//!    document element is `Unsupported`. An XMI element with no root is
+//!    in neither XMI namespace (XMI 2.5.1's, or, in tolerant mode, the
+//!    `http://www.omg.org/XMI` EMF writes) is `Unsupported`, and any other
+//!    XMI-namespace element as the document element is `InvalidRoot`. Then
+//!    the namespace scan: a strict read refuses any name in EMF's namespace,
+//!    and a tolerant read reads the XMI names in it as XMI 2.5.1's, with one
+//!    SACM-XMI-015 Warning (LIB-COMPAT-002, ADR 0044 D1). An XMI element with no root is
 //!    `NoPackage`; otherwise the first root that is not one of the twelve
 //!    package kinds is `InvalidRoot` (both SACM-XMI-001). This pass comes
 //!    first, so SACM-XMI-001 takes precedence among the refusals found while
@@ -42,6 +46,11 @@
 //!    `Unsupported`, at its location, labelled by its entry of
 //!    `refusal::Unread` (LIB-API-011); nothing is dropped (ADR 0015,
 //!    D-PRESERVE).
+//!
+//! Once every root is read and the same-file proxies are resolved, a
+//! tolerant read reads the reference targets written as EMF fragment paths
+//! as the ids of the elements they name, with one SACM-XMI-017 Warning
+//! ([`resolve_paths`]; LIB-COMPAT-002, ADR 0044 D2).
 //!
 //! In tolerant mode, every strict refusal but the fatal ones (malformed or
 //! unsafe input, a root that is no SACM 2.3 package, a repeated `xmi:id`,
@@ -141,14 +150,14 @@
 //! message names the element by its kind and id, never by the name or prefix
 //! written, so the choice of prefix does not change it (SACM23-XMI-002).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
 use super::limits::{Budget, exceeded};
 use super::namespaces::{
-    self, Classes, RootNamespace, SACM_NS, SACM_PREFIX, Types, XMI_NS, XMI_PREFIX,
+    self, Classes, EMF_XMI_NS, RootNamespace, SACM_NS, SACM_PREFIX, Types, XMI_NS, XMI_PREFIX,
 };
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
@@ -186,6 +195,11 @@ const OLDER_EVENT_SPELLING: &str = "occurence";
 
 /// The row of the reading of other SACM namespaces (ADR 0041).
 const OTHER_NAMESPACE_ROW: &str = "LIB-COMPAT-004";
+
+/// The row of the EMF dialect: the XMI names in `http://www.omg.org/XMI`
+/// (SACM-XMI-015) and the EMF fragment paths (SACM-XMI-017) a tolerant read
+/// reads (ADR 0044 D1, D2).
+const EMF_ROW: &str = "LIB-COMPAT-002";
 
 /// The §10.4 text spelling of `terminologyElement`, which a tolerant read
 /// reads as the role of a TerminologyPackage (SACM23-XMI-028, spec defect
@@ -868,13 +882,28 @@ pub(super) fn read(
     // D4).
     let mut classes = Classes::default();
     let is_wrapper = classify(text, element, mode, &mut classes)?;
+    // The namespace scan, before any id is read (LIB-COMPAT-002, R2): a
+    // strict read refuses a name in EMF's XMI namespace, and a tolerant read
+    // reads the XMI names in it as XMI 2.5.1's.
+    let emf = emf_name(text, element);
+    if let (Some((offset, name)), Mode::Strict) = (&emf, mode) {
+        return Err(unsupported(
+            text,
+            *offset,
+            Unread::EmfXmiNamespace,
+            text_details(&template::XMI_015_EMF_XMI_NAMESPACE, &[("name", name)]),
+        ));
+    }
+    let (reserved, slash_ids) = reserved_ids(element);
     let mut document = Document::new();
     let mut found = Findings {
         text,
         mode,
         ids: BTreeSet::new(),
         id_log: Vec::new(),
-        reserved: reserved_ids(element),
+        reserved,
+        slash_ids,
+        preserved_at: BTreeSet::new(),
         generator: IdGenerator::default(),
         order: 0,
         diagnostics: Vec::new(),
@@ -884,6 +913,16 @@ pub(super) fn read(
         revision: None,
         budget: Budget::new(text, limits),
     };
+    if let Some((offset, name)) = emf {
+        let diagnostic = Diagnostic::emit(
+            &template::XMI_015_EMF_XMI_NAMESPACE_READ,
+            Severity::Warning,
+            EMF_ROW,
+            vec![Argument::text("name", name)],
+        )
+        .set_clause("7.5.3");
+        found.push_at(diagnostic, offset)?;
+    }
     // What the document holds outside every element: its XMI metadata
     // (SACM23-XMI-019, ADR 0042) and its preserved content (ADR 0035 D3).
     let mut outside = Kept::new(DocumentHolder);
@@ -898,6 +937,11 @@ pub(super) fn read(
     // (SACM23-XMI-030). What the document holds outside every element keeps
     // its place among the roots that stay.
     let stays = resolve(&mut found, tree, &mut roots, limits.max_depth())?;
+    // Then the EMF fragment paths, in tolerant mode only (LIB-COMPAT-002,
+    // R4 to R6).
+    if mode == Mode::Tolerant {
+        resolve_paths(&mut found, element, is_wrapper, &mut roots)?;
+    }
     hold(text, &mut document, roots.read)?;
     let mut outside = outside.into_preserved();
     let mut metadata = metadata.into_preserved();
@@ -978,6 +1022,15 @@ struct Findings<'t, 'a> {
     /// dangling reference never resolves to a generated element
     /// (SACM23-XMI-005, ADR 0026).
     reserved: BTreeSet<&'a str>,
+    /// The value of every `xmi:id` in the input that begins with `/`: a
+    /// reference token equal to one is that id, never an EMF fragment path
+    /// (LIB-COMPAT-002, R4).
+    slash_ids: BTreeSet<&'a str>,
+    /// The byte offset of the start tag of each element kept as preserved
+    /// content of an element or of the document, its XMI metadata aside:
+    /// an EMF fragment path names an element inside one only by its
+    /// `xmi:id` (LIB-COMPAT-002, R4 (c)).
+    preserved_at: BTreeSet<usize>,
     /// The ids generated for elements without an `xmi:id`.
     generator: IdGenerator,
     /// The number of elements met so far: the next one's place in document
@@ -1458,27 +1511,38 @@ impl Findings<'_, '_> {
 /// no namespace named as a reference end, each `xmi:idref` value, trimmed,
 /// and each `href` fragment (ADR 0026). So a dangling reference never
 /// resolves to a generated element. It refuses nothing, and may hold more
-/// than is read, which only skips more candidates.
-fn reserved_ids<'a>(element: Node<'a, '_>) -> BTreeSet<&'a str> {
+/// than is read, which only skips more candidates. With them, the `xmi:id`
+/// values that begin with `/`, which no EMF fragment path is
+/// (LIB-COMPAT-002, R4). In the content XMI.xsd leaves open ([`Open`]), only
+/// XMI 2.5.1's names are XMI's.
+fn reserved_ids<'a>(element: Node<'a, '_>) -> (BTreeSet<&'a str>, BTreeSet<&'a str>) {
     let mut reserved = BTreeSet::new();
-    for attribute in element.descendants().flat_map(|node| node.attributes()) {
-        if is_xmi(&attribute, "id") {
-            reserved.insert(id_value(attribute.value()));
-        } else {
-            reserved.extend(reference_tokens(&attribute));
+    let mut slash_ids = BTreeSet::new();
+    for (node, open) in Open::walk(element) {
+        for attribute in node.attributes() {
+            if is_xmi_in(&attribute, "id", open) {
+                let value = id_value(attribute.value());
+                reserved.insert(value);
+                if value.starts_with('/') {
+                    slash_ids.insert(value);
+                }
+            } else {
+                reserved.extend(reference_tokens(&attribute, open));
+            }
         }
     }
-    reserved
+    (reserved, slash_ids)
 }
 
 /// The ids `attribute` may name as a reference (ADR 0026, ADR 0033): its
 /// value, trimmed, for an `xmi:idref`; the fragment of an `href`, trimmed;
 /// and each token of an attribute in no namespace named as a reference end,
 /// or as the spelling `argumentationElement` of one (SACM23-XMI-009). None
-/// for any other attribute.
-fn reference_tokens<'a>(attribute: &Attribute<'a, '_>) -> Vec<&'a str> {
+/// for any other attribute. `open` says whether it stands in the content
+/// XMI.xsd leaves open ([`Open`]).
+fn reference_tokens<'a>(attribute: &Attribute<'a, '_>, open: bool) -> Vec<&'a str> {
     let value = attribute.value();
-    if is_xmi(attribute, "idref") {
+    if is_xmi_in(attribute, "idref", open) {
         vec![value.trim_matches(is_xml_space)]
     } else if is_unqualified(attribute, "href") {
         value
@@ -1585,6 +1649,12 @@ fn id_value(raw: &str) -> &str {
 /// kind and is in a SACM namespace (`InvalidRoot` otherwise), then that each
 /// is in a namespace `mode` reads (ADR 0041 D4). Each namespace value is
 /// classified once, into `classes`.
+///
+/// The XMI element is `XMI` in XMI 2.5.1's namespace or, in tolerant mode,
+/// in EMF's, which a strict read refuses (LIB-COMPAT-002, ADR 0044 D1). An
+/// `XMI` element in any other namespace, or in none, is refused in both
+/// modes, as a limit of this version. Its roots are its element children in
+/// neither XMI namespace.
 fn classify<'a>(
     text: &str,
     element: Node<'a, '_>,
@@ -1592,11 +1662,25 @@ fn classify<'a>(
     classes: &mut Classes<'a>,
 ) -> Result<bool, ReadError> {
     let name = element.tag_name();
+    let refuse_wrapper = |unread, template| {
+        Err(unsupported(
+            text,
+            element.range().start,
+            unread,
+            text_details(template, &[("element", &written_name(text, element))]),
+        ))
+    };
     match (name.namespace(), name.name()) {
-        (Some(XMI_NS), "XMI") => {
+        (Some(EMF_XMI_NS), "XMI") if mode == Mode::Strict => refuse_wrapper(
+            Unread::EmfXmiNamespace,
+            &template::XMI_015_NOT_XMI_NAMESPACE,
+        ),
+        (Some(XMI_NS | EMF_XMI_NS), "XMI") => {
             let roots: Vec<Node<'_, '_>> = element
                 .children()
-                .filter(|child| child.is_element() && child.tag_name().namespace() != Some(XMI_NS))
+                .filter(|child| {
+                    child.is_element() && !is_xmi_namespace(child.tag_name().namespace())
+                })
                 .collect();
             if roots.is_empty() {
                 return Err(ReadError::NoPackage {
@@ -1613,29 +1697,54 @@ fn classify<'a>(
         }
         // Another XMI element is XMI metadata, or no XMI element at all: as
         // the document element, it holds no SACM package (SACM23-XMI-019).
-        (Some(XMI_NS), _) => Err(ReadError::invalid_root(
+        (Some(XMI_NS | EMF_XMI_NS), _) => Err(ReadError::invalid_root(
             locate(text, element.range().start),
             written_name(text, element),
             &template::XMI_001_XMI_NAMESPACE_ROOT,
             Vec::new(),
         )),
-        // An XMI element outside the XMI namespace (ADR 0016 D1), which
-        // LIB-COMPAT-002 may read.
-        (_, "XMI") => Err(unsupported(
-            text,
-            element.range().start,
+        // An XMI element in neither XMI namespace (ADR 0016 D1, ADR 0044
+        // D1).
+        (_, "XMI") => refuse_wrapper(
             Unread::OtherXmiNamespace,
-            text_details(
-                &template::XMI_015_NOT_XMI_NAMESPACE,
-                &[("element", &written_name(text, element))],
-            ),
-        )),
+            &template::XMI_015_NOT_XMI_ELEMENT,
+        ),
         _ => {
             check_root(text, element, classes)?;
             check_root_namespace(text, element, mode, classes)?;
             Ok(false)
         }
     }
+}
+
+/// The namespace scan (LIB-COMPAT-002, R2): the first element or attribute
+/// name in EMF's XMI namespace under `element`, the document element, in
+/// document order (an element's name, then its attributes in order, then its
+/// content), with the byte offset of its name and the name as written. A
+/// namespace declaration alone is no name. The content XMI.xsd leaves open
+/// is skipped ([`Open`]): a name in EMF's namespace there is valid SACM 2.3,
+/// kept as written. One comparison per name, so the scan is linear in the
+/// input.
+fn emf_name(text: &str, element: Node<'_, '_>) -> Option<(usize, String)> {
+    for (node, open) in Open::walk(element) {
+        if open {
+            continue;
+        }
+        if node.tag_name().namespace() == Some(EMF_XMI_NS) {
+            return Some((node.range().start, written_name(text, node)));
+        }
+        if let Some(attribute) = node
+            .attributes()
+            .find(|attribute| attribute.namespace() == Some(EMF_XMI_NS))
+        {
+            let written = text
+                .get(attribute.range_qname())
+                .unwrap_or(attribute.name())
+                .to_owned();
+            return Some((attribute.range_qname().start, written));
+        }
+    }
+    None
 }
 
 /// Refuses `root` as `InvalidRoot` if its local name is none of the package
@@ -1768,7 +1877,7 @@ fn read_wrapper<'a>(
     // and `xmi:version` a strict read refuses, and a tolerant read keeps as
     // the document's preserved content (ADR 0033, ADR 0035 D3).
     for attribute in wrapper.attributes() {
-        if is_xmi(&attribute, "version") {
+        if reads_xmi(wrapper, &attribute, "version") {
             found.xmi_version(
                 &attribute,
                 &template::XMI_011_VERSION_ON_XMI_ELEMENT,
@@ -1777,7 +1886,7 @@ fn read_wrapper<'a>(
             )?;
             continue;
         }
-        if is_wrapper_metadata(text, &attribute) {
+        if is_wrapper_metadata(text, wrapper, &attribute) {
             // Its `xmi:id` is in the id space, as every metadata id is; an
             // empty one identifies nothing, and a tolerant read keeps it as
             // written outside it, with SACM-ID-002 (ADR 0035 D1, ADR 0042 D5).
@@ -1818,8 +1927,12 @@ fn read_wrapper<'a>(
                 )?;
                 outside.keep_text(found, child, keep)?;
             }
-        } else if child.tag_name().namespace() == Some(XMI_NS) {
-            if WRAPPER_METADATA.contains(&child.tag_name().name()) {
+        } else if is_xmi_namespace(child.tag_name().namespace()) {
+            // In EMF's namespace, only the XMI element is read as XMI's: any
+            // other name in it is content that is not SACM 2.3 (ADR 0044 D1).
+            let is_metadata = child.tag_name().namespace() == Some(XMI_NS)
+                && WRAPPER_METADATA.contains(&child.tag_name().name());
+            if is_metadata {
                 // XMI metadata, kept whole and placed among the roots.
                 metadata.typed = outside.typed;
                 metadata.take_element(found, child)?;
@@ -1917,6 +2030,9 @@ struct Pending {
     /// Which of its typed slots survive, if a proxy it holds is kept: the
     /// proxy's slot does not (SACM23-XMI-030).
     slots: Option<Vec<bool>>,
+    /// Each reference target it holds that may be an EMF fragment path, in
+    /// the order read (LIB-COMPAT-002, R4).
+    paths: Vec<PathCandidate>,
 }
 
 /// The preserved content of one element, or of the document outside every
@@ -1976,7 +2092,7 @@ impl<H: Holder> Kept<H> {
             let name = &attr.name;
             match name.namespace.as_deref() {
                 None => name.local == "href",
-                Some(namespace) => namespace == XMI_NS && name.local == "idref",
+                Some(namespace) => is_xmi_namespace(Some(namespace)) && name.local == "idref",
             }
         })
     }
@@ -2053,7 +2169,7 @@ impl<H: Holder> Kept<H> {
         }
         found.keep_namespace_text(kept, at)?;
         self.references.extend(
-            reference_tokens(attribute)
+            reference_tokens(attribute, false)
                 .into_iter()
                 .filter(|token| !token.is_empty())
                 .map(ElementId::new),
@@ -2104,9 +2220,14 @@ impl<H: Holder> Kept<H> {
         node: Node<'a, '_>,
     ) -> Result<(), ReadError> {
         let text = found.text;
-        for element in node.descendants().filter(Node::is_element) {
+        for (element, open) in Open::walk(node) {
             for attribute in element.attributes() {
-                if is_xmi(&attribute, "id") {
+                let is_id = if open {
+                    is_xmi_in(&attribute, "id", true)
+                } else {
+                    reads_xmi(element, &attribute, "id")
+                };
+                if is_id {
                     if attribute.value().is_empty() && found.mode == Mode::Tolerant {
                         let (template, arguments) =
                             self.holder.empty_kept_id(&written_name(text, element));
@@ -2117,7 +2238,7 @@ impl<H: Holder> Kept<H> {
                     self.ids.push(ElementId::new(value));
                 } else {
                     self.references.extend(
-                        reference_tokens(&attribute)
+                        reference_tokens(&attribute, open)
                             .into_iter()
                             .filter(|token| !token.is_empty())
                             .map(ElementId::new),
@@ -2166,7 +2287,9 @@ impl<H: Holder> Kept<H> {
     /// bindings its prefix needs and the ids it may name, as
     /// [`take_attribute`](Self::take_attribute) does. Its prefix is one the
     /// writer writes back ([`is_writable_prefix`]), so it is never renamed
-    /// and never refused for its prefix.
+    /// and never refused for its prefix. One in EMF's XMI namespace, which a
+    /// tolerant read reads as XMI 2.5.1's, is held as `xmi:<local>` in XMI
+    /// 2.5.1's namespace, so both saves write XMI 2.5.1 (ADR 0044 D1, R3).
     fn take_metadata_attribute<'a>(
         &mut self,
         found: &Findings<'_, 'a>,
@@ -2174,6 +2297,15 @@ impl<H: Holder> Kept<H> {
         attribute: &Attribute<'a, '_>,
     ) -> Result<(), ReadError> {
         let at = attribute.range_qname().start;
+        if attribute.namespace() == Some(EMF_XMI_NS) {
+            let (mut attr, kept) = preserve::attr(found.text, attribute);
+            attr.name.namespace = Some(XMI_NS.to_owned());
+            attr.name.prefix = Some(XMI_PREFIX.to_owned());
+            found.keep_namespace_text(kept, at)?;
+            self.offsets.insert(at);
+            self.attributes.push((at, attr));
+            return Ok(());
+        }
         // No rename: the caller checked the prefix, so there is no Warning.
         let _ = self.take_attribute(found, node, attribute, at)?;
         Ok(())
@@ -2260,6 +2392,7 @@ impl Kept<ElementHolder> {
         node: Node<'a, '_>,
     ) -> Result<(), ReadError> {
         self.take_element(found, node)?;
+        found.preserved_at.insert(node.range().start);
         let arguments = vec![Argument::text("element", written_name(found.text, node))];
         found.unknown(
             node.range().start,
@@ -2280,6 +2413,7 @@ impl Kept<ElementHolder> {
         keep: Keep,
     ) -> Result<(), ReadError> {
         self.take_element(found, node)?;
+        found.preserved_at.insert(node.range().start);
         found.keep(keep, &self.holder)?;
         Ok(())
     }
@@ -2301,7 +2435,7 @@ impl Kept<ElementHolder> {
         let mut take = |merged: &mut Vec<Placed>, slot: usize, node: Node<'a, '_>| {
             for attribute in node.attributes() {
                 self.references.extend(
-                    reference_tokens(&attribute)
+                    reference_tokens(&attribute, false)
                         .into_iter()
                         .filter(|token| !token.is_empty())
                         .map(ElementId::new),
@@ -2397,6 +2531,7 @@ impl Kept<DocumentHolder> {
         keep: DocumentKeep,
     ) -> Result<(), ReadError> {
         self.take_element(found, node)?;
+        found.preserved_at.insert(node.range().start);
         found.keep_in_document(keep)?;
         Ok(())
     }
@@ -2569,13 +2704,19 @@ impl Pending {
         if counted && !repeats {
             self.given.push("name");
         }
-        let (name, name_id, metadata) = name?;
+        let read = name?;
         if repeats {
             return Err(self.repeat(found, holder, node.range().start, "name", "name"));
         }
-        self.name = Some(name);
-        self.name_id = name_id;
-        self.name_metadata = Some(metadata);
+        self.name = Some(read.value);
+        self.name_id = read.id;
+        self.name_metadata = Some(read.metadata);
+        if let Some(at) = read.path_at {
+            self.paths.push(PathCandidate {
+                at,
+                slot: PathSlot::Name,
+            });
+        }
         Ok(())
     }
 
@@ -2721,7 +2862,27 @@ impl Pending {
             }
         }
         match link {
-            Link::Id(target) => push_value(&mut self.references, end, target),
+            Link::Id(target) => {
+                // The fragment of a same-document `href` may be an EMF
+                // fragment path; an `xmi:idref` never is (LIB-COMPAT-002,
+                // R4).
+                let entry = self
+                    .references
+                    .iter()
+                    .position(|(held, _)| *held == end)
+                    .unwrap_or(self.references.len());
+                let index = self
+                    .references
+                    .get(entry)
+                    .map_or(0, |(_, targets)| targets.len());
+                if let Some(at) = href_at(node) {
+                    self.paths.push(PathCandidate {
+                        at,
+                        slot: PathSlot::Reference { entry, index },
+                    });
+                }
+                push_value(&mut self.references, end, target);
+            }
             Link::Href(href) => push_value(&mut self.hrefs, end, href),
         }
         Ok(())
@@ -2923,6 +3084,9 @@ struct StartTag {
     flags: Vec<(Flag, bool)>,
     /// Each reference end given, with its targets.
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    /// Each target read, which may be an EMF fragment path
+    /// (LIB-COMPAT-002).
+    paths: Vec<PathCandidate>,
 }
 
 /// What [`StartTag::read`] made of an attribute.
@@ -3024,7 +3188,13 @@ impl StartTag {
                 },
             )));
         }
-        let targets = id_tokens(value).map(ElementId::new).collect();
+        let targets: Vec<ElementId> = id_tokens(value).map(ElementId::new).collect();
+        let entry = self.references.len();
+        self.paths
+            .extend((0..targets.len()).map(|index| PathCandidate {
+                at,
+                slot: PathSlot::Reference { entry, index },
+            }));
         self.references.push((end, targets));
         Ok(Given::Read)
     }
@@ -3132,6 +3302,11 @@ impl Shorthand {
 #[derive(Default)]
 struct Roots {
     read: Vec<Pending>,
+    /// Each resolved same-file proxy, by the byte offset of its start tag,
+    /// with the id of the root that took its place (SACM23-XMI-030): an EMF
+    /// fragment path that names the proxy names that root (LIB-COMPAT-002,
+    /// R4 (b)).
+    linked: Vec<(usize, ElementId)>,
     orders: Vec<usize>,
     nodes: Vec<roxmltree::NodeId>,
     proxies: Vec<Proxy>,
@@ -3360,7 +3535,7 @@ fn read_part<'a>(
         if counted && !repeats {
             element.given.push(role.name());
         }
-        let held = held?;
+        let (held, paths) = held?;
         if repeats {
             return Err(match role {
                 TextRole::Content => {
@@ -3389,6 +3564,12 @@ fn read_part<'a>(
             });
         }
         *element.text_mut(role) = Some(held);
+        element
+            .paths
+            .extend(paths.into_iter().map(|(index, at)| PathCandidate {
+                at,
+                slot: PathSlot::Value { role, index },
+            }));
     } else if element.kind.is_a(AbstractClass::Assertion) && is_value_element(node, DECLARATION) {
         element.read_declaration_part(found, holder, node)?;
     } else if let Some(flag) =
@@ -3536,9 +3717,11 @@ fn resolve(
                 // takes its place.
                 let target = ElementId::new(proxy.link.target.as_str());
                 found.proxy_notes(node, proxy, spelled, Some(&target))?;
+                roots.linked.push((proxy.at, target));
             }
             Err(why) => {
                 found.unresolved(proxy, why)?;
+                found.preserved_at.insert(proxy.at);
                 // A kept proxy stands for no element: what its start tag
                 // says is about its container (ADR 0040 amendment 1, A9).
                 found.proxy_notes(node, proxy, spelled, None)?;
@@ -3835,6 +4018,278 @@ fn mark_cycles(outcomes: &mut [Result<usize, Unresolved>], proxies: &[Proxy], co
     }
 }
 
+/// A reference target a tolerant read may read as an EMF fragment path
+/// (LIB-COMPAT-002, R4): where its element holds it, and the byte offset of
+/// the name of the attribute that gives it (the end's attribute, a
+/// same-document `href`, or an `expression`), where SACM-XMI-017 is located.
+#[derive(Clone, Copy, Debug)]
+struct PathCandidate {
+    at: usize,
+    slot: PathSlot,
+}
+
+/// Where an element holds a [`PathCandidate`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathSlot {
+    /// The `index`-th target of the `entry`-th end of its references.
+    Reference { entry: usize, index: usize },
+    /// The `expression` of its name.
+    Name,
+    /// The `expression` of the `index`-th value of its `role`.
+    Value { role: TextRole, index: usize },
+}
+
+impl Pending {
+    /// The id `slot` holds, if it holds one.
+    fn path_token(&self, slot: PathSlot) -> Option<&ElementId> {
+        match slot {
+            PathSlot::Reference { entry, index } => self.references.get(entry)?.1.get(index),
+            PathSlot::Name => self.name.as_ref()?.expression(),
+            PathSlot::Value { role, index } => {
+                let text = match role {
+                    TextRole::Content => self.content.as_ref(),
+                    TextRole::Key => self.key.as_ref(),
+                    TextRole::Location => self.location.as_ref(),
+                }?;
+                text.value().values().get(index)?.expression()
+            }
+        }
+    }
+
+    /// Makes `slot` hold `id`, at its place (R4, "Timing").
+    fn set_path_target(&mut self, slot: PathSlot, id: ElementId) {
+        match slot {
+            PathSlot::Reference { entry, index } => {
+                if let Some(target) = self
+                    .references
+                    .get_mut(entry)
+                    .and_then(|(_, targets)| targets.get_mut(index))
+                {
+                    *target = id;
+                }
+            }
+            PathSlot::Name => {
+                if let Some(name) = &mut self.name {
+                    *name = name.map_expression(|_| Some(id));
+                }
+            }
+            PathSlot::Value { role, index } => {
+                if let Some(text) = self.text_mut(role) {
+                    text.map_value(index, |value| value.map_expression(|_| Some(id)));
+                }
+            }
+        }
+    }
+}
+
+/// The byte offset of the name of the unqualified `href` of `node`, if it
+/// carries one.
+fn href_at(node: Node<'_, '_>) -> Option<usize> {
+    node.attributes()
+        .find(|attribute| is_unqualified(attribute, "href"))
+        .map(|attribute| attribute.range_qname().start)
+}
+
+/// The root index and the steps of `token`, an EMF fragment path in EMF's
+/// default grammar (`ResourceImpl.getEObject`, `BasicEObjectImpl.
+/// eObjectForURIFragmentSegment`; ADR 0044 D2, R4): `/`, a root segment
+/// (empty, meaning 0, or ASCII digits), then steps `/@role.N`, each its role
+/// (everything between `@` and the last `.`) and ASCII-digit index. `None`
+/// for anything else: no index, a key predicate, an `?id` segment, a sign,
+/// an empty step, another character, or an index that overflows `usize`.
+fn parse_path(token: &str) -> Option<(usize, Vec<(&str, usize)>)> {
+    let mut segments = token.strip_prefix('/')?.split('/');
+    let root = match segments.next()? {
+        "" => 0,
+        digits => parse_index(digits)?,
+    };
+    let steps = segments
+        .map(|step| {
+            let (role, index) = step.strip_prefix('@')?.rsplit_once('.')?;
+            Some((role, parse_index(index)?))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some((root, steps))
+}
+
+/// The value of `digits`, one or more ASCII digits; `None` for anything
+/// else, or a value over `usize::MAX`.
+fn parse_index(digits: &str) -> Option<usize> {
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// The element children of each element met, by local name, in document
+/// order: those in no namespace, as a step counts them (R4,
+/// "Navigation"). Each element's children are grouped once, when a path
+/// first steps out of it, so resolving stays linear in the input however
+/// many paths step through it.
+#[derive(Default)]
+struct Children<'a, 'i> {
+    by_element: BTreeMap<usize, BTreeMap<&'a str, Vec<Node<'a, 'i>>>>,
+}
+
+impl<'a, 'i> Children<'a, 'i> {
+    /// The `n`-th element child of `node`, from 0, in no namespace, whose
+    /// local name is `role` exactly.
+    fn get(&mut self, node: Node<'a, 'i>, role: &str, n: usize) -> Option<Node<'a, 'i>> {
+        let roles = self
+            .by_element
+            .entry(node.range().start)
+            .or_insert_with(|| {
+                let mut roles: BTreeMap<&'a str, Vec<Node<'a, 'i>>> = BTreeMap::new();
+                let unqualified = |child: &Node<'a, 'i>| {
+                    child.is_element() && child.tag_name().namespace().is_none_or(str::is_empty)
+                };
+                for child in node.children().filter(unqualified) {
+                    roles
+                        .entry(child.tag_name().name())
+                        .or_default()
+                        .push(child);
+                }
+                roles
+            });
+        roles.get(role)?.get(n).copied()
+    }
+}
+
+/// The element `token` names, as written: from the root it names among
+/// `roots`, the interchange roots in document order, one child per step.
+fn navigate<'a, 'i>(
+    token: &str,
+    roots: &[Node<'a, 'i>],
+    children: &mut Children<'a, 'i>,
+) -> Option<Node<'a, 'i>> {
+    let (root, steps) = parse_path(token)?;
+    let mut node = *roots.get(root)?;
+    for (role, n) in steps {
+        node = children.get(node, role, n)?;
+    }
+    Some(node)
+}
+
+/// The id an EMF fragment path that names `node` is read as (R4,
+/// "Result"): (a) the id of an element read as an element, or (b) of the
+/// root a resolved same-file proxy names, both in `named` by the offset of
+/// their start tag; (c) the `xmi:id`, in either XMI namespace, of an element
+/// inside preserved content, if it is in the id space. `None` for any other:
+/// a `name`, `content`, `key`, `location` or `value`, XMI metadata, or a
+/// preserved element without an id.
+fn path_target(
+    found: &Findings<'_, '_>,
+    named: &BTreeMap<usize, ElementId>,
+    node: Node<'_, '_>,
+) -> Option<ElementId> {
+    if let Some(id) = named.get(&node.range().start) {
+        return Some(id.clone());
+    }
+    let preserved = node
+        .ancestors()
+        .filter(Node::is_element)
+        .any(|element| found.preserved_at.contains(&element.range().start));
+    if !preserved {
+        return None;
+    }
+    let attribute = node
+        .attributes()
+        .find(|attribute| is_xmi(attribute, "id"))?;
+    let value = id_value(attribute.value());
+    found.ids.contains(value).then(|| ElementId::new(value))
+}
+
+/// Reads the EMF fragment paths of a tolerant read once every root is read,
+/// after the same-file proxies (LIB-COMPAT-002, R4 and R5; ADR 0044 D2).
+///
+/// A candidate is a target an element read as an element holds, given by
+/// an end's attribute, a same-document `href` or an `expression` (never an
+/// `xmi:idref`, a string attribute, a cross-document `href` or anything in
+/// preserved content), that begins with `/` and equals no `xmi:id` of the
+/// input. Each that names an element ([`path_target`]) is replaced by its
+/// id, at its place; each other is kept as written, and `validate` reports
+/// it (SACM-REF-001). One SACM-XMI-017 Warning, `paths-read` when every one
+/// is read and `paths-partly-read` otherwise, is located at the attribute
+/// that gives the first candidate in document order, affecting its element.
+///
+/// `element` is the document element, the XMI element when `is_wrapper`.
+/// The paths are parsed and followed once each, and each element's children
+/// are grouped once ([`Children`]), so this is linear in the input but for
+/// the map lookups.
+fn resolve_paths<'a>(
+    found: &mut Findings<'_, 'a>,
+    element: Node<'a, '_>,
+    is_wrapper: bool,
+    roots: &mut Roots,
+) -> Result<(), ReadError> {
+    let mut candidates: Vec<(usize, usize, PathSlot)> = Vec::new();
+    for (owner, pending) in roots.read.iter().enumerate() {
+        for path in &pending.paths {
+            let is_candidate = pending.path_token(path.slot).is_some_and(|token| {
+                token.as_str().starts_with('/') && !found.slash_ids.contains(token.as_str())
+            });
+            if is_candidate {
+                candidates.push((path.at, owner, path.slot));
+            }
+        }
+    }
+    // Document order of the attributes; the targets of one attribute keep
+    // their order, since the sort is stable.
+    candidates.sort_by_key(|&(at, _, _)| at);
+    let Some(&(first_at, first_owner, first_slot)) = candidates.first() else {
+        return Ok(());
+    };
+    let Some((affected, first)) = roots.read.get(first_owner).and_then(|pending| {
+        let token = pending.path_token(first_slot)?;
+        Some((pending.id.clone(), token.as_str().to_owned()))
+    }) else {
+        return Ok(());
+    };
+    let mut named: BTreeMap<usize, ElementId> = roots
+        .read
+        .iter()
+        .map(|pending| (pending.at, pending.id.clone()))
+        .collect();
+    named.extend(roots.linked.iter().cloned());
+    let tops: Vec<Node<'a, '_>> = if is_wrapper {
+        element
+            .children()
+            .filter(|child| child.is_element() && !is_xmi_namespace(child.tag_name().namespace()))
+            .collect()
+    } else {
+        vec![element]
+    };
+    let mut children = Children::default();
+    let mut kept = 0_usize;
+    for &(_, owner, slot) in &candidates {
+        let Some(pending) = roots.read.get(owner) else {
+            continue;
+        };
+        let target = pending
+            .path_token(slot)
+            .and_then(|token| navigate(token.as_str(), &tops, &mut children))
+            .and_then(|node| path_target(found, &named, node));
+        match (target, roots.read.get_mut(owner)) {
+            (Some(id), Some(pending)) => pending.set_path_target(slot, id),
+            _ => kept = kept.saturating_add(1),
+        }
+    }
+    let mut arguments = vec![
+        Argument::count_of("count", candidates.len()),
+        Argument::text("first", first),
+    ];
+    let template = if kept == 0 {
+        &template::XMI_017_PATHS_READ
+    } else {
+        arguments.push(Argument::count_of("kept", kept));
+        &template::XMI_017_PATHS_PARTLY_READ
+    };
+    let diagnostic = Diagnostic::emit(template, Severity::Warning, EMF_ROW, arguments)
+        .set_clause("7.10.2")
+        .set_affected([affected]);
+    found.push_at(diagnostic, first_at)
+}
+
 /// Adds the elements of every root's tree, read whole and sorted by their
 /// place in document order, to `document`, each with everything read for
 /// it, its metadata and preserved content included: depth first from the
@@ -3986,10 +4441,10 @@ fn unheld(element: &Pending, error: &str) -> Details {
 /// `xsi:noNamespaceSchemaLocation`, written with a prefix the writer can
 /// write back. Its `href` and `xmi:idref` are not: on a definition they do
 /// not conform (production 2a), and on a role element they make it a proxy.
-fn is_object_metadata(text: &str, attribute: &Attribute<'_, '_>) -> bool {
+fn is_object_metadata(text: &str, node: Node<'_, '_>, attribute: &Attribute<'_, '_>) -> bool {
     let is_metadata = ["uuid", "label"]
         .iter()
-        .any(|local| is_xmi(attribute, local))
+        .any(|local| reads_xmi(node, attribute, local))
         || is_schema_location(attribute);
     is_metadata && is_writable_prefix(text, attribute)
 }
@@ -3999,10 +4454,10 @@ fn is_object_metadata(text: &str, attribute: &Attribute<'_, '_>) -> bool {
 /// `xmi:idref`, `xmi:type`, `xsi:schemaLocation` or
 /// `xsi:noNamespaceSchemaLocation`, written with a prefix the writer can
 /// write back.
-fn is_wrapper_metadata(text: &str, attribute: &Attribute<'_, '_>) -> bool {
+fn is_wrapper_metadata(text: &str, node: Node<'_, '_>, attribute: &Attribute<'_, '_>) -> bool {
     let is_metadata = ["id", "label", "uuid", "idref", "type"]
         .iter()
-        .any(|local| is_xmi(attribute, local))
+        .any(|local| reads_xmi(node, attribute, local))
         || is_unqualified(attribute, "href")
         || is_schema_location(attribute);
     is_metadata && is_writable_prefix(text, attribute)
@@ -4016,7 +4471,9 @@ fn is_writable_prefix(text: &str, attribute: &Attribute<'_, '_>) -> bool {
     let written = attribute_written(text, attribute);
     match written.split_once(':').map(|(prefix, _)| prefix) {
         Some(SACM_PREFIX) => attribute.namespace() == Some(SACM_NS),
-        Some(XMI_PREFIX) => attribute.namespace() == Some(XMI_NS),
+        // An XMI name in EMF's namespace is held as XMI 2.5.1's
+        // ([`Kept::take_metadata_attribute`]).
+        Some(XMI_PREFIX) => is_xmi_namespace(attribute.namespace()),
         _ => true,
     }
 }
@@ -4084,6 +4541,7 @@ fn pending(
         kept,
         metadata,
         name_metadata: None,
+        paths: Vec::new(),
     }
 }
 
@@ -4124,7 +4582,10 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     // one naming another class does not conform, and is preserved (ADR
     // 0033, D-ROOT-NAME). Like the kind and the id, it is checked first, at
     // the root.
-    for attribute in root.attributes().filter(is_type) {
+    for attribute in root
+        .attributes()
+        .filter(|attribute| is_type(root, attribute))
+    {
         if names_class(&found.types, root, attribute.value(), kind.name()) {
             if is_xsi_type(&attribute) {
                 let arguments = named(kind, id_text);
@@ -4145,10 +4606,10 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     // conform, and is preserved (ADR 0033).
     let mut start = StartTag::default();
     for attribute in root.attributes() {
-        if is_type(&attribute) || is_xmi(&attribute, "id") {
+        if is_type(root, &attribute) || reads_xmi(root, &attribute, "id") {
             continue;
         }
-        if is_xmi(&attribute, "version") {
+        if reads_xmi(root, &attribute, "version") {
             let version = &template::XMI_011_VERSION_ON_ROOT;
             found.xmi_version(&attribute, version, named(kind, id_text), Some(id_text))?;
             continue;
@@ -4166,7 +4627,7 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
             Ok(Given::Read) => continue,
             Ok(Given::NoId) => {}
             Ok(Given::Other) => {
-                if is_object_metadata(text, &attribute) {
+                if is_object_metadata(text, root, &attribute) {
                     element
                         .metadata
                         .take_metadata_attribute(found, root, &attribute)?;
@@ -4184,6 +4645,7 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     }
     element.flags = start.flags;
     element.references = start.references;
+    element.paths = start.paths;
     Ok(element)
 }
 
@@ -4252,7 +4714,7 @@ fn child_start<'a>(
             found.xsi_type(&attribute, xsi, arguments, id.as_str())?;
             continue;
         }
-        if is_xmi(&attribute, "id") || is_type(&attribute) {
+        if reads_xmi(node, &attribute, "id") || is_type(node, &attribute) {
             continue;
         }
         if is_unqualified(&attribute, GID) {
@@ -4320,7 +4782,7 @@ fn child_start<'a>(
             element.read_key_attribute(found, &attribute)?;
             continue;
         }
-        if is_object_metadata(text, &attribute) {
+        if is_object_metadata(text, node, &attribute) {
             element
                 .metadata
                 .take_metadata_attribute(found, node, &attribute)?;
@@ -4334,6 +4796,7 @@ fn child_start<'a>(
     }
     element.flags = start.flags;
     element.references = start.references;
+    element.paths = start.paths;
     Ok(Child::Element(Box::new(element)))
 }
 
@@ -4502,16 +4965,13 @@ fn checked_id<'a>(
 /// generated id, so an element without one is never among them.
 fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
     let mut locator = Locator::new(text);
-    let locations = node
-        .document()
-        .root_element()
-        .descendants()
-        .filter(|element| {
-            element
-                .attributes()
-                .any(|attribute| is_xmi(&attribute, "id") && id_value(attribute.value()) == id)
+    let locations = Open::walk(node.document().root_element())
+        .filter(|&(element, open)| {
+            element.attributes().any(|attribute| {
+                is_xmi_in(&attribute, "id", open) && id_value(attribute.value()) == id
+            })
         })
-        .filter_map(|element| locator.locate(element.range().start))
+        .filter_map(|(element, _)| locator.locate(element.range().start))
         .collect();
     ReadError::duplicate_id(ElementId::new(id), locations)
 }
@@ -4624,7 +5084,10 @@ fn child_kind(
     };
     let mut typed = None;
     let mut type_spelled = false;
-    for attribute in node.attributes().filter(is_type) {
+    for attribute in node
+        .attributes()
+        .filter(|attribute| is_type(node, attribute))
+    {
         let kind = match type_kind(&found.types, node, attribute.value()) {
             Some(kind) => kind,
             // The model's spelling of ArtifactAssetRelationship, read as that
@@ -4791,7 +5254,7 @@ fn proxy_link(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Option<(Option<El
         } else if is_unqualified(&attribute, "href") {
             links = links.saturating_add(1);
             link = Some(href_link(&found.types, node, attribute.value())?);
-        } else if is_type(&attribute) {
+        } else if is_type(node, &attribute) {
             types = types.saturating_add(1);
         } else {
             return None;
@@ -5275,7 +5738,7 @@ fn read_name<'a>(
     node: Node<'a, '_>,
     kind: ElementKind,
     owner: &ElementId,
-) -> Result<(LangString, Option<ElementId>, Preserved), Fault> {
+) -> Result<ReadLangString, Fault> {
     read_lang_string(found, node, LangPart::Name, owner, kind, "name")
 }
 
@@ -5358,10 +5821,10 @@ fn read_text<'a>(
     role: TextRole,
     kind: ElementKind,
     owner: &ElementId,
-) -> Result<Text, Fault> {
+) -> Result<(Text, Vec<(usize, usize)>), Fault> {
     let text = found.text;
     if node.attributes().any(|attribute| {
-        is_type(&attribute)
+        is_type(node, &attribute)
             && !names_class(&found.types, node, attribute.value(), "MultiLangString")
     }) {
         return Err(Fault::Defect);
@@ -5401,13 +5864,16 @@ fn read_text<'a>(
                 IdOwner::Text(role).arguments(kind, owner.as_str()),
                 owner.as_str(),
             )?;
-        } else if is_object_metadata(text, &attribute) {
+        } else if is_object_metadata(text, node, &attribute) {
             metadata.take_metadata_attribute(found, node, &attribute)?;
-        } else if !(is_type(&attribute) || is_xmi(&attribute, "id")) {
+        } else if !(is_type(node, &attribute) || reads_xmi(node, &attribute, "id")) {
             return Err(Fault::Defect);
         }
     }
     let property = format!("{}.value", role.name());
+    // The index of each value whose `expression` may be an EMF fragment
+    // path, with where it is given (LIB-COMPAT-002).
+    let mut paths = Vec::new();
     for child in node.children() {
         if !child.is_element() {
             if no_shorthand {
@@ -5428,9 +5894,11 @@ fn read_text<'a>(
             }
         } else if is_value_element(child, "value") {
             let part = LangPart::Value(role);
-            let (value, id, value_metadata) =
-                read_lang_string(found, child, part, owner, kind, &property)?;
-            held.push(value, id, value_metadata);
+            let read = read_lang_string(found, child, part, owner, kind, &property)?;
+            if let Some(at) = read.path_at {
+                paths.push((held.value().len(), at));
+            }
+            held.push(read.value, read.id, read.metadata);
         } else if is_extension(child) {
             metadata.typed = held.value().len();
             metadata.take_element(found, child)?;
@@ -5450,7 +5918,7 @@ fn read_text<'a>(
         Err(_) => return Err(Fault::Defect),
     }
     held.set_metadata(metadata.into_preserved());
-    Ok(held)
+    Ok((held, paths))
 }
 
 /// The `LangString` that `node`, a `name` or a `value` of a `content` or
@@ -5497,7 +5965,7 @@ fn read_lang_string<'a>(
     owner: &ElementId,
     kind: ElementKind,
     property: &str,
-) -> Result<(LangString, Option<ElementId>, Preserved), Fault> {
+) -> Result<ReadLangString, Fault> {
     let text = found.text;
     let mode = found.mode;
     let is_name = property == "name";
@@ -5520,8 +5988,12 @@ fn read_lang_string<'a>(
         kind,
         id: owner.clone(),
     });
-    // The `expression` of an ExpressionLangString (§8.4), once it is given.
+    // The `expression` of an ExpressionLangString (§8.4), once it is given,
+    // and, for one given as the attribute or a same-document `href`, where
+    // that attribute's name is: it may be an EMF fragment path
+    // (LIB-COMPAT-002, R4).
     let mut expression: Option<Link> = None;
+    let mut path_at = None;
     for attribute in node.attributes() {
         let value = || Some(attribute.value().to_owned());
         let given = match (attribute.namespace(), attribute.name()) {
@@ -5531,6 +6003,7 @@ fn read_lang_string<'a>(
                 expression = Some(Link::Id(read_expression_attribute(
                     found, node, &attribute, owner, kind, property,
                 )?));
+                path_at = Some(attribute.range_qname().start);
                 Ok(())
             }
             _ if is_xsi_type(&attribute) => {
@@ -5538,8 +6011,8 @@ fn read_lang_string<'a>(
                 found.xsi_type(&attribute, part.xsi_type(), arguments, owner.as_str())?;
                 Ok(())
             }
-            _ if is_type(&attribute) || is_xmi(&attribute, "id") => Ok(()),
-            _ if is_object_metadata(text, &attribute) => {
+            _ if is_type(node, &attribute) || reads_xmi(node, &attribute, "id") => Ok(()),
+            _ if is_object_metadata(text, node, &attribute) => {
                 metadata.take_metadata_attribute(found, node, &attribute)?;
                 Ok(())
             }
@@ -5597,6 +6070,9 @@ fn read_lang_string<'a>(
                     found, node, child, owner, kind, property,
                 ));
             }
+            if matches!(target, Link::Id(_)) {
+                path_at = href_at(child);
+            }
             expression = Some(target);
         } else if is_name && is_value_element(child, "value") {
             // The name's one LangString: the name holds nothing else, and
@@ -5633,7 +6109,23 @@ fn read_lang_string<'a>(
             None => name.with_no_expression(),
         };
     }
-    Ok((name, name_id, metadata.into_preserved()))
+    Ok(ReadLangString {
+        value: name,
+        id: name_id,
+        metadata: metadata.into_preserved(),
+        path_at: if is_expression { path_at } else { None },
+    })
+}
+
+/// What [`read_lang_string`] reads: the `LangString`, the `xmi:id` of its
+/// element, its XMI metadata, and, when its `expression` is an id given as
+/// the attribute or by a same-document `href`, the byte offset of that
+/// attribute's name: the id may be an EMF fragment path (LIB-COMPAT-002).
+struct ReadLangString {
+    value: LangString,
+    id: Option<ElementId>,
+    metadata: Preserved,
+    path_at: Option<usize>,
 }
 
 /// The one id of the `expression` attribute `attribute` of `node`, an
@@ -5746,7 +6238,10 @@ fn check_lang_string_tag(types: &Types<'_>, node: Node<'_, '_>) -> Result<bool, 
         return Err(Fault::Defect);
     }
     let mut named = None;
-    for attribute in node.attributes().filter(is_type) {
+    for attribute in node
+        .attributes()
+        .filter(|attribute| is_type(node, attribute))
+    {
         let Some(class @ ("LangString" | "ExpressionLangString")) =
             sacm_class(types, node, attribute.value())
         else {
@@ -5805,12 +6300,11 @@ fn read_name_value<'a>(
     if node.attributes().any(|attribute| is_xmi(&attribute, "id")) {
         return Err(Fault::Defect);
     }
-    let (value, _, metadata) =
-        read_lang_string(found, node, LangPart::NameValue, owner, kind, "name.value")?;
-    if !metadata.is_empty() {
+    let read = read_lang_string(found, node, LangPart::NameValue, owner, kind, "name.value")?;
+    if !read.metadata.is_empty() {
         return Err(Fault::Defect);
     }
-    Ok(value)
+    Ok(read.value)
 }
 
 /// Whether `name`, a `name` element, holds a field besides its `value`
@@ -5852,14 +6346,130 @@ fn is_unqualified(attribute: &Attribute<'_, '_>, local: &str) -> bool {
     attribute.namespace().is_none() && attribute.name() == local
 }
 
-/// Whether `attribute` is `xmi:<local>`, in the XMI namespace.
-fn is_xmi(attribute: &Attribute<'_, '_>, local: &str) -> bool {
-    attribute.namespace() == Some(XMI_NS) && attribute.name() == local
+/// Whether `uri` is an XMI namespace whose `XMI` element and attributes
+/// `id`, `type`, `idref`, `version`, `uuid` and `label` the reader takes as
+/// XMI 2.5.1's: XMI 2.5.1's own, or EMF's (LIB-COMPAT-002, ADR 0044 D1, R3).
+/// Accepting EMF's here is the alias: a strict read has refused any name in
+/// it before pass 2 ([`emf_name`]), so only a tolerant read of a document
+/// that uses it meets one.
+fn is_xmi_namespace(uri: Option<&str>) -> bool {
+    matches!(uri, Some(XMI_NS | EMF_XMI_NS))
 }
 
-/// Whether `attribute` is `xmi:type` or `xsi:type`.
-fn is_type(attribute: &Attribute<'_, '_>) -> bool {
-    is_xmi(attribute, "type") || is_xsi_type(attribute)
+/// Whether `attribute` is `xmi:<local>`, in an XMI namespace
+/// ([`is_xmi_namespace`]). `local` is one of the attributes the alias
+/// covers.
+fn is_xmi(attribute: &Attribute<'_, '_>, local: &str) -> bool {
+    is_xmi_namespace(attribute.namespace()) && attribute.name() == local
+}
+
+/// Whether `attribute` of `node` is the `xmi:<local>` the reader reads: the
+/// first in document order, when `node` carries it in both XMI namespaces.
+/// The other is kept as written (R3). XML allows one attribute per name, so
+/// `node` carries at most two, and finding the first costs one pass over its
+/// attributes for each.
+fn reads_xmi(node: Node<'_, '_>, attribute: &Attribute<'_, '_>, local: &str) -> bool {
+    is_xmi(attribute, local)
+        && node
+            .attributes()
+            .find(|first| is_xmi(first, local))
+            .is_some_and(|first| first.range_qname() == attribute.range_qname())
+}
+
+/// Whether `attribute` is `xmi:<local>`: in an XMI namespace
+/// ([`is_xmi`]), or, when it stands in the content XMI.xsd leaves `open`
+/// ([`Open`]), in XMI 2.5.1's alone. The alias does not reach there: a name
+/// in EMF's namespace is kept as written and is no id (ADR 0044 D1).
+fn is_xmi_in(attribute: &Attribute<'_, '_>, local: &str, open: bool) -> bool {
+    if open {
+        attribute.namespace() == Some(XMI_NS) && attribute.name() == local
+    } else {
+        is_xmi(attribute, local)
+    }
+}
+
+/// Where an element stands towards the content XMI.xsd leaves open, where
+/// any name may stand in valid SACM 2.3: the content of an `xmi:Extension`
+/// or `xmi:extension` (`<xsd:any processContents="lax"/>`), in XMI 2.5.1's
+/// namespace or EMF's, and the attributes and content of the `target` of a
+/// Difference (`xmi:Difference`, `xmi:difference`, `xmi:Add`, `xmi:Replace`
+/// or `xmi:Delete`, or a `difference` or `container` nested in one;
+/// `<xsd:any processContents="skip"/>` and `<xsd:anyAttribute
+/// processContents="skip"/>`). The namespace scan skips it, and the alias
+/// does not apply in it: it is kept exactly as written (LIB-COMPAT-002, ADR
+/// 0044 D1). An Extension in EMF's namespace counts only in a tolerant read:
+/// a strict read refuses its own name first.
+#[derive(Clone, Copy, Debug, Default)]
+struct Open {
+    /// Whether the element's name, attributes and content are open.
+    open: bool,
+    /// Whether the element's parent is a Difference, whose `target` child is
+    /// open.
+    in_difference: bool,
+}
+
+impl Open {
+    /// Where `node`, an element whose parent stands where `self` says,
+    /// stands: whether its name and attributes are open, and where its
+    /// children stand.
+    fn enter(self, node: Node<'_, '_>) -> (bool, Self) {
+        let name = node.tag_name();
+        let (namespace, local) = (name.namespace(), name.name());
+        let unqualified = namespace.is_none_or(str::is_empty);
+        let open = self.open || (unqualified && self.in_difference && local == "target");
+        let is_difference = (namespace == Some(XMI_NS)
+            && matches!(
+                local,
+                "Difference" | "difference" | "Add" | "Replace" | "Delete"
+            ))
+            || (unqualified && self.in_difference && matches!(local, "difference" | "container"));
+        let extension = is_xmi_namespace(namespace) && matches!(local, "extension" | "Extension");
+        let below = Self {
+            open: open || extension,
+            in_difference: is_difference,
+        };
+        (open, below)
+    }
+
+    /// The elements of the tree under `root`, in document order, each with
+    /// whether its name and attributes are open. `root` is the document
+    /// element, or an element the reader takes whole where it stands: a
+    /// child of the XMI element, of an element read or of a part of one,
+    /// none of which is open.
+    fn walk<'a, 'i>(root: Node<'a, 'i>) -> OpenWalk<'a, 'i> {
+        OpenWalk {
+            stack: vec![(root, Self::default())],
+        }
+    }
+}
+
+/// The iterator of [`Open::walk`]: a stack, not recursion, so a deep tree
+/// cannot exhaust the call stack; one step per element.
+struct OpenWalk<'a, 'i> {
+    stack: Vec<(Node<'a, 'i>, Open)>,
+}
+
+impl<'a, 'i> Iterator for OpenWalk<'a, 'i> {
+    type Item = (Node<'a, 'i>, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (node, at) = self.stack.pop()?;
+        let (open, below) = at.enter(node);
+        let mut child = node.last_child();
+        while let Some(current) = child {
+            if current.is_element() {
+                self.stack.push((current, below));
+            }
+            child = current.prev_sibling();
+        }
+        Some((node, open))
+    }
+}
+
+/// Whether `attribute` of `node` is its `xmi:type` ([`reads_xmi`]) or
+/// `xsi:type`.
+fn is_type(node: Node<'_, '_>, attribute: &Attribute<'_, '_>) -> bool {
+    reads_xmi(node, attribute, "type") || is_xsi_type(attribute)
 }
 
 /// Whether `attribute` is `xsi:type`, in the XML Schema instance namespace.
@@ -6016,6 +6626,7 @@ mod tests {
             metadata: super::Kept::new(holder()),
             name_metadata: None,
             slots: None,
+            paths: Vec::new(),
         }
     }
 
@@ -7136,5 +7747,140 @@ mod tests {
                 && at("<xmi:Extension e=\"1\" />") < at("<value content=\"b\" />"),
             "{text}"
         );
+    }
+
+    // --- EMF fragment paths (LIB-COMPAT-002, ADR 0044 D2) ---------------------
+
+    #[test]
+    fn a_path_parses_by_emfs_default_grammar_only() {
+        use super::parse_path;
+        assert_eq!(parse_path("/"), Some((0, vec![])));
+        assert_eq!(parse_path("/0"), Some((0, vec![])));
+        assert_eq!(parse_path("/12"), Some((12, vec![])));
+        assert_eq!(parse_path("//@a.1"), Some((0, vec![("a", 1)])));
+        assert_eq!(
+            parse_path("/1/@a.0/@b.02"),
+            Some((1, vec![("a", 0), ("b", 2)]))
+        );
+        // The role is everything between `@` and the last `.`.
+        assert_eq!(parse_path("//@a.b.3"), Some((0, vec![("a.b", 3)])));
+        for token in [
+            "",
+            "0",
+            "a/@b.0",
+            "/+1",
+            "//@a.+1",
+            "//@a.-1",
+            "//@a",
+            "//@a.",
+            "//a.0",
+            "/0/",
+            "//@a.0/",
+            "//@a[k='v']",
+            "/?id",
+            "/a",
+            "/ 1",
+            "//@a.99999999999999999999999",
+        ] {
+            assert_eq!(parse_path(token), None, "{token:?}");
+        }
+    }
+
+    /// The document of a tolerant read of `input`, which must succeed.
+    fn tolerant_read(input: &str) -> Document {
+        match read(input.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => output.into_document(),
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    #[test]
+    fn a_path_to_a_resolved_proxy_names_the_root_that_took_its_place() {
+        // Root 0 holds the proxy of `args` as its first argumentPackage; a
+        // path to that proxy names `args` (R4 (b)), and so does `/1`.
+        let document = tolerant_read(
+            "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+             xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\
+             <sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>\
+             <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>\
+             <sacm:ArgumentPackage xmi:id=\"args\"><name content=\"args\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" isCitation=\"true\" \
+             citedElement=\"//@argumentPackage.0\"><name content=\"c1\"/></argumentElement>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\" isCitation=\"true\" \
+             citedElement=\"/1\"><name content=\"c2\"/></argumentElement>\
+             </sacm:ArgumentPackage></xmi:XMI>",
+        );
+        let cited = |id: &str| {
+            document
+                .get(id)
+                .and_then(SacmElement::cited_element)
+                .map(ElementId::as_str)
+                .map(str::to_owned)
+        };
+        assert_eq!(cited("c1").as_deref(), Some("args"));
+        assert_eq!(cited("c2").as_deref(), Some("args"));
+    }
+
+    #[test]
+    fn a_path_to_a_name_is_kept_even_with_an_id() {
+        // The name of `p` carries an id in the id space, but it is neither an
+        // element read as an element nor inside preserved content (R4,
+        // "Result").
+        let document = tolerant_read(
+            "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+             xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\
+             <name xmi:id=\"pn\" content=\"p\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>\
+             <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" \
+             source=\"//@name.0\" target=\"//@argumentElement.0\">\
+             <name content=\"i1\"/></argumentElement></sacm:ArgumentPackage>",
+        );
+        let i1 = document.get("i1").map(SacmElement::sources);
+        let sources: Vec<&str> = i1
+            .unwrap_or_default()
+            .iter()
+            .map(ElementId::as_str)
+            .collect();
+        assert_eq!(sources, ["//@name.0"]);
+        let targets: Vec<&str> = document
+            .get("i1")
+            .map(SacmElement::targets)
+            .unwrap_or_default()
+            .iter()
+            .map(ElementId::as_str)
+            .collect();
+        assert_eq!(targets, ["c1"]);
+    }
+
+    #[test]
+    fn a_path_to_a_kept_element_whose_id_is_outside_the_id_space_is_kept() {
+        // The kept element carries an empty `xmi:id`, which a tolerant read
+        // keeps as written, outside the id space (SACM-ID-002): it is no id a
+        // path is read as (R4 (c)).
+        let document = tolerant_read(
+            "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+             xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmlns:v=\"urn:v\" xmi:id=\"p\">\
+             <name content=\"p\"/>\
+             <argumentElement xmi:type=\"v:Unknown\" xmi:id=\"\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>\
+             <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" \
+             source=\"//@argumentElement.0\" target=\"//@argumentElement.1\">\
+             <name content=\"i1\"/></argumentElement></sacm:ArgumentPackage>",
+        );
+        let i1 = document.get("i1");
+        let sources: Vec<&str> = i1
+            .map(SacmElement::sources)
+            .unwrap_or_default()
+            .iter()
+            .map(ElementId::as_str)
+            .collect();
+        let targets: Vec<&str> = i1
+            .map(SacmElement::targets)
+            .unwrap_or_default()
+            .iter()
+            .map(ElementId::as_str)
+            .collect();
+        assert_eq!(sources, ["//@argumentElement.0"]);
+        assert_eq!(targets, ["c1"]);
     }
 }

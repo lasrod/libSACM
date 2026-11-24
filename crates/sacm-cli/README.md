@@ -30,8 +30,9 @@ names the default. Giving both flags is a usage error.
 - `--tolerant` reads in tolerant mode, which also opens a file that a strict read refuses
   for a bad value or for content this version does not read yet, and reports what a
   strict read refuses as Warnings. It still refuses a DOCTYPE, malformed XML, a root
-  outside SACM or in SACM 2.4, a repeated `xmi:id`, an encoding it cannot decode and input
-  over the read limits (exit 2). Its
+  outside SACM or in SACM 2.4, an XMI element in an XMI namespace it does not read, a
+  repeated `xmi:id`, an encoding it cannot decode and input over the read limits (exit 2).
+  Its
   summary says `readable`, never `valid`, and `invalid` when a diagnostic is an Error.
 
 ```console
@@ -80,13 +81,36 @@ changes only their severity, so in this release it does not change the result.
 With `-o`, it writes the strict output to `<out>`, only when the round trip is faithful,
 so `sacm roundtrip -o` converts a file to the strict form safely.
 
+### `sacm convert <in> -o <out>`
+
+Converts a readable SACM file to strict SACM 2.3, and refuses when that would lose
+content. It reads `<in>` tolerantly, so it opens what a tolerant read opens, such as a file
+in an older SACM revision's namespace or in the dialect EMF writes. It writes the document
+in strict mode to memory, reads that back strictly, compares the two, and writes `<out>`
+only when the strict save succeeds, the output reads back with no Error and nothing differs.
+
+It prints every read Warning and Error first, one line each: what the conversion
+normalised, or why it refuses. Then `<in>: converted to <out>`, or each problem and
+`<in>: not converted: …`. Content that SACM 2.3 lacks, which a tolerant read keeps as
+preserved content, is refused, not discarded. `-o` is required; there is no `--strict` and
+no `--format`. `convert` reports no conformance; that is `validate`'s job.
+
+```console
+$ sacm convert emf-dialect.sacm.xmi -o brake.sacm.xmi
+warning SACM-XMI-008 [LIB-COMPAT-004] at line 3, column 1: the AssuranceCasePackage …
+warning SACM-XMI-015 [LIB-COMPAT-002, clause 7.5.3] at line 3, column 37: the name "xmi:version" …
+…
+warning SACM-XMI-017 [LIB-COMPAT-002, clause 7.10.2] at line 13, column 70: the document names …
+emf-dialect.sacm.xmi: converted to brake.sacm.xmi
+```
+
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The check passed. |
-| 1 | The check ran and failed: for `validate`, an Error diagnostic, or a strict refusal of a file a tolerant read opens; for `roundtrip`, a refused strict save, output that does not read back, or a difference. |
-| 2 | The tool could not do the job: a usage error, an I/O error, or input it cannot read: for `validate`, input neither a strict nor a tolerant read opens; for `roundtrip`, input the reader refuses. |
+| 0 | The check passed, or `convert` wrote its output. |
+| 1 | The check ran and failed: for `validate`, an Error diagnostic, or a strict refusal of a file a tolerant read opens; for `roundtrip` and `convert`, a refused strict save, output that does not read back, or a difference (`convert` then neither creates nor changes `<out>`). |
+| 2 | The tool could not do the job: a usage error, an I/O error such as an output that cannot be written, or input it cannot read: for `validate`, input neither a strict nor a tolerant read opens; for `roundtrip` and `convert`, input the reader refuses. |
 
 stdout carries the result; stderr carries only what stopped the command, such as
 `sacm: case.sacm.xmi: SACM-XML-001 the input is not well-formed XML at …`.

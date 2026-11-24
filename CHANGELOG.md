@@ -80,6 +80,21 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   [SACM23-XMI-029].
 - `compare::Difference` has the variant `Proxies`, and `edit::EditError` the variant
   `HrefNotHeld`; both enums are `#[non_exhaustive]` [SACM23-XMI-029, LIB-EDIT-020].
+- A tolerant read now opens a document in the dialect EMF writes, which it refused with
+  SACM-XMI-015: the XMI namespace `http://www.omg.org/XMI` is read as XMI 2.5.1's, with one
+  SACM-XMI-015 Warning (`SACM-XMI-015/emf-xmi-namespace-read`), and both saves write XMI
+  2.5.1 [LIB-COMPAT-002].
+- In a tolerant read, a reference token, a same-document `href` fragment or an
+  `expression` written as an EMF fragment path, such as `//@argumentElement.1` or `/1`, is
+  read as the id of the element it names, with one SACM-XMI-017 Warning; it was held as
+  written [LIB-COMPAT-002].
+- The label of a SACM-XMI-015 refusal with a row is now `(strict mode never reads it;
+  LIB-COMPAT-002 reads it in tolerant mode)`; it was `(… is to read it in tolerant mode)`
+  [LIB-COMPAT-002].
+- An `XMI` element in neither XMI namespace, such as XMI 2.4.1's or one in no namespace,
+  is refused in both modes with the new template `SACM-XMI-015/not-xmi-element`, which
+  takes no `row` and ends `(a limit of this version)`; it was
+  `SACM-XMI-015/not-xmi-namespace` [LIB-COMPAT-002].
 
 ### Added
 
@@ -172,6 +187,14 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   Artifact and Terminology) are claimed. `docs/sacm/compliance-points.md` is the
   conformance statement: what the claim covers, the schema it is checked against and its
   limits [SACM23-CP-001, SACM23-CP-002, SACM23-CP-003, SACM23-CP-004].
+- The EMF dialect: a tolerant read reads the XMI names EMF writes in
+  `http://www.omg.org/XMI` and its fragment paths (ADR 0044). `Code::XMI_FRAGMENT_PATH`
+  (SACM-XMI-017) and the templates `SACM-XMI-015/not-xmi-element`, `/emf-xmi-namespace`
+  and `/emf-xmi-namespace-read`, and `SACM-XMI-017/paths-read` and `/paths-partly-read`
+  [LIB-COMPAT-002].
+- `sacm convert <IN> -o <OUT>`: reads a file tolerantly, lists every read Warning and
+  Error, and writes it as strict SACM 2.3 only when the strict output reads back unchanged;
+  it exits 1, writing nothing, when the conversion would lose content [LIB-CLI-004].
 
 ### Changed
 
@@ -182,7 +205,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `href="sacm:<Class> #id"` whose class its role does not admit, or that disagrees with
   its type attribute, is kept with SACM-XMI-003, and its class is checked against the
   root it names (`SACM-XMI-003/proxy-wrong-kind`) [SACM23-XMI-029].
-
+- A strict read refuses any name in `http://www.omg.org/XMI` outside the content of an
+  `xmi:Extension` or of a Difference's `target`, which XMI.xsd leaves open and both modes
+  keep as written, with SACM-XMI-015
+  (`SACM-XMI-015/emf-xmi-namespace`, or `/not-xmi-namespace` for the `XMI` element); it
+  kept one with SACM-XMI-003 or refused it as an unwritable prefix [LIB-COMPAT-002].
 - A strict read refuses a root in an older SACM revision's namespace with SACM-XMI-008,
   where it was SACM-XMI-002 [LIB-COMPAT-004].
 - A root in the SACM 2.4 namespace (`…/20260504` or `…/2.4`) is refused in both modes with

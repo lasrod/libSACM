@@ -50,6 +50,7 @@ decisions.md has a one-line entry pointing to it.
 | [0041](0041-read-limits-and-other-sacm-namespaces.md) | Read limits and other SACM namespaces | accepted |
 | [0042](0042-xmi-metadata-and-same-file-proxies.md) | XMI metadata and same-file proxies | accepted |
 | [0043](0043-the-sacm-xml-schema.md) | The SACM XML Schema this project generates | accepted |
+| [0044](0044-the-emf-dialect-and-foreign-subclasses.md) | The EMF dialect and foreign subclasses | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

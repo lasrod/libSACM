@@ -284,10 +284,15 @@ const CODES: &[Code] = &[
 ];
 
 /// [`CODES`], with the codes of slice 0072: SACM-SEC-003 (LIB-SEC-003) and
-/// SACM-XMI-008 (LIB-COMPAT-004).
+/// SACM-XMI-008 (LIB-COMPAT-004); and of slice 0075a: SACM-XMI-017
+/// (LIB-COMPAT-002).
 fn codes() -> Vec<Code> {
     let mut codes = CODES.to_vec();
-    codes.extend([Code::LIMIT_EXCEEDED, Code::XMI_OTHER_REVISION]);
+    codes.extend([
+        Code::LIMIT_EXCEEDED,
+        Code::XMI_OTHER_REVISION,
+        Code::XMI_FRAGMENT_PATH,
+    ]);
     codes
 }
 

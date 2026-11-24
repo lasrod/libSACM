@@ -283,7 +283,7 @@ jobs:
             rc=0; target/debug/sacm roundtrip "$f" -o "$out" >/dev/null 2>&1 || rc=$?
             case "$rc" in 0|1|2) ;; *) echo "sacm roundtrip crashed on $f (exit $rc)"; exit 1 ;; esac
             if [ -f "$out" ]; then made=$((made+1)); else echo "no strict output (exit $rc): $f"; fi
-          done < <( { find crates/sacm/tests/data/sacm23 -type f -name '*.xmi'; find third_party/corpus -type f; } | LC_ALL=C sort )
+          done < <( { find crates/sacm/tests/data/sacm23 crates/sacm/tests/data/compat -type f -name '*.xmi'; find third_party/corpus -type f; } | LC_ALL=C sort )
           echo "strict outputs written: $made"
       - run: cargo xtask schema validate
       - run: cargo test -p xtask --test metamodel --test schema --test compliance

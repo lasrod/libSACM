@@ -357,12 +357,24 @@ catalog! {
     /// stays, and the code is never reused.
     pub const XMI_UNREAD_CONTENT: Code = Code::from_static("SACM-XMI-014");
 
-    /// SACM-XMI-015: an element named `XMI` is not in the XMI 2.5.1
-    /// namespace `http://www.omg.org/spec/XMI/20131001`, so it is not read as
-    /// the XMI element. Both modes refuse it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported); a
-    /// tolerant read is to read it under LIB-COMPAT-002 (LIB-API-017).
+    /// SACM-XMI-015: a name in an XMI namespace other than XMI 2.5.1's
+    /// `http://www.omg.org/spec/XMI/20131001`. A tolerant read reads the
+    /// XMI names EMF writes in `http://www.omg.org/XMI` as XMI 2.5.1's, with
+    /// one Warning per document (LIB-COMPAT-002, ADR 0044 D1); a strict read
+    /// refuses any name in that namespace as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). Both
+    /// modes refuse an `XMI` element in any other namespace, or in none
+    /// (LIB-API-017).
     pub const XMI_WRAPPER_NAMESPACE: Code = Code::from_static("SACM-XMI-015");
+
+    /// SACM-XMI-017: a tolerant read read EMF fragment paths as ids. One
+    /// Warning per document says how many same-document reference targets
+    /// were written as EMF fragment paths, such as
+    /// `//@argumentPackage.0/@argumentElement.3`, which XMI 2.5.1 does not
+    /// define, and whether some named no element and were kept as written
+    /// (LIB-COMPAT-002, ADR 0044 D2). A strict read resolves none. Fix: read
+    /// the file in tolerant mode and save it again.
+    pub const XMI_FRAGMENT_PATH: Code = Code::from_static("SACM-XMI-017");
 
     /// SACM-XMI-016: a strict [`xmi::write`](crate::xmi::write) refuses a
     /// document whose output would not be schema-valid: an `xmi:id` that is
