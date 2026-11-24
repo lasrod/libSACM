@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-COMPAT-002: a name in http://www.omg.org/XMI inside an xmi:Extension, whose content XMI.xsd leaves open (processContents="lax"). This is valid SACM 2.3: both modes read it with no diagnostic and keep the extension exactly as written, and no SACM-XMI-015 is reported. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+  <name content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name content="The system is safe"/>
+    <xmi:Extension extender="EMF"><e:annotation xmlns:e="http://www.omg.org/XMI" e:source="x"/></xmi:Extension>
+  </argumentElement>
+</sacm:ArgumentPackage>

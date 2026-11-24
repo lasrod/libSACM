@@ -51,3 +51,8 @@ Left out, to slice 0075b: foreign subclasses (LIB-COMPAT-017) and the corpus cla
     - **Why:** roxmltree 0.21.2's duplicate-attribute check is quadratic per element, so the old input timed the parser, not this row's scan. LIB-SEC-007's cause is that parser check, and its notes say so.
   - **The `Tolerance` refusal kind is removed;** EMF's namespace was its last entry and is now `Tolerated`. Five xtask tests of that check are removed, so LIB-API-011 no longer cites them. Because tests are removed, `mutants.yml` is dispatched on the head.
   - Stale wording now reflects the read EMF dialect in LIB-COMPAT-003, -004, -016, LIB-API-011, LIB-API-017 and SACM23-XMI-001. No test was renamed.
+- 2026-11-24 verification round 1 FAIL (LIB-COMPAT-002); LIB-CLI-004 met its acceptance but waits on LIB-COMPAT-002. The fix round:
+  - **B1, a regression:** names in `http://www.omg.org/XMI` inside an `xmi:Extension`, or inside a Difference's `target` (open in XMI.xsd), are now kept as written in both modes. They are not ids, and they give no SACM-XMI-015. ADR 0044 D1 and the row are narrowed to match.
+  - **B2:** controls C4 to C15 were added.
+  - **B3:** six stale rustdoc passages in `xmi.rs` were replaced.
+  - **Also:** the CLI help wording, the sacm-expert reference bullets, and the non-blocking findings in `docs/follow-ups.md`. 19 new tests are cited. The builder chose that an EMF-namespace Difference opens nothing; that is logged as a follow-up.

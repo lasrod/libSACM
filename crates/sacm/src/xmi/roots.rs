@@ -1513,19 +1513,22 @@ impl Findings<'_, '_> {
 /// resolves to a generated element. It refuses nothing, and may hold more
 /// than is read, which only skips more candidates. With them, the `xmi:id`
 /// values that begin with `/`, which no EMF fragment path is
-/// (LIB-COMPAT-002, R4).
+/// (LIB-COMPAT-002, R4). In the content XMI.xsd leaves open ([`Open`]), only
+/// XMI 2.5.1's names are XMI's.
 fn reserved_ids<'a>(element: Node<'a, '_>) -> (BTreeSet<&'a str>, BTreeSet<&'a str>) {
     let mut reserved = BTreeSet::new();
     let mut slash_ids = BTreeSet::new();
-    for attribute in element.descendants().flat_map(|node| node.attributes()) {
-        if is_xmi(&attribute, "id") {
-            let value = id_value(attribute.value());
-            reserved.insert(value);
-            if value.starts_with('/') {
-                slash_ids.insert(value);
+    for (node, open) in Open::walk(element) {
+        for attribute in node.attributes() {
+            if is_xmi_in(&attribute, "id", open) {
+                let value = id_value(attribute.value());
+                reserved.insert(value);
+                if value.starts_with('/') {
+                    slash_ids.insert(value);
+                }
+            } else {
+                reserved.extend(reference_tokens(&attribute, open));
             }
-        } else {
-            reserved.extend(reference_tokens(&attribute));
         }
     }
     (reserved, slash_ids)
@@ -1535,10 +1538,11 @@ fn reserved_ids<'a>(element: Node<'a, '_>) -> (BTreeSet<&'a str>, BTreeSet<&'a s
 /// value, trimmed, for an `xmi:idref`; the fragment of an `href`, trimmed;
 /// and each token of an attribute in no namespace named as a reference end,
 /// or as the spelling `argumentationElement` of one (SACM23-XMI-009). None
-/// for any other attribute.
-fn reference_tokens<'a>(attribute: &Attribute<'a, '_>) -> Vec<&'a str> {
+/// for any other attribute. `open` says whether it stands in the content
+/// XMI.xsd leaves open ([`Open`]).
+fn reference_tokens<'a>(attribute: &Attribute<'a, '_>, open: bool) -> Vec<&'a str> {
     let value = attribute.value();
-    if is_xmi(attribute, "idref") {
+    if is_xmi_in(attribute, "idref", open) {
         vec![value.trim_matches(is_xml_space)]
     } else if is_unqualified(attribute, "href") {
         value
@@ -1717,10 +1721,15 @@ fn classify<'a>(
 /// name in EMF's XMI namespace under `element`, the document element, in
 /// document order (an element's name, then its attributes in order, then its
 /// content), with the byte offset of its name and the name as written. A
-/// namespace declaration alone is no name. One comparison per name, so the
-/// scan is linear in the input.
+/// namespace declaration alone is no name. The content XMI.xsd leaves open
+/// is skipped ([`Open`]): a name in EMF's namespace there is valid SACM 2.3,
+/// kept as written. One comparison per name, so the scan is linear in the
+/// input.
 fn emf_name(text: &str, element: Node<'_, '_>) -> Option<(usize, String)> {
-    for node in element.descendants().filter(Node::is_element) {
+    for (node, open) in Open::walk(element) {
+        if open {
+            continue;
+        }
         if node.tag_name().namespace() == Some(EMF_XMI_NS) {
             return Some((node.range().start, written_name(text, node)));
         }
@@ -2160,7 +2169,7 @@ impl<H: Holder> Kept<H> {
         }
         found.keep_namespace_text(kept, at)?;
         self.references.extend(
-            reference_tokens(attribute)
+            reference_tokens(attribute, false)
                 .into_iter()
                 .filter(|token| !token.is_empty())
                 .map(ElementId::new),
@@ -2211,9 +2220,14 @@ impl<H: Holder> Kept<H> {
         node: Node<'a, '_>,
     ) -> Result<(), ReadError> {
         let text = found.text;
-        for element in node.descendants().filter(Node::is_element) {
+        for (element, open) in Open::walk(node) {
             for attribute in element.attributes() {
-                if reads_xmi(element, &attribute, "id") {
+                let is_id = if open {
+                    is_xmi_in(&attribute, "id", true)
+                } else {
+                    reads_xmi(element, &attribute, "id")
+                };
+                if is_id {
                     if attribute.value().is_empty() && found.mode == Mode::Tolerant {
                         let (template, arguments) =
                             self.holder.empty_kept_id(&written_name(text, element));
@@ -2224,7 +2238,7 @@ impl<H: Holder> Kept<H> {
                     self.ids.push(ElementId::new(value));
                 } else {
                     self.references.extend(
-                        reference_tokens(&attribute)
+                        reference_tokens(&attribute, open)
                             .into_iter()
                             .filter(|token| !token.is_empty())
                             .map(ElementId::new),
@@ -2421,7 +2435,7 @@ impl Kept<ElementHolder> {
         let mut take = |merged: &mut Vec<Placed>, slot: usize, node: Node<'a, '_>| {
             for attribute in node.attributes() {
                 self.references.extend(
-                    reference_tokens(&attribute)
+                    reference_tokens(&attribute, false)
                         .into_iter()
                         .filter(|token| !token.is_empty())
                         .map(ElementId::new),
@@ -4951,16 +4965,13 @@ fn checked_id<'a>(
 /// generated id, so an element without one is never among them.
 fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
     let mut locator = Locator::new(text);
-    let locations = node
-        .document()
-        .root_element()
-        .descendants()
-        .filter(|element| {
-            element
-                .attributes()
-                .any(|attribute| is_xmi(&attribute, "id") && id_value(attribute.value()) == id)
+    let locations = Open::walk(node.document().root_element())
+        .filter(|&(element, open)| {
+            element.attributes().any(|attribute| {
+                is_xmi_in(&attribute, "id", open) && id_value(attribute.value()) == id
+            })
         })
-        .filter_map(|element| locator.locate(element.range().start))
+        .filter_map(|(element, _)| locator.locate(element.range().start))
         .collect();
     ReadError::duplicate_id(ElementId::new(id), locations)
 }
@@ -6363,6 +6374,96 @@ fn reads_xmi(node: Node<'_, '_>, attribute: &Attribute<'_, '_>, local: &str) -> 
             .attributes()
             .find(|first| is_xmi(first, local))
             .is_some_and(|first| first.range_qname() == attribute.range_qname())
+}
+
+/// Whether `attribute` is `xmi:<local>`: in an XMI namespace
+/// ([`is_xmi`]), or, when it stands in the content XMI.xsd leaves `open`
+/// ([`Open`]), in XMI 2.5.1's alone. The alias does not reach there: a name
+/// in EMF's namespace is kept as written and is no id (ADR 0044 D1).
+fn is_xmi_in(attribute: &Attribute<'_, '_>, local: &str, open: bool) -> bool {
+    if open {
+        attribute.namespace() == Some(XMI_NS) && attribute.name() == local
+    } else {
+        is_xmi(attribute, local)
+    }
+}
+
+/// Where an element stands towards the content XMI.xsd leaves open, where
+/// any name may stand in valid SACM 2.3: the content of an `xmi:Extension`
+/// or `xmi:extension` (`<xsd:any processContents="lax"/>`), in XMI 2.5.1's
+/// namespace or EMF's, and the attributes and content of the `target` of a
+/// Difference (`xmi:Difference`, `xmi:difference`, `xmi:Add`, `xmi:Replace`
+/// or `xmi:Delete`, or a `difference` or `container` nested in one;
+/// `<xsd:any processContents="skip"/>` and `<xsd:anyAttribute
+/// processContents="skip"/>`). The namespace scan skips it, and the alias
+/// does not apply in it: it is kept exactly as written (LIB-COMPAT-002, ADR
+/// 0044 D1). An Extension in EMF's namespace counts only in a tolerant read:
+/// a strict read refuses its own name first.
+#[derive(Clone, Copy, Debug, Default)]
+struct Open {
+    /// Whether the element's name, attributes and content are open.
+    open: bool,
+    /// Whether the element's parent is a Difference, whose `target` child is
+    /// open.
+    in_difference: bool,
+}
+
+impl Open {
+    /// Where `node`, an element whose parent stands where `self` says,
+    /// stands: whether its name and attributes are open, and where its
+    /// children stand.
+    fn enter(self, node: Node<'_, '_>) -> (bool, Self) {
+        let name = node.tag_name();
+        let (namespace, local) = (name.namespace(), name.name());
+        let unqualified = namespace.is_none_or(str::is_empty);
+        let open = self.open || (unqualified && self.in_difference && local == "target");
+        let is_difference = (namespace == Some(XMI_NS)
+            && matches!(
+                local,
+                "Difference" | "difference" | "Add" | "Replace" | "Delete"
+            ))
+            || (unqualified && self.in_difference && matches!(local, "difference" | "container"));
+        let extension = is_xmi_namespace(namespace) && matches!(local, "extension" | "Extension");
+        let below = Self {
+            open: open || extension,
+            in_difference: is_difference,
+        };
+        (open, below)
+    }
+
+    /// The elements of the tree under `root`, in document order, each with
+    /// whether its name and attributes are open. `root` is the document
+    /// element, or an element the reader takes whole where it stands: a
+    /// child of the XMI element, of an element read or of a part of one,
+    /// none of which is open.
+    fn walk<'a, 'i>(root: Node<'a, 'i>) -> OpenWalk<'a, 'i> {
+        OpenWalk {
+            stack: vec![(root, Self::default())],
+        }
+    }
+}
+
+/// The iterator of [`Open::walk`]: a stack, not recursion, so a deep tree
+/// cannot exhaust the call stack; one step per element.
+struct OpenWalk<'a, 'i> {
+    stack: Vec<(Node<'a, 'i>, Open)>,
+}
+
+impl<'a, 'i> Iterator for OpenWalk<'a, 'i> {
+    type Item = (Node<'a, 'i>, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (node, at) = self.stack.pop()?;
+        let (open, below) = at.enter(node);
+        let mut child = node.last_child();
+        while let Some(current) = child {
+            if current.is_element() {
+                self.stack.push((current, below));
+            }
+            child = current.prev_sibling();
+        }
+        Some((node, open))
+    }
 }
 
 /// Whether `attribute` of `node` is its `xmi:type` ([`reads_xmi`]) or

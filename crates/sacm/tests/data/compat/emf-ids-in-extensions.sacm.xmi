@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-COMPAT-002: two xmi:Extensions each hold an element with e:id="n1", where e is bound to http://www.omg.org/XMI. The content of an Extension is open (processContents="lax"), so the alias does not reach it: e:id is no id. Both modes read the file with no SACM-XMI-015 and no DuplicateId, and the Claim c2's citedElement="n1" names no element (SACM-REF-001 in validate). Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+  <name content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name content="The system is safe"/>
+    <xmi:Extension extender="EMF"><note xmlns:e="http://www.omg.org/XMI" e:id="n1"/></xmi:Extension>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="true" citedElement="n1">
+    <name content="The system is safe, as cited"/>
+    <xmi:Extension extender="EMF"><note xmlns:e="http://www.omg.org/XMI" e:id="n1"/></xmi:Extension>
+  </argumentElement>
+</sacm:ArgumentPackage>

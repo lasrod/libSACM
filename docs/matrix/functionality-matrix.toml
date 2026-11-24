@@ -5888,7 +5888,7 @@ id = "LIB-COMPAT-002"
 area = "COMPAT"
 milestone = "M6"
 title = "EMF reference-implementation dialect"
-requirement = "Tolerant `xmi::read` reads the dialect EMF writes, without loss, reporting it (ADR 0044 D1, D2). (1) The XMI namespace `http://www.omg.org/XMI`: the `XMI` element, and the attributes `xmi:id`, `xmi:type`, `xmi:idref`, `xmi:version`, `xmi:uuid` and `xmi:label` in it, are read as XMI 2.5.1's, with one SACM-XMI-015 Warning per document at the first name in that namespace. Any other name in it is content that is not SACM 2.3 (SACM-XMI-003). (2) EMF fragment paths: a same-document reference target written as an EMF fragment path (`//@argumentPackage.0/@argumentElement.3`, `/2`) is read as the id of the element it names, with one SACM-XMI-017 Warning per document. This covers a token of a reference end's attribute, the fragment of a same-document `href` on a reference element, and an ExpressionLangString's `expression`. A path that names no such element is kept as written. SACM 2.2's per-package namespaces are LIB-COMPAT-004's. A strict read refuses any name in `http://www.omg.org/XMI` as `Unsupported` SACM-XMI-015 and resolves no path. An `XMI` element in any other namespace, or none, is refused in both modes. Both saves write XMI 2.5.1 and ids. The exact rules R1 to R6 (pass 1, the namespace scan, the alias, paths, the SACM-XMI-017 Diagnostic, strict) are in the design brief, target/slice-0075-design.md."
+requirement = "Tolerant `xmi::read` reads the dialect EMF writes, without loss, reporting it (ADR 0044 D1, D2). (1) The XMI namespace `http://www.omg.org/XMI`: the `XMI` element, and the attributes `xmi:id`, `xmi:type`, `xmi:idref`, `xmi:version`, `xmi:uuid` and `xmi:label` in it, are read as XMI 2.5.1's, with one SACM-XMI-015 Warning per document at the first name in that namespace. Any other name in it, outside the open content named below, is content that is not SACM 2.3 (SACM-XMI-003). (2) EMF fragment paths: a same-document reference target written as an EMF fragment path (`//@argumentPackage.0/@argumentElement.3`, `/2`) is read as the id of the element it names, with one SACM-XMI-017 Warning per document. This covers a token of a reference end's attribute, the fragment of a same-document `href` on a reference element, and an ExpressionLangString's `expression`. A path that names no such element is kept as written. SACM 2.2's per-package namespaces are LIB-COMPAT-004's. A strict read refuses any name in `http://www.omg.org/XMI` outside the content of an `xmi:Extension` or of a Difference's `target`, which XMI.xsd leaves open and both modes keep as written (no ids, no alias, no SACM-XMI-015), as `Unsupported` SACM-XMI-015, and resolves no path. An `XMI` element in any other namespace, or none, is refused in both modes. Both saves write XMI 2.5.1 and ids. The exact rules R1 to R6 (pass 1, the namespace scan, the alias, paths, the SACM-XMI-017 Diagnostic, strict) are in the design brief, target/slice-0075-design.md."
 source = "XMI 2.5.1 §7.3.1 (p. 6), §7.5.3 (p. 10) \"Each version of XMI is unambiguously identified by its unique namespace URI of the form \"http://www.omg.org/spec/XMI/version-namespace.\"\", §7.6.1 (p. 13), §7.10.2 (p. 23) \"Attributes representing Class-typed properties in the metamodel, or XML idref attributes can refer to other XML elements within the same XML file by specifying the target element's XML ID.\", §8.2.1 rule 4i (p. 51); formal/23-05-08 §2.4 (p. 4); interop evidence: org.eclipse.emf @ 782c768182f6 (EPL-2.0) `ExtendedMetaData.XMI_URI`, `ResourceImpl.getEObject`, `BasicEObjectImpl.eURIFragmentSegment`; corpus files 7-13; M6 decisions Q6 (the maintainer, 2026-11-19); ADR 0041; ADR 0044"
 kind = "xmi"
 tests = [
@@ -5907,6 +5907,25 @@ tests = [
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_files_write_back_tolerantly_and_read_back_equal",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_path_resolution_and_the_namespace_scan_are_linear",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_the_new_templates_render_with_their_arguments_in_sentence_order",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_names_in_an_extension_are_valid_sacm_and_read_strictly",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_ids_in_extensions_are_no_ids_in_either_mode",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_names_in_a_difference_target_are_read_strictly_and_written_back",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_the_first_path_in_document_order_locates_sacm_xmi_017",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_path_names_an_element_kept_for_its_role_by_its_id",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_href_paths_keep_their_place_among_the_ends_targets",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_path_in_a_later_content_value_is_resolved_in_place",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_path_in_an_expression_element_href_is_resolved",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_root_paths_count_only_the_roots_of_the_wrapper",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_root_with_an_emf_idref_is_no_proxy_target",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_type_after_an_xmi_type_is_kept",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_id_and_uuid_are_written_as_xmi_2_5_1",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_path_in_a_tagged_value_key_is_resolved",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_path_in_a_resource_location_is_resolved",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_xmi_namespace_document_element_other_than_xmi_is_invalid_root",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_emf_ids_in_an_emf_extension_are_no_ids_in_a_tolerant_read",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_id_in_open_content_does_not_hide_a_path",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_idref_in_open_content_is_no_reference",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_duplicate_id_lists_no_emf_id_of_open_content",
 ]
 status = "implemented"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-005", "SACM23-XMI-002", "LIB-COMPAT-004", "SACM23-XMI-019", "SACM23-XMI-030", "SACM23-BASE-009"]
@@ -5927,6 +5946,7 @@ acceptance = [
   "`lib_compat_002_path_resolution_and_the_namespace_scan_are_linear`: A tolerant read finishes within 5 s on a worker thread (the pattern of `lib_compat_004_type_checks_are_linear`). The input: one package with EMF `xmi:version`, 50,000 untyped-id Claims, and 50,000 AssertedInferences each with `source=\"//@argumentElement.49999\" target=\"//@argumentElement.0\"`. Result: `paths-read`, `count` 100,000. A strict read finishes within 5 s: a pinned document with 100,000 attributes outside the EMF namespace and one EMF attribute last is refused at that attribute.",
   "`lib_compat_002_the_new_templates_render_with_their_arguments_in_sentence_order`: The five new templates' sentences and argument names. The JSON goldens J1 and J2 from G1. Add the templates to the catalog tables, and to the case lists of the existing LIB-API-017/-018 template tests.",
   "The rows whose asserted text changes are re-checked: LIB-API-011, LIB-API-017, LIB-API-018, LIB-COMPAT-003 and LIB-COMPAT-015 (design brief, LIB-COMPAT-002 \"Rows re-checked\").",
+  "Fix round (slice 0075a verification, 2026-11-24): names in `http://www.omg.org/XMI` in the content of an `xmi:Extension` (XMI 2.5.1's, or EMF's under the tolerant alias) or in the attributes and content of a Difference's `target` are kept as written in both modes, are no ids and give no SACM-XMI-015; the fixtures `tests/data/compat/emf-names-in-extension.sacm.xmi` and `emf-ids-in-extensions.sacm.xmi` are valid against the generated schema. Controls C4 to C15 pin where SACM-XMI-017 is located, paths to element-kept and preserved targets, the order of href paths among a reference end's targets, later content values, expression hrefs, root paths after XMI metadata, an EMF `xmi:idref` on a root, a second type attribute, EMF metadata written as XMI 2.5.1, TaggedValue `key` and Resource `location` expressions, and an EMF-namespace document element other than `XMI` (`InvalidRoot`).",
 ]
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/xmi/namespaces.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/diagnostic.rs", "crates/sacm/src/diagnostic/template.rs", "docs/adr/0044-the-emf-dialect-and-foreign-subclasses.md"]
 

@@ -30,7 +30,12 @@ class in a SACM role is not valid against the SACM XML Schema (rule 4f, Annex B.
   - What it reads is held as XMI 2.5.1's, so both saves write XMI 2.5.1.
   - Any other name in that namespace is content that is not SACM 2.3 (SACM-XMI-003), kept as
     written.
-  - A strict read refuses any name in that namespace, anywhere, as `Unsupported` SACM-XMI-015.
+  - A strict read refuses, as `Unsupported` SACM-XMI-015, any name in
+    `http://www.omg.org/XMI` outside the content of an `xmi:Extension` or of a Difference's
+    `target`, which XMI.xsd leaves open and both modes keep as written. Names in that
+    content are no ids, and the alias does not apply to them (slice 0075a verification,
+    2026-11-24: XMI.xsd lets an Extension hold any element and a `target` any element and
+    attribute, so a valid document may carry them).
   - An `XMI` element in any other namespace, or none, is refused in both modes, as a limit
     of this version.
 - **D2. EMF fragment paths, in tolerant mode only.**

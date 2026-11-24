@@ -39,9 +39,9 @@ const ABOUT: &str =
 /// The long help of `convert`.
 const LONG_HELP: &str = "Reads the file tolerantly, writes it in strict mode, reads that back \
                          strictly and compares, and writes OUT only when nothing is lost. Lists \
-                         every read Warning and Error. Exits 0 when converted, 1 when the strict \
-                         output would lose content or not read back unchanged, and 2 when the file \
-                         cannot be read or the output cannot be written.";
+                         every read Warning and Error. Exits 0 when converted, 1 when a strict \
+                         save refuses the document or its output would not read back unchanged, \
+                         and 2 when the file cannot be read or the output cannot be written.";
 
 struct Run {
     code: Option<i32>,

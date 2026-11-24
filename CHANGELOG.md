@@ -205,7 +205,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `href="sacm:<Class> #id"` whose class its role does not admit, or that disagrees with
   its type attribute, is kept with SACM-XMI-003, and its class is checked against the
   root it names (`SACM-XMI-003/proxy-wrong-kind`) [SACM23-XMI-029].
-- A strict read refuses any name in `http://www.omg.org/XMI`, anywhere, with SACM-XMI-015
+- A strict read refuses any name in `http://www.omg.org/XMI` outside the content of an
+  `xmi:Extension` or of a Difference's `target`, which XMI.xsd leaves open and both modes
+  keep as written, with SACM-XMI-015
   (`SACM-XMI-015/emf-xmi-namespace`, or `/not-xmi-namespace` for the `XMI` element); it
   kept one with SACM-XMI-003 or refused it as an unwritable prefix [LIB-COMPAT-002].
 - A strict read refuses a root in an older SACM revision's namespace with SACM-XMI-008,

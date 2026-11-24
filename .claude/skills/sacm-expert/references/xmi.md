@@ -39,6 +39,13 @@ single-constant change plus golden-file refresh.
 - Missing `xmi:id`: generated, with a warning. Unknown elements: preserved with a
   warning; strict save then refuses the document rather than drop them.
 - Other SACM revisions: loaded with a warning; saved as 2.3.
+- EMF's XMI namespace `http://www.omg.org/XMI`: its `XMI` element and `xmi:id`, `type`,
+  `idref`, `version`, `uuid` and `label` are read as XMI 2.5.1's, with one SACM-XMI-015
+  Warning; strict refuses any other use of it outside the open content of an
+  `xmi:Extension` or a Difference's `target` (LIB-COMPAT-002, ADR 0044 D1).
+- EMF fragment paths (`//@role.N`, `/N`) in reference ends, same-document `href`s and
+  `expression`s are read as the ids they name, with one SACM-XMI-017 Warning; strict
+  resolves none (ADR 0044 D2).
 
 Not tolerant-only: an `xmi:XMI` wrapper is accepted in both modes (see Root above), and
 the default XMI schema also allows references as child elements (rule 2c) and

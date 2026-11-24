@@ -1546,3 +1546,643 @@ fn lib_compat_002_the_new_templates_render_with_their_arguments_in_sentence_orde
         );
     }
 }
+
+// --- Fix round: open content, and the paths and names the first round missed -----
+
+/// C1, with names in EMF's namespace inside an `xmi:Extension`.
+const EXTENSION_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/data/compat/emf-names-in-extension.sacm.xmi"
+);
+
+/// C2, with the same EMF `e:id` in two `xmi:Extension`s.
+const EXTENSION_IDS_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/data/compat/emf-ids-in-extensions.sacm.xmi"
+);
+
+/// A root AssuranceCasePackage `case`, carrying `attributes`, that holds a
+/// TerminologyPackage `terms` with the Terms `t0` and `t1`, then the
+/// ArgumentPackage `ap`, carrying `package`, holding `arguments`, then
+/// `rest`. `//@terminologyPackage.0/@terminologyElement.N` names `tN`.
+fn case_with_terms(package: &str, arguments: &str, rest: &str) -> String {
+    format!(
+        "<sacm:AssuranceCasePackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"case\">\n  \
+         <name content=\"case\"/>\n  \
+         <terminologyPackage xmi:id=\"terms\">\n    <name content=\"terms\"/>\n    \
+         <terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t0\" value=\"speed\"><name content=\"t0\"/></terminologyElement>\n    \
+         <terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t1\" value=\"brake\"><name content=\"t1\"/></terminologyElement>\n  \
+         </terminologyPackage>\n  \
+         <argumentPackage xmi:id=\"ap\"{package}>\n    <name content=\"ap\"/>\n    {arguments}\n  \
+         </argumentPackage>\n  {rest}\n</sacm:AssuranceCasePackage>"
+    )
+}
+
+/// The path that names the Term `tN` in [`case_with_terms`].
+fn term_path(n: usize) -> String {
+    format!("//@terminologyPackage.0/@terminologyElement.{n}")
+}
+
+#[test]
+fn lib_compat_002_emf_names_in_an_extension_are_valid_sacm_and_read_strictly() {
+    // C1: XMI.xsd leaves an Extension's content open (lax), so a name in
+    // EMF's namespace there is valid SACM 2.3, kept as written.
+    let what = "an EMF name in an xmi:Extension";
+    let input = fixture(EXTENSION_FIXTURE);
+    for mode in MODES {
+        let output = read_ok(what, &input, mode);
+        assert!(
+            output.diagnostics().is_empty(),
+            "{ROW}: {what}: a {mode:?} read reports {:#?}",
+            output.diagnostics()
+        );
+    }
+    let document = read_ok(what, &input, Mode::Strict).into_document();
+    let findings = validation::validate(&document);
+    assert!(
+        findings.is_empty(),
+        "{ROW}: {what}: validate finds {findings:#?}"
+    );
+    let text = written(what, &document, Mode::Strict);
+    assert!(
+        text.contains(
+            "<xmi:Extension extender=\"EMF\"><e:annotation xmlns:e=\"http://www.omg.org/XMI\" \
+             e:source=\"x\" /></xmi:Extension>"
+        ),
+        "{ROW}: {what}: the strict write does not keep the extension as read:\n{text}"
+    );
+    let back = read_ok(&format!("{what}, written"), &text, Mode::Strict);
+    assert!(
+        back.diagnostics().is_empty(),
+        "{ROW}: {what}: the strict write reads back with {:#?}",
+        back.diagnostics()
+    );
+    assert!(
+        back.document() == &document,
+        "{ROW}: {what}: the strict write does not read back =="
+    );
+
+    // The whole content is open, however deep.
+    let what = "an EMF name nested in an xmi:Extension";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+         <xmi:Extension><a><e:b xmlns:e=\"{EMF_NS}\" e:c=\"1\"/></a></xmi:Extension>\
+         </argumentElement>"
+    ));
+    let output = read_ok(what, &input, Mode::Strict);
+    assert!(
+        output.diagnostics().is_empty(),
+        "{ROW}: {what}: a strict read reports {:#?}",
+        output.diagnostics()
+    );
+}
+
+#[test]
+fn lib_compat_002_an_emf_id_in_open_content_does_not_hide_a_path() {
+    // An `e:id="/0"` in an Extension is no id, so `citedElement="/0"` is a
+    // path, which names the root `p` (R4).
+    let what = "e:id=\"/0\" in an xmi:Extension, and citedElement=\"/0\"";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+         <xmi:Extension><note xmlns:e=\"{EMF_NS}\" e:id=\"/0\"/></xmi:Extension></argumentElement>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\" isCitation=\"true\" \
+         citedElement=\"/0\"><name content=\"c2\"/></argumentElement>"
+    ));
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        element(what, output.document(), "c2")
+            .cited_element()
+            .map(ElementId::as_str),
+        Some("p"),
+        "{ROW}: {what}: the citedElement of c2"
+    );
+}
+
+#[test]
+fn lib_compat_002_an_emf_idref_in_open_content_is_no_reference() {
+    // An `e:idref="claim_2"` in an Extension names nothing, so `claim_2` is
+    // free: the next generated Claim id is it.
+    let what = "e:idref=\"claim_2\" in an xmi:Extension";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"claim_1\"><name content=\"c1\"/>\
+         <xmi:Extension><note xmlns:e=\"{EMF_NS}\" e:idref=\"claim_2\"/></xmi:Extension>\
+         </argumentElement>"
+    ));
+    let mut document = read_ok(what, &input, Mode::Tolerant).into_document();
+    let created = match sacm::edit::apply(
+        &mut document,
+        sacm::edit::CreateClaim::new("p", sacm::model::LangString::new("c2")),
+    ) {
+        Ok(mutation) => mutation.created_ids().to_vec(),
+        Err(error) => panic!("{ROW}: {what}: the Claim is not created: {error}"),
+    };
+    assert_eq!(
+        strs(&created),
+        ["claim_2"],
+        "{ROW}: {what}: the generated id of the new Claim"
+    );
+}
+
+#[test]
+fn lib_compat_002_a_duplicate_id_lists_no_emf_id_of_open_content() {
+    // A repeated `xmi:id` is refused at the elements that carry it; an
+    // `e:id` of the same value in an Extension is none of them.
+    let what = "a repeated xmi:id, and the same EMF e:id in an xmi:Extension";
+    let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"d\">";
+    let input = pinned_root(&format!(
+        "{claim}<name content=\"c1\"/><xmi:Extension>\
+         <note xmlns:e=\"{EMF_NS}\" e:id=\"d\"/></xmi:Extension></argumentElement>\n  \
+         {claim}<name content=\"c2\"/></argumentElement>"
+    ));
+    let first = position_of(&input, claim);
+    let second = loc(first.line() + 1, 3);
+    for mode in MODES {
+        let error = refusal(what, &input, mode);
+        assert!(
+            matches!(error, ReadError::DuplicateId { .. }),
+            "{ROW}: {what}: a {mode:?} read is not DuplicateId: {error:?}"
+        );
+        assert_eq!(
+            error.locations(),
+            [first, second],
+            "{ROW}: {what}: a {mode:?} read: the locations of the repeated id"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_002_emf_ids_in_extensions_are_no_ids_in_either_mode() {
+    // C2: the alias does not reach into an Extension's open content, so the
+    // two `e:id="n1"` are no ids: no DuplicateId, and `n1` names nothing.
+    let what = "the same EMF e:id in two xmi:Extensions";
+    let input = fixture(EXTENSION_IDS_FIXTURE);
+    for mode in MODES {
+        let output = read_ok(what, &input, mode);
+        assert!(
+            with_code(output.diagnostics(), "SACM-XMI-015").is_empty(),
+            "{ROW}: {what}: a {mode:?} read reports SACM-XMI-015: {:#?}",
+            output.diagnostics()
+        );
+        let findings = validation::validate(output.document());
+        let dangling: Vec<Vec<(String, String)>> = with_code(&findings, "SACM-REF-001")
+            .iter()
+            .map(|finding| arguments_of(finding.arguments()))
+            .collect();
+        assert!(
+            dangling
+                .iter()
+                .any(|arguments| arguments.contains(&("target".to_owned(), "n1".to_owned()))),
+            "{ROW}: {what}: a {mode:?} read: validate gives no SACM-REF-001 for n1: {findings:#?}"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_002_emf_ids_in_an_emf_extension_are_no_ids_in_a_tolerant_read() {
+    // A tolerant read keeps an Extension in EMF's namespace whole
+    // (element-kept), and its content is open too: the two `e:id="n1"` in
+    // it are no ids, so no DuplicateId, and `n1` names nothing.
+    let what = "the same EMF e:id in two EMF xmi:Extensions";
+    let extension = "<xmi:Extension extender=\"EMF\"><note e:id=\"n1\"/></xmi:Extension>";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{EMF_NS}\" \
+         xmlns:e=\"{EMF_NS}\" xmi:id=\"p\">\n  <name content=\"p\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>{extension}\
+         </argumentElement>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\" isCitation=\"true\" \
+         citedElement=\"n1\"><name content=\"c2\"/>{extension}</argumentElement>\n\
+         </sacm:ArgumentPackage>"
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        with_template(output.diagnostics(), "SACM-XMI-003/element-kept").len(),
+        2,
+        "{ROW}: {what}: the EMF extensions are not kept whole: {:#?}",
+        output.diagnostics()
+    );
+    let findings = validation::validate(output.document());
+    assert!(
+        with_code(&findings, "SACM-REF-001").iter().any(|finding| {
+            arguments_of(finding.arguments()).contains(&("target".to_owned(), "n1".to_owned()))
+        }),
+        "{ROW}: {what}: validate gives no SACM-REF-001 for n1: {findings:#?}"
+    );
+}
+
+#[test]
+fn lib_compat_002_emf_names_in_a_difference_target_are_read_strictly_and_written_back() {
+    // C3: XMI.xsd leaves a Difference's `target` open (skip), attributes and
+    // content.
+    let what = "an EMF attribute on a Difference's target";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\n  \
+         <xmi:Difference><target xmlns:e=\"http://www.omg.org/XMI\" e:x=\"1\"/></xmi:Difference>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let output = read_ok(what, &input, Mode::Strict);
+    assert!(
+        output.diagnostics().is_empty(),
+        "{ROW}: {what}: a strict read reports {:#?}",
+        output.diagnostics()
+    );
+    let text = written(what, output.document(), Mode::Strict);
+    assert!(
+        text.contains(
+            "<xmi:Difference><target xmlns:e=\"http://www.omg.org/XMI\" e:x=\"1\" />\
+             </xmi:Difference>"
+        ),
+        "{ROW}: {what}: the Difference is not written back exactly:\n{text}"
+    );
+    let back = read_ok(&format!("{what}, written"), &text, Mode::Strict);
+    assert!(
+        back.diagnostics().is_empty() && back.document() == output.document(),
+        "{ROW}: {what}: the strict write does not read back cleanly and ==: {:#?}",
+        back.diagnostics()
+    );
+
+    // The `target` of a `container` nested in an `xmi:Replace` is a
+    // Difference's `target` too; the Replace's own attributes are not open.
+    let what = "an EMF attribute on a nested Difference's target";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\n  \
+         <xmi:Replace><container><target xmlns:e=\"http://www.omg.org/XMI\" e:y=\"2\"/>\
+         </container></xmi:Replace>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let output = read_ok(what, &input, Mode::Strict);
+    assert!(
+        output.diagnostics().is_empty(),
+        "{ROW}: {what}: a strict read reports {:#?}",
+        output.diagnostics()
+    );
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmlns:e=\"{EMF_NS}\">\n  \
+         <xmi:Replace e:y=\"2\"/>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let error = refusal("an EMF attribute on a Replace", &input, Mode::Strict);
+    assert_xmi_015(
+        "an EMF attribute on a Replace",
+        &error,
+        "SACM-XMI-015/emf-xmi-namespace",
+        position_of(&input, "e:y="),
+        &[("name", "e:y"), ("row", ROW)],
+    );
+
+    // A target's content is open however deep; a `target` outside a
+    // Difference, such as an AssertedInference's reference element, is not.
+    let what = "an EMF name nested in a Difference's target";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\n  \
+         <xmi:Difference><target><v><e:z xmlns:e=\"{EMF_NS}\"/></v></target></xmi:Difference>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let output = read_ok(what, &input, Mode::Strict);
+    assert!(
+        output.diagnostics().is_empty(),
+        "{ROW}: {what}: a strict read reports {:#?}",
+        output.diagnostics()
+    );
+    let what = "an EMF attribute on an AssertedInference's target";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+         xmlns:e=\"{EMF_NS}\" xmi:id=\"p\">\n  <name content=\"p\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n  \
+         <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" source=\"c1\">\
+         <target xmi:idref=\"c1\" e:x=\"1\"/></argumentElement>\n</sacm:ArgumentPackage>"
+    );
+    let error = refusal(what, &input, Mode::Strict);
+    assert_xmi_015(
+        what,
+        &error,
+        "SACM-XMI-015/emf-xmi-namespace",
+        position_of(&input, "e:x="),
+        &[("name", "e:x"), ("row", ROW)],
+    );
+}
+
+#[test]
+fn lib_compat_002_the_first_path_in_document_order_locates_sacm_xmi_017() {
+    // C4: the package's citedElement comes before the path in its Claim's
+    // name.
+    let what = "a package's citedElement, then a Claim's name";
+    let cited = "//@argumentPackage.0/@argumentElement.0";
+    let input = case_with_terms(
+        &format!(" isCitation=\"true\" citedElement=\"{cited}\""),
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\">\
+             <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\" expression=\"{}\"/>\
+             </argumentElement>",
+            term_path(0)
+        ),
+        "",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    let document = output.document();
+    assert_eq!(
+        (
+            element(what, document, "ap")
+                .cited_element()
+                .map(ElementId::as_str),
+            strs(element(what, document, "c0").expressions())
+        ),
+        (Some("c0"), vec!["t0"]),
+        "{ROW}: {what}: the paths are not read"
+    );
+    let paths = only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+    assert_eq!(
+        (
+            paths.location(),
+            strs(paths.affected()),
+            arguments_of(paths.arguments())
+        ),
+        (
+            Some(position_of(&input, "citedElement=")),
+            vec!["ap"],
+            owned(&[("count", "2"), ("first", cited)])
+        ),
+        "{ROW}: {what}: the location, affected ids and arguments of SACM-XMI-017"
+    );
+}
+
+#[test]
+fn lib_compat_002_a_path_names_an_element_kept_for_its_role_by_its_id() {
+    // C5: an Artifact under `argumentElement` is kept whole (element-kept);
+    // a path names it by its id (R4 (c)).
+    let what = "a path to an Artifact kept under argumentElement";
+    let input = pinned_root(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Artifact\" xmi:id=\"k1\"/>\n  \
+         <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" \
+         source=\"//@argumentElement.1\" target=\"c0\"/>",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    only(what, output.diagnostics(), "SACM-XMI-003/element-kept");
+    assert_eq!(
+        strs(element(what, output.document(), "i1").sources()),
+        ["k1"],
+        "{ROW}: {what}: the sources of i1"
+    );
+    let paths = only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+    assert_eq!(
+        arguments_of(paths.arguments()),
+        owned(&[("count", "1"), ("first", "//@argumentElement.1")]),
+        "{ROW}: {what}: the arguments of SACM-XMI-017"
+    );
+}
+
+#[test]
+fn lib_compat_002_href_paths_keep_their_place_among_the_ends_targets() {
+    // C6: an `xmi:idref`, then two same-document hrefs that are paths.
+    let what = "an idref, then two href paths, on one end";
+    let input = pinned_root(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\"/>\n  \
+         <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" target=\"c0\">\
+         <source xmi:idref=\"c0\"/><source href=\"#//@argumentElement.1\"/>\
+         <source href=\"#//@argumentElement.2\"/></argumentElement>",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        strs(element(what, output.document(), "i1").sources()),
+        ["c0", "c1", "c2"],
+        "{ROW}: {what}: the sources of i1"
+    );
+    let paths = only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+    assert_eq!(
+        arguments_of(paths.arguments()),
+        owned(&[("count", "2"), ("first", "//@argumentElement.1")]),
+        "{ROW}: {what}: the arguments of SACM-XMI-017"
+    );
+}
+
+#[test]
+fn lib_compat_002_a_path_in_a_later_content_value_is_resolved_in_place() {
+    // C7: the second value of a Note's content names a Term by a path.
+    let what = "a path in the second value of a content";
+    let input = case_with_terms(
+        "",
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"><name content=\"c0\"/>\
+             <note xmi:id=\"n1\"><content>\
+             <value xmi:type=\"sacm:ExpressionLangString\" lang=\"en\" content=\"\" expression=\"t0\"/>\
+             <value xmi:type=\"sacm:ExpressionLangString\" lang=\"sv\" content=\"\" expression=\"{}\"/>\
+             </content></note></argumentElement>",
+            term_path(1)
+        ),
+        "",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        strs(element(what, output.document(), "n1").expressions()),
+        ["t0", "t1"],
+        "{ROW}: {what}: the expressions of n1"
+    );
+    only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+}
+
+#[test]
+fn lib_compat_002_a_path_in_an_expression_element_href_is_resolved() {
+    // C8: a name's `expression` given by a reference element with a
+    // same-document href that is a path.
+    let what = "a path in a name's expression element";
+    let input = case_with_terms(
+        "",
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\">\
+             <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\">\
+             <expression href=\"#{}\"/></name></argumentElement>",
+            term_path(0)
+        ),
+        "",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        strs(element(what, output.document(), "c0").expressions()),
+        ["t0"],
+        "{ROW}: {what}: the expressions of c0"
+    );
+    let paths = only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+    assert_eq!(
+        (paths.location(), strs(paths.affected())),
+        (Some(position_of(&input, "href=")), vec!["c0"]),
+        "{ROW}: {what}: the location and affected ids of SACM-XMI-017"
+    );
+}
+
+#[test]
+fn lib_compat_002_root_paths_count_only_the_roots_of_the_wrapper() {
+    // C9: the wrapper's xmi:Documentation is no root, so `/1` names `b`.
+    let what = "xmi:Documentation, then two packages";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\n  \
+         <xmi:Documentation exporter=\"x\"/>\n  \
+         <sacm:ArgumentPackage xmi:id=\"a\" abstractForm=\"/1\"><name content=\"a\"/></sacm:ArgumentPackage>\n  \
+         <sacm:ArgumentPackage xmi:id=\"b\" isAbstract=\"true\"><name content=\"b\"/></sacm:ArgumentPackage>\n\
+         </xmi:XMI>"
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        element(what, output.document(), "a")
+            .abstract_form()
+            .map(ElementId::as_str),
+        Some("b"),
+        "{ROW}: {what}: the abstractForm of a"
+    );
+}
+
+#[test]
+fn lib_compat_002_a_root_with_an_emf_idref_is_no_proxy_target() {
+    // C10: a root that keeps an `xmi:idref` of its own is not moved into a
+    // proxy's place, in EMF's spelling as in XMI 2.5.1's.
+    for (what, xmi) in [
+        ("EMF's xmi:idref", EMF_NS),
+        ("XMI 2.5.1's xmi:idref", XMI_NS),
+    ] {
+        let input = format!(
+            "<xmi:XMI xmlns:xmi=\"{xmi}\" xmlns:sacm=\"{SACM_NS}\">\n  \
+             <sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>\
+             <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>\n  \
+             <sacm:ArgumentPackage xmi:id=\"args\" xmi:idref=\"x\"><name content=\"args\"/></sacm:ArgumentPackage>\n\
+             </xmi:XMI>"
+        );
+        let output = read_ok(what, &input, Mode::Tolerant);
+        let kept = only(
+            what,
+            output.diagnostics(),
+            "SACM-XMI-003/proxy-of-linked-root",
+        );
+        assert_eq!(
+            strs(kept.affected()),
+            ["case"],
+            "{ROW}: {what}: the kept proxy's container"
+        );
+        let roots: Vec<&str> = output
+            .document()
+            .roots()
+            .map(|root| root.id().as_str())
+            .collect();
+        assert_eq!(roots, ["case", "args"], "{ROW}: {what}: the roots");
+    }
+}
+
+#[test]
+fn lib_compat_002_an_emf_type_after_an_xmi_type_is_kept() {
+    // C11: `xmi:type` in XMI 2.5.1's namespace comes first, so it is read;
+    // `e:type` in EMF's is the same XMI attribute again, kept as written.
+    let what = "xmi:type, then e:type";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+         xmlns:e=\"{EMF_NS}\" xmi:id=\"p\">\n  <name content=\"p\"/>\n  \
+         <argumentElement xmi:type=\"sacm:Claim\" e:type=\"sacm:AssertedInference\" xmi:id=\"c1\">\
+         <name content=\"c1\"/></argumentElement>\n</sacm:ArgumentPackage>"
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    let c1 = element(what, output.document(), "c1");
+    assert_eq!(
+        (c1.kind(), c1.has_preserved_content()),
+        (sacm::model::ElementKind::Claim, true),
+        "{ROW}: {what}: c1 is not a Claim that keeps e:type"
+    );
+    let text = assert_writes_back(what, output.document());
+    assert!(
+        text.contains("e:type=\"sacm:AssertedInference\""),
+        "{ROW}: {what}: e:type is not written back:\n{text}"
+    );
+}
+
+#[test]
+fn lib_compat_002_emf_id_and_uuid_are_written_as_xmi_2_5_1() {
+    // C12: `e:id` and `e:uuid`, with `e` bound to EMF's namespace, are read
+    // as XMI 2.5.1's and written as `xmi:id` and `xmi:uuid`.
+    let what = "e:id and e:uuid";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:e=\"{EMF_NS}\" e:id=\"p\" \
+         e:uuid=\"u\"><name content=\"p\"/></sacm:ArgumentPackage>"
+    );
+    let document = read_ok(what, &input, Mode::Tolerant).into_document();
+    let text = written(what, &document, Mode::Strict);
+    assert!(
+        text.contains("xmi:id=\"p\" xmi:uuid=\"u\"") && !text.contains(EMF_NS),
+        "{ROW}: {what}: the strict write does not write XMI 2.5.1's names:\n{text}"
+    );
+    let back = read_ok(&format!("{what}, written"), &text, Mode::Strict);
+    assert!(
+        back.diagnostics().is_empty() && back.document() == &document,
+        "{ROW}: {what}: the strict write does not read back cleanly and ==: {:#?}",
+        back.diagnostics()
+    );
+}
+
+#[test]
+fn lib_compat_002_a_path_in_a_tagged_value_key_is_resolved() {
+    // C13: the value of a TaggedValue's key names a Term by a path.
+    let what = "a path in a TaggedValue's key";
+    let input = case_with_terms(
+        "",
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"><name content=\"c0\"/>\
+             <taggedValue xmi:id=\"tv1\"><content><value lang=\"en\" content=\"covered\"/></content>\
+             <key><value xmi:type=\"sacm:ExpressionLangString\" lang=\"en\" expression=\"{}\"/></key>\
+             </taggedValue></argumentElement>",
+            term_path(0)
+        ),
+        "",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        strs(element(what, output.document(), "tv1").expressions()),
+        ["t0"],
+        "{ROW}: {what}: the expressions of tv1"
+    );
+    only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+}
+
+#[test]
+fn lib_compat_002_a_path_in_a_resource_location_is_resolved() {
+    // C14: the value of a Resource's location names a Term by a path.
+    let what = "a path in a Resource's location";
+    let input = case_with_terms(
+        "",
+        "",
+        &format!(
+            "<artifactPackage xmi:id=\"evidence\"><name content=\"evidence\"/>\
+             <artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r1\"><name content=\"r1\"/>\
+             <location><value xmi:type=\"sacm:ExpressionLangString\" expression=\"{}\"/></location>\
+             </artifactElement></artifactPackage>",
+            term_path(0)
+        ),
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        strs(element(what, output.document(), "r1").expressions()),
+        ["t0"],
+        "{ROW}: {what}: the expressions of r1"
+    );
+    only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+}
+
+#[test]
+fn lib_compat_002_an_emf_xmi_namespace_document_element_other_than_xmi_is_invalid_root() {
+    // C15: as for XMI 2.5.1's namespace, an element of EMF's other than
+    // `XMI` holds no SACM package.
+    let what = "an EMF xmi:Documentation as the document element";
+    let input = format!("<xmi:Documentation xmlns:xmi=\"{EMF_NS}\"/>");
+    for mode in MODES {
+        let error = refusal(what, &input, mode);
+        assert!(
+            matches!(error, ReadError::InvalidRoot { .. }),
+            "{ROW}: {what}: a {mode:?} read is not InvalidRoot: {error:?}"
+        );
+        assert_eq!(
+            (error.code().as_str(), error.template(), error.location()),
+            (
+                "SACM-XMI-001",
+                "SACM-XMI-001/xmi-namespace-root",
+                Some(loc(1, 1))
+            ),
+            "{ROW}: {what}: a {mode:?} read: the code, template and location"
+        );
+    }
+}
