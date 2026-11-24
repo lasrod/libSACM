@@ -2186,3 +2186,160 @@ fn lib_compat_002_an_emf_xmi_namespace_document_element_other_than_xmi_is_invali
         );
     }
 }
+
+// --- Round 3: the order of candidates, keep_element, and every open spelling -------
+
+#[test]
+fn lib_compat_002_the_first_candidate_is_first_by_place_not_by_element() {
+    // F1: the Claim c1 is read before its Description d1, but d1's
+    // expression comes before c1's citedElement element in the input.
+    let what = "a Description's expression, then its Claim's citedElement element";
+    let term = term_path(0);
+    let input = case_with_terms(
+        "",
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" isCitation=\"true\">\
+             <name content=\"c1\"/>\
+             <description xmi:id=\"d1\"><content>\
+             <value xmi:type=\"sacm:ExpressionLangString\" content=\"x\" expression=\"{term}\"/>\
+             </content></description>\
+             <citedElement href=\"#//@argumentPackage.0/@argumentElement.0\"/></argumentElement>"
+        ),
+        "",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    let paths = only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+    assert_eq!(
+        (
+            paths.location(),
+            strs(paths.affected()),
+            arguments_of(paths.arguments())
+        ),
+        (
+            Some(position_of(&input, "expression=")),
+            vec!["d1"],
+            owned(&[("count", "2"), ("first", term.as_str())])
+        ),
+        "{ROW}: {what}: the location, affected ids and arguments of SACM-XMI-017"
+    );
+}
+
+#[test]
+fn lib_compat_002_a_path_names_an_untyped_child_kept_whole_by_its_id() {
+    // F2: an untyped child under an abstract role is kept whole with
+    // SACM-XMI-005; a path names it by its id (R4 (c)).
+    let what = "a path to an untyped argumentElement";
+    let input = pinned_root(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"/>\n  \
+         <argumentElement xmi:id=\"k1\"/>\n  \
+         <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" \
+         source=\"//@argumentElement.1\" target=\"c0\"/>",
+    );
+    let output = read_ok(what, &input, Mode::Tolerant);
+    assert_eq!(
+        with_code(output.diagnostics(), "SACM-XMI-005").len(),
+        1,
+        "{ROW}: {what}: k1 is not kept with SACM-XMI-005: {:#?}",
+        output.diagnostics()
+    );
+    assert_eq!(
+        strs(element(what, output.document(), "i1").sources()),
+        ["k1"],
+        "{ROW}: {what}: the sources of i1"
+    );
+    only(what, output.diagnostics(), "SACM-XMI-017/paths-read");
+}
+
+#[test]
+fn lib_compat_002_the_content_of_a_lowercase_extension_is_open() {
+    // F3: `xmi:extension` is an Extension too (XMI 2.5.1 §7.5.4).
+    let what = "an EMF attribute in an xmi:extension";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+         <xmi:extension><a xmlns:e=\"{EMF_NS}\" e:b=\"1\"/></xmi:extension></argumentElement>"
+    ));
+    let output = read_ok(what, &input, Mode::Strict);
+    assert!(
+        output.diagnostics().is_empty(),
+        "{ROW}: {what}: a strict read reports {:#?}",
+        output.diagnostics()
+    );
+}
+
+#[test]
+fn lib_compat_002_the_target_of_every_difference_spelling_is_open() {
+    // F4: each of XMI.xsd's Difference elements opens its `target`.
+    for difference in ["Difference", "difference", "Add", "Replace", "Delete"] {
+        let what = format!("an EMF attribute on the target of xmi:{difference}");
+        let input = format!(
+            "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmlns:e=\"{EMF_NS}\">\n  \
+             <xmi:{difference}><target e:x=\"1\"/></xmi:{difference}>\n  \
+             <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n\
+             </xmi:XMI>"
+        );
+        let output = read_ok(&what, &input, Mode::Strict);
+        assert!(
+            output.diagnostics().is_empty(),
+            "{ROW}: {what}: a strict read reports {:#?}",
+            output.diagnostics()
+        );
+    }
+}
+
+#[test]
+fn lib_compat_002_a_difference_opens_only_its_target() {
+    // F5: a `container` is a Difference, not open content.
+    let what = "an EMF attribute on an xmi:Replace's container";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmlns:e=\"{EMF_NS}\">\n  \
+         <xmi:Replace><container e:z=\"1\"/></xmi:Replace>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let error = refusal(what, &input, Mode::Strict);
+    assert_xmi_015(
+        what,
+        &error,
+        "SACM-XMI-015/emf-xmi-namespace",
+        position_of(&input, "e:z="),
+        &[("name", "e:z"), ("row", ROW)],
+    );
+}
+
+#[test]
+fn lib_compat_002_only_an_unqualified_target_is_open() {
+    // F6: XMI.xsd's `target` is a local element in no namespace.
+    let what = "an EMF attribute on a qualified v:target";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmlns:e=\"{EMF_NS}\" \
+         xmlns:v=\"urn:v\">\n  \
+         <xmi:Difference><v:target e:x=\"1\"/></xmi:Difference>\n  \
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\n</xmi:XMI>"
+    );
+    let error = refusal(what, &input, Mode::Strict);
+    assert_xmi_015(
+        what,
+        &error,
+        "SACM-XMI-015/emf-xmi-namespace",
+        position_of(&input, "e:x="),
+        &[("name", "e:x"), ("row", ROW)],
+    );
+}
+
+#[test]
+fn lib_compat_002_an_emf_idref_in_open_content_reserves_no_generated_id() {
+    // F7: the id generated for a Claim with no xmi:id avoids every id the
+    // input names, but an `e:idref` in an Extension names none.
+    let what = "e:idref=\"claim_1\" in an xmi:Extension of a Claim with no xmi:id";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\"><name content=\"c\"/>\
+         <xmi:Extension><n xmlns:e=\"{EMF_NS}\" e:idref=\"claim_1\"/></xmi:Extension>\
+         </argumentElement>"
+    ));
+    let output = read_ok(what, &input, Mode::Strict);
+    let ids: Vec<&str> = output
+        .document()
+        .elements()
+        .map(|element| element.id().as_str())
+        .collect();
+    assert_eq!(ids, ["p", "claim_1"], "{ROW}: {what}: the ids");
+}
