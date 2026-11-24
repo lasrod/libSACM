@@ -272,7 +272,11 @@ catalog! {
     /// one refuses it (SACM-XMI-006). Named after the C++ library's
     /// `kXmiUnknownElement`; it covers attributes and text too. It also
     /// reports a same-file proxy (SACM23-XMI-030) that is kept instead of
-    /// resolved: of no root, of the wrong kind, shared, or in a cycle. Fix:
+    /// resolved: of no root, of the wrong kind, shared, or in a cycle. In
+    /// tolerant mode it reports, as a Warning, the type of an element read
+    /// as a subclass the application declared
+    /// ([`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass),
+    /// LIB-COMPAT-017), which the element keeps as preserved content. Fix:
     /// remove the content, or keep it in an `xmi:Extension`, which both
     /// saves write back (SACM23-XMI-019).
     pub const XMI_UNKNOWN_CONTENT: Code = Code::from_static("SACM-XMI-003");

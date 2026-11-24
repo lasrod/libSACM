@@ -853,8 +853,9 @@ pub enum Difference {
     /// none.
     ///
     /// It is compared exactly and in order: namespace URIs, prefixes, local
-    /// names, attribute values and order, text, and where each child stands
-    /// among the element's children. Comments and processing instructions
+    /// names, attribute values and order, text, where each child stands
+    /// among the element's children, and the class of a declared subclass,
+    /// its prefix included (LIB-COMPAT-017). Comments and processing instructions
     /// are not held, so they never differ.
     PreservedContent {
         /// The element's id.

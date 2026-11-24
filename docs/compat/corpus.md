@@ -1,6 +1,7 @@
 # Real SACM files
 
-What the reader does with SACM files that other tools wrote (LIB-COMPAT-015). The files are
+What the reader does with SACM files that other tools wrote (LIB-COMPAT-015), and what that
+shows (LIB-COMPAT-005). The files are
 fetched, never committed: `cargo xtask fetch-corpus` puts them in `third_party/corpus/`,
 pinned by SHA-256 in `xtask/src/fetch.rs` (`CORPUS`). Several have no licence, so nothing
 from them is copied into this repository. `cargo test -p xtask --test corpus` reads each file
@@ -136,9 +137,58 @@ read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equ
 | EMF dialects: the XMI namespace `http://www.omg.org/XMI` and `//@role.N` and `/N` fragment paths, read since slice 0075a with one SACM-XMI-015 Warning per file (7–9, 12, 13) and one SACM-XMI-017 for file 7's 35 paths, all read; a strict read refuses the XMI namespace. File 8's paths sit in kept SACM 2.0 `argumentAsset` children, so none is read. gid identity is not read | 7–13 | LIB-COMPAT-002 |
 | The declared encoding ISO-8859-1: read since slice 0072. With the XMI 2.0 `xmi:XMI` element read since slice 0075a, a tolerant read refuses the files next for their loose `ArgumentReasoning` and `Assertion` roots beside the packages (SACM-XMI-001 at line 7 and 9); a strict read refuses the XMI 2.0 namespace (SACM-XMI-015) | 10, 11 | LIB-COMPAT-016; LIB-COMPAT-014 (deferred, the maintainer, 2026-11-23) |
 | An ODE `DDIPackage` container root (SACM-XMI-001) | 14, 15 | LIB-COMPAT-009 (M6) |
-| GSN classes layered on SACM by `xsi:type` (`gsn_:Goal`): kept whole as preserved content (SACM-XMI-003) | 12, 13 | LIB-COMPAT-017 (an application's declared subclasses) |
+| GSN classes layered on SACM by `xsi:type` (`gsn_:Goal`): without declarations, kept whole as preserved content (SACM-XMI-003); read since slice 0075b as the SACM classes an application declares them subclasses of (see "What LIB-COMPAT-005 claims") | 12, 13 | LIB-COMPAT-017 |
 | Tolerant write-back | 1–9, 12, 13 | Reads back equal: no loss found |
 | Tolerant write-back after a renamed prefix: until slice 0075a, a root attribute whose `xmi` prefix was bound to XMI 2.0's `http://www.omg.org/XMI` was written as `ns1:…`, and each holder of preserved content read back with one namespace declaration more. Resolved: the XMI 2.0 `xmi:version` and `xmi:id` are read as XMI 2.5.1's, so no prefix is renamed | 8, 9, 12, 13 | LIB-COMPAT-002 |
+
+## What LIB-COMPAT-005 claims
+
+Files that tools independent of this crate wrote are read, checked and written back without
+loss. The evidence is five files of this corpus, from three tool families: ACEditor (7),
+Epsilon (8, 9), and the EMF SACM implementation wrwei/SACM as SysMLine and SysMini use it
+(12, 13). `cargo test -p xtask --test corpus` checks every fact below (`lib_compat_005_*`);
+without the corpus, those tests are skipped.
+
+For each of the five files:
+- a tolerant read opens it, with one SACM-XMI-015 Warning for EMF's XMI namespace;
+- `validate` finds no reference that names nothing (no SACM-REF-001);
+- a tolerant write reads back with no difference (`compare::semantic_compare`).
+
+Files 12 and 13 type SACM roles with GSN classes of `http://acwg.org/3.0/gsn`. The tests read
+them with the declarations an application would give (`ReadOptions::with_subclass`,
+LIB-COMPAT-017):
+- Module as ArgumentPackage;
+- Goal, Context, Assumption, Justification and AwayGoal as Claim;
+- Strategy as ArgumentReasoning;
+- Solution as ArtifactReference;
+- SupportedBy as AssertedInference;
+- InContextOf as AssertedContext.
+
+Without them, a tolerant read keeps each such element whole (the report above).
+
+| # | Read with | Elements read | Of them, GSN subclasses | EMF paths read | Kept whole | Strict write |
+|---|---|---|---|---|---|---|
+| 7 | default options | 81 | — | 35 of 35 | none | refused: 20 elements hold preserved content |
+| 8 | default options | 1 | — | none | 39 SACM 2.0 `argumentAsset` | refused: 1 element |
+| 9 | default options | 1 | — | none | 4 SACM 2.0 `argumentAsset` | refused: 1 element |
+| 12 | the declarations | 139 | 46 | 46 of 46 | none | refused: 46 elements |
+| 13 | the declarations | 75 | 24 | 23 of 23 | 1 `artifactProperty` | refused: 25 elements |
+
+Two families, ACEditor and wrwei/SACM, read as SACM 2.3 elements. The Epsilon files hold SACM
+2.0 shapes: they open and write back without loss, but are kept, not read.
+
+It does not claim:
+- **Conformance.** These files are not SACM 2.3 XMI, and tolerant mode reads them
+  (D-STRICT). None writes in strict mode: each keeps content SACM 2.3 lacks, so
+  `sacm convert` refuses it (discarding that content is LIB-EDIT-016, deferred).
+- **Validity.** Only dangling references are checked. `validate` reports other Errors on
+  files 7, 8, 12 and 13.
+- **Files 1 to 6:** Assurance Forge, by this crate's author, and a file no tool wrote.
+  **Files 10 and 11:** refused, LIB-COMPAT-014. **Files 14 and 15:** refused, LIB-COMPAT-009.
+
+No third-party file is committed (D-CORPUS). The hand-written fixtures
+`crates/sacm/tests/data/compat/emf-dialect.xmi` and `emf-subclasses.xmi` reproduce these
+dialects in the committed tests.
 
 ## Adding a file
 

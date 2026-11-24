@@ -161,13 +161,14 @@ use super::namespaces::{
 };
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
-use super::{Limit, Limits, Mode, ReadError};
+use super::{Limit, Mode, ReadError, ReadOptions};
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Details, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, Proxy as HeldProxy, ReferenceEnd,
-    Role, StringAttribute, Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
+    Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, Proxy as HeldProxy, QName,
+    ReferenceEnd, Role, StringAttribute, Text, TextRole, flag_named, is_ncname,
+    reference_end_named, role_named,
 };
 
 /// The machine-readable model's spelling of the class
@@ -200,6 +201,10 @@ const OTHER_NAMESPACE_ROW: &str = "LIB-COMPAT-004";
 /// (SACM-XMI-015) and the EMF fragment paths (SACM-XMI-017) a tolerant read
 /// reads (ADR 0044 D1, D2).
 const EMF_ROW: &str = "LIB-COMPAT-002";
+
+/// The row of the classes an application declares subclasses of SACM 2.3
+/// classes, which a tolerant read reads (ADR 0044 D3, D4).
+const SUBCLASS_ROW: &str = "LIB-COMPAT-017";
 
 /// The §10.4 text spelling of `terminologyElement`, which a tolerant read
 /// reads as the role of a TerminologyPackage (SACM23-XMI-028, spec defect
@@ -869,14 +874,15 @@ const DECLARATION: &str = "assertionDeclaration";
 /// (formal/23-05-08 §8.2).
 const GID: &str = "gid";
 
-/// The document whose roots `tree` holds, read in `mode`, and the
+/// The document whose roots `tree` holds, read with `options`, and the
 /// diagnostics found, located and in input order, not yet sorted. `text` is the text `tree` was parsed from.
 pub(super) fn read(
     text: &str,
     tree: &roxmltree::Document<'_>,
-    mode: Mode,
-    limits: &Limits,
+    options: &ReadOptions,
 ) -> Result<(Document, Vec<Diagnostic>), ReadError> {
+    let mode = options.mode;
+    let limits = &options.limits;
     let element = tree.root_element();
     // The class of each root's namespace value, classified once (ADR 0041
     // D4).
@@ -912,6 +918,7 @@ pub(super) fn read(
         types: Types::new(namespaces::PINNED),
         revision: None,
         budget: Budget::new(text, limits),
+        subclasses: &options.subclasses,
     };
     if let Some((offset, name)) = emf {
         let diagnostic = Diagnostic::emit(
@@ -1056,6 +1063,9 @@ struct Findings<'t, 'a> {
     /// size limit: the namespace text of preserved content and the text of
     /// each diagnostic (LIB-SEC-003; ADR 0041 D2, amendment 1).
     budget: Budget<'t>,
+    /// The subclasses the application declared, by namespace URI and class
+    /// name, which only a tolerant read reads (LIB-COMPAT-017, ADR 0044 D3).
+    subclasses: &'t BTreeMap<String, BTreeMap<String, ElementKind>>,
 }
 
 /// What [`Findings`] holds before a part is read, so that a part that turns
@@ -1291,6 +1301,33 @@ impl Findings<'_, '_> {
             .set_clause("9.5.2")
             .set_affected([ElementId::new(id)]);
         self.push(diagnostic, attribute)
+    }
+
+    /// Reports the type of the element `id` of `kind`, read as the subclass
+    /// `declared` of `kind` that the application declared: one SACM-XMI-003
+    /// Warning, at the first type attribute naming the class, affecting the
+    /// element (LIB-COMPAT-017; XMI 2.5.1 §7.8.6; ADR 0044 D4). Only a
+    /// tolerant read reads one.
+    fn subclass_kept(
+        &mut self,
+        declared: &Declared,
+        kind: ElementKind,
+        id: &str,
+    ) -> Result<(), ReadError> {
+        let arguments = text_arguments(&[
+            ("type", &declared.written),
+            ("class", kind.name()),
+            ("id", id),
+        ]);
+        let diagnostic = Diagnostic::emit(
+            &template::XMI_003_SUBCLASS_TYPE_KEPT,
+            Severity::Warning,
+            SUBCLASS_ROW,
+            arguments,
+        )
+        .set_clause("7.8.6")
+        .set_affected([ElementId::new(id)]);
+        self.push_at(diagnostic, declared.at)
     }
 
     /// Reports the `xmi:version` `attribute`, in the message of `template`
@@ -2061,6 +2098,10 @@ struct Kept<H> {
     /// The byte offset of each preserved attribute's name and child's start
     /// tag: no occurrence of a property (`RepeatedValue`).
     offsets: BTreeSet<usize>,
+    /// The class outside SACM 2.3 that the holder is read as an instance
+    /// of, a declared subclass of its kind, with the prefix it is written
+    /// with (LIB-COMPAT-017).
+    subclass: Option<QName>,
 }
 
 impl<H: Holder> Kept<H> {
@@ -2076,6 +2117,7 @@ impl<H: Holder> Kept<H> {
             ids: Vec::new(),
             references: Vec::new(),
             offsets: BTreeSet::new(),
+            subclass: None,
         }
     }
 
@@ -2208,6 +2250,59 @@ impl<H: Holder> Kept<H> {
         prefix
     }
 
+    /// Takes the class `declared`, which a type attribute of `node` names, as
+    /// the subclass the holder is read as (LIB-COMPAT-017), with the binding
+    /// its prefix needs, and counts its namespace text into the read's
+    /// budget, as for a preserved attribute (ADR 0041 D2).
+    ///
+    /// Its prefix is written as a preserved attribute's would be (ADR 0035),
+    /// without the Warning of a renamed one: `xmi` bound to XMI 2.5.1 needs
+    /// no binding; `sacm` or `xmi` bound to another namespace is replaced by
+    /// the holder's `nsN` for it ([`rename`](Self::rename)), which its
+    /// renamed attributes share; any other prefix is kept, and bound. (No
+    /// type names a subclass with the prefix `xml`, whose binding no start
+    /// tag declares, nor with `sacm` bound to SACM 2.3: see
+    /// [`declared_subclass`].)
+    fn take_subclass(
+        &mut self,
+        found: &Findings<'_, '_>,
+        node: Node<'_, '_>,
+        declared: Declared,
+    ) -> Result<(), ReadError> {
+        let Declared {
+            at,
+            prefix,
+            namespace,
+            local,
+            ..
+        } = declared;
+        let bindings = self.namespaces.len();
+        let pinned = match prefix.as_str() {
+            SACM_PREFIX => Some(SACM_NS),
+            XMI_PREFIX => Some(XMI_NS),
+            _ => None,
+        };
+        let prefix = match pinned {
+            Some(pinned) if pinned != namespace => self.rename(node, &namespace),
+            Some(_) => prefix,
+            None => {
+                self.namespaces.push((prefix.clone(), namespace.clone()));
+                prefix
+            }
+        };
+        let mut kept = u64::try_from(namespace.len()).unwrap_or(u64::MAX);
+        for (prefix, uri) in self.namespaces.get(bindings..).unwrap_or_default() {
+            kept = kept.saturating_add(preserve::binding_bytes(Some(prefix), uri));
+        }
+        found.keep_namespace_text(kept, at)?;
+        self.subclass = Some(QName {
+            namespace: Some(namespace),
+            prefix: Some(prefix),
+            local,
+        });
+        Ok(())
+    }
+
     /// Takes `node`, an element, with its subtree, as preserved content
     /// placed before the next typed child (ADR 0033). Nothing inside it is
     /// read or reported, but each `xmi:id` in it is checked: one read before
@@ -2324,11 +2419,13 @@ impl<H: Holder> Kept<H> {
             ids,
             references,
             offsets: _,
+            subclass,
         } = self;
         attributes.sort_by_key(|(offset, _)| *offset);
         namespaces.sort();
         namespaces.dedup();
         Preserved {
+            subclass,
             namespaces,
             attributes: attributes.into_iter().map(|(_, attr)| attr).collect(),
             children,
@@ -2553,6 +2650,20 @@ impl Kept<DocumentHolder> {
 }
 
 impl Pending {
+    /// Reads `declared`, the class that a type attribute of `node`, the
+    /// element, names, as the declared subclass of its kind it is read as:
+    /// one SACM-XMI-003 Warning, then the class kept as preserved content
+    /// (LIB-COMPAT-017; ADR 0044 D3, D4).
+    fn read_subclass(
+        &mut self,
+        found: &mut Findings<'_, '_>,
+        node: Node<'_, '_>,
+        declared: Declared,
+    ) -> Result<(), ReadError> {
+        found.subclass_kept(&declared, self.kind, self.id.as_str())?;
+        self.kept.take_subclass(found, node, declared)
+    }
+
     /// The text read into `role`.
     fn text_mut(&mut self, role: TextRole) -> &mut Option<Text> {
         match role {
@@ -4580,13 +4691,19 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
 
     // A type naming the root's own class is read, an `xsi:type` reported;
     // one naming another class does not conform, and is preserved (ADR
-    // 0033, D-ROOT-NAME). Like the kind and the id, it is checked first, at
-    // the root.
+    // 0033, D-ROOT-NAME). In tolerant mode, types that all name one class
+    // the application declared a subclass of the root's own class are read
+    // as its subclass, and the class still comes from the element name
+    // (LIB-COMPAT-017; slice 0075b Q1). Like the kind and the id, they are
+    // checked first, at the root.
+    let subclass = root_subclass(found, root, kind);
     for attribute in root
         .attributes()
         .filter(|attribute| is_type(root, attribute))
     {
-        if names_class(&found.types, root, attribute.value(), kind.name()) {
+        let read =
+            subclass.is_some() || names_class(&found.types, root, attribute.value(), kind.name());
+        if read {
             if is_xsi_type(&attribute) {
                 let arguments = named(kind, id_text);
                 found.xsi_type(&attribute, &template::XMI_010_XSI_TYPE, arguments, id_text)?;
@@ -4596,6 +4713,9 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
                 .kept
                 .preserve_attribute(found, root, &attribute, at_root)?;
         }
+    }
+    if let Some(declared) = subclass {
+        element.read_subclass(found, root, declared)?;
     }
 
     // Besides `xmi:id`, `xmi:version`, the type and `gid`, only the
@@ -4649,6 +4769,33 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     Ok(element)
 }
 
+/// The declared subclass of `kind` that the type attributes of `root`, a
+/// root of `kind`, name, in tolerant mode (LIB-COMPAT-017; slice 0075b Q1):
+/// when each names a class the application declared a subclass of `kind`,
+/// all the same class, whatever their prefixes; the first gives the prefix
+/// and the location. `None` otherwise: each type is then read or kept as
+/// without declarations.
+fn root_subclass(
+    found: &Findings<'_, '_>,
+    root: Node<'_, '_>,
+    kind: ElementKind,
+) -> Option<Declared> {
+    let mut subclass: Option<Declared> = None;
+    for attribute in root
+        .attributes()
+        .filter(|attribute| is_type(root, attribute))
+    {
+        let declared =
+            declared_subclass(found, root, &attribute).filter(|declared| declared.kind == kind)?;
+        match &subclass {
+            Some(first) if !first.names(&declared) => return None,
+            Some(_) => {}
+            None => subclass = Some(declared),
+        }
+    }
+    subclass
+}
+
 /// What [`child_start`] makes of a child element.
 enum Child {
     /// An element, whose content is read next.
@@ -4674,15 +4821,24 @@ enum Child {
 /// refuses, a tolerant read keeps as preserved content of the child. A role
 /// or type spelling a tolerant read reads (SACM23-XMI-009) is one
 /// SACM-XMI-013 Warning at the start tag, affecting the parent for the role
-/// and the child for the type.
+/// and the child for the type. A type naming a declared subclass is read as
+/// the element's class outside SACM 2.3 (LIB-COMPAT-017).
+#[expect(
+    clippy::too_many_lines,
+    reason = "one walk through a child's start tag: its kind, id, spelling, subclass, then each attribute in document order"
+)]
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     parent: &Pending,
 ) -> Result<Child, Fault> {
     let text = found.text;
-    let (kind, spelled) = match child_kind(found, node, parent)? {
-        ChildKind::Read { kind, spelled } => (kind, spelled),
+    let (kind, spelled, subclass) = match child_kind(found, node, parent)? {
+        ChildKind::Read {
+            kind,
+            spelled,
+            subclass,
+        } => (kind, spelled, subclass),
         ChildKind::Proxy(link) => return Ok(Child::Proxy(link)),
         ChildKind::Remote(remote) => return Ok(Child::Remote(remote)),
         ChildKind::Preserve => return Ok(Child::Preserve),
@@ -4693,6 +4849,12 @@ fn child_start<'a>(
     let id = element.id.clone();
     if let Some(spelled) = spelled {
         found.spelled_child(node, spelled, &parent.id, &id)?;
+    }
+    // A type naming a declared subclass is kept as the element's class
+    // outside SACM 2.3, and reported once its id is known (LIB-COMPAT-017,
+    // ADR 0044 D3, D4). Its type attributes are not kept as attributes.
+    if let Some(declared) = subclass {
+        element.read_subclass(found, node, declared)?;
     }
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
     // `gid`, an Assertion's unqualified `assertionDeclaration`, the
@@ -4980,10 +5142,13 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
 enum ChildKind {
     /// It is read, as an element of `kind`, and `spelled` is the spelling a
     /// tolerant read read in its role or type, which its SACM-XMI-013
-    /// Warning names (SACM23-XMI-009).
+    /// Warning names (SACM23-XMI-009), and `subclass` the class its type
+    /// names, if a tolerant read reads it as a declared subclass of `kind`
+    /// (LIB-COMPAT-017).
     Read {
         kind: ElementKind,
         spelled: Option<Spelled>,
+        subclass: Option<Declared>,
     },
     /// It is a same-file proxy (SACM23-XMI-030), resolved once every root is
     /// read.
@@ -5082,14 +5247,14 @@ fn child_kind(
         spelled = Some(child_spelling(found, at, reason)?);
         role
     };
-    let mut typed = None;
+    let mut typed: Option<Typed> = None;
     let mut type_spelled = false;
     for attribute in node
         .attributes()
         .filter(|attribute| is_type(node, attribute))
     {
-        let kind = match type_kind(&found.types, node, attribute.value()) {
-            Some(kind) => kind,
+        let this = match type_kind(&found.types, node, attribute.value()) {
+            Some(kind) => Typed::Class(kind),
             // The model's spelling of ArtifactAssetRelationship, read as that
             // kind (SACM23-XMI-009, ADR 0034 amendment 2). Under a role that
             // does not admit the kind, the check below preserves the child,
@@ -5097,15 +5262,28 @@ fn child_kind(
             // spelling.
             None if names_class(&found.types, node, attribute.value(), MODEL_SPELLING) => {
                 type_spelled = true;
-                ElementKind::ArtifactAssetRelationship
+                Typed::Class(ElementKind::ArtifactAssetRelationship)
             }
-            None => return Ok(ChildKind::Preserve),
+            // A class the application declared a subclass, in tolerant mode
+            // only (LIB-COMPAT-017, ADR 0044 D3).
+            None => match declared_subclass(found, node, &attribute) {
+                Some(declared) => Typed::Subclass(declared),
+                None => return Ok(ChildKind::Preserve),
+            },
         };
-        match typed {
-            Some(earlier) if earlier != kind => return Ok(ChildKind::Preserve),
-            _ => typed = Some(kind),
+        // Type attributes agree only when they name the same class; the
+        // first gives a subclass's prefix and location.
+        match &typed {
+            Some(earlier) if !earlier.agrees(&this) => return Ok(ChildKind::Preserve),
+            Some(_) => {}
+            None => typed = Some(this),
         }
     }
+    let (typed, subclass) = match typed {
+        Some(Typed::Class(kind)) => (Some(kind), None),
+        Some(Typed::Subclass(declared)) => (Some(declared.kind), Some(declared)),
+        None => (None, None),
+    };
     // A role element carrying an `xmi:idref`, or an `href` to an id of this
     // document, is a proxy (SACM23-XMI-030; XMI 2.5.1 §7.10.1), which names
     // its object rather than leaving its class out: of a root, which moves
@@ -5113,6 +5291,11 @@ fn child_kind(
     // not admit is no proxy of the role; one with anything on or in it
     // besides its link and a type does not conform (ADR 0033).
     if is_reference_form(node) {
+        // A declaration never applies to a proxy: it is kept whole, as
+        // without the declaration (LIB-COMPAT-017).
+        if subclass.is_some() {
+            return Ok(ChildKind::Preserve);
+        }
         let Some((prefix, link)) = proxy_link(found, node) else {
             return Err(Fault::Defect);
         };
@@ -5196,7 +5379,11 @@ fn child_kind(
         let reason = Spelled::of_child(Spelling::Type, &written, container, in_root);
         spelled = Some(child_spelling(found, at, reason)?);
     }
-    Ok(ChildKind::Read { kind, spelled })
+    Ok(ChildKind::Read {
+        kind,
+        spelled,
+        subclass,
+    })
 }
 
 /// The role of a `parent` element that the text spells `local`, with the
@@ -6499,6 +6686,89 @@ fn type_kind(types: &Types<'_>, node: Node<'_, '_>, value: &str) -> Option<Eleme
         .iter()
         .copied()
         .find(|kind| kind.name() == class)
+}
+
+/// What one type attribute of a child names ([`child_kind`]).
+enum Typed {
+    /// A SACM class of the root's family.
+    Class(ElementKind),
+    /// A class the application declared a subclass (LIB-COMPAT-017).
+    Subclass(Declared),
+}
+
+impl Typed {
+    /// Whether two type attributes agree: they name the same SACM class, or
+    /// the same class outside SACM by namespace URI and local name, whatever
+    /// their prefixes (ADR 0044 D3).
+    fn agrees(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Class(one), Self::Class(other)) => one == other,
+            (Self::Subclass(one), Self::Subclass(other)) => one.names(other),
+            (Self::Class(_), Self::Subclass(_)) | (Self::Subclass(_), Self::Class(_)) => false,
+        }
+    }
+}
+
+/// A type attribute naming a class outside SACM 2.3 that the application
+/// declared a subclass of the SACM 2.3 class `kind` (LIB-COMPAT-017, ADR
+/// 0044 D3).
+struct Declared {
+    /// The byte offset of the attribute's name.
+    at: usize,
+    /// Its value, trimmed of XML white space, as the diagnostic names it.
+    written: String,
+    /// The prefix of the value.
+    prefix: String,
+    /// The namespace URI the prefix is bound to at the element.
+    namespace: String,
+    /// The local part of the value: the class's name.
+    local: String,
+    /// The SACM 2.3 class it is declared a subclass of.
+    kind: ElementKind,
+}
+
+impl Declared {
+    /// Whether `other` names the same class: the same namespace URI and
+    /// local name, whatever the prefixes.
+    fn names(&self, other: &Self) -> bool {
+        self.namespace == other.namespace && self.local == other.local
+    }
+}
+
+/// The declared subclass that `attribute`, a type attribute of `node`,
+/// names, in tolerant mode only: its value, trimmed of XML white space, is
+/// a prefixed `QName` resolved in the scope of `node` to a namespace that is
+/// neither in the root's family nor SACM 2.3's, whose (URI, local part) the
+/// application declared, compared exactly (ADR 0044 D3). An unprefixed type
+/// is in no namespace, as a role element is, and never names one. Only a
+/// declaration in the input binds a prefix here, so neither `xml` nor
+/// `xmlns` resolves, and no prefix is bound to an empty namespace (the
+/// input layer refuses `xmlns:p=""` and `xmlns:xmlns` as malformed XML): an
+/// empty declared namespace matches no type. A strict read ignores every
+/// declaration.
+fn declared_subclass(
+    found: &Findings<'_, '_>,
+    node: Node<'_, '_>,
+    attribute: &Attribute<'_, '_>,
+) -> Option<Declared> {
+    if found.mode != Mode::Tolerant {
+        return None;
+    }
+    let value = attribute.value().trim_matches(is_xml_space);
+    let (prefix, local) = value.split_once(':')?;
+    let namespace = node.lookup_namespace_uri(Some(prefix))?;
+    if namespace == SACM_NS || found.types.contains(namespace) {
+        return None;
+    }
+    let kind = *found.subclasses.get(namespace)?.get(local)?;
+    Some(Declared {
+        at: attribute.range_qname().start,
+        written: value.to_owned(),
+        prefix: prefix.to_owned(),
+        namespace: namespace.to_owned(),
+        local: local.to_owned(),
+        kind,
+    })
 }
 
 /// The local part of the type `value`, a `QName` resolved in the scope of

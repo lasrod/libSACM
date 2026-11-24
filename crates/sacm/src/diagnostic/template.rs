@@ -627,6 +627,9 @@ templates! {
     XMI_003_PROXY_WRONG_KIND = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/proxy-wrong-kind",
         [Text("element"), Text("target"), Text("target_class"), Text("class"), Text("holder_class"), Text("holder_id")],
         "the element {element:?} is a proxy of the root {target:?}, of the class {target_class}, which is not of the class {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_003_SUBCLASS_TYPE_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/subclass-type-kept",
+        [Text("type"), Text("class"), Text("id")],
+        "the type {type:?} of the {class} {id:?} is not SACM 2.3, but the application declared it a subclass of {class}, so the element is read as {class} and its type is kept as preserved content, which a tolerant write writes back and a strict write refuses";
     XMI_003_PROXY_OF_LINKED_ROOT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/proxy-of-linked-root",
         [Text("element"), Text("target"), Text("holder_class"), Text("holder_id")],
         "the element {element:?} is a proxy of the root {target:?}, which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
@@ -877,13 +880,14 @@ mod tests {
         // SACM-XMI-007 (SACM23-XMI-029; ADR 0040 amendment 1), and, in its
         // fix round, added SACM-XMI-010/xsi-type-on-proxy; slice 0075a added
         // two refusal and three diagnostic templates (LIB-COMPAT-002; ADR
-        // 0044).
-        assert_eq!(count, 211, "LIB-API-017: the number of templates");
+        // 0044); slice 0075b added one diagnostic template (LIB-COMPAT-017;
+        // ADR 0044 D4).
+        assert_eq!(count, 212, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 109, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 110, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

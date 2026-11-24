@@ -112,6 +112,7 @@ mod lang_string;
 mod preserved;
 mod reference;
 mod revision;
+mod subclass;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, Role, admits, role_named};
@@ -131,3 +132,4 @@ pub(crate) use preserved::{Attr, Event, Fragment, Item, Placed, Preserved, QName
 pub use reference::{Flag, ReferenceEnd};
 pub(crate) use reference::{OWNERS, flag_named, reference_end_named};
 pub use revision::Revision;
+pub use subclass::Subclass;

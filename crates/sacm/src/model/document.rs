@@ -6,7 +6,7 @@ use std::fmt;
 use super::containment::{Role, role};
 use super::{
     AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, Href, LangString,
-    MultiLangString, Preserved, Proxy, ReferenceEnd, Revision,
+    MultiLangString, Preserved, Proxy, ReferenceEnd, Revision, Subclass,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -4093,9 +4093,11 @@ impl<'a> SacmElement<'a> {
     /// with from XMI and kept exactly as written instead of read, such as a
     /// vendor attribute or child element that is not SACM 2.3 where it stands
     /// (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a construct a strict
-    /// read refuses, such as a value that is no literal (ADR 0035). XMI
-    /// metadata, such as `xmi:uuid`, is never preserved content
-    /// (SACM23-XMI-019, ADR 0042).
+    /// read refuses, such as a value that is no literal (ADR 0035), or the
+    /// type of a class the application declared a subclass of the element's
+    /// kind ([`subclass`](Self::subclass), LIB-COMPAT-017). XMI metadata,
+    /// such as `xmi:uuid`, is never preserved content (SACM23-XMI-019, ADR
+    /// 0042).
     ///
     /// [`xmi::read`](crate::xmi::read) keeps it, with one diagnostic per
     /// construct (SACM-XMI-003 for content that is not SACM 2.3 where it
@@ -4122,6 +4124,38 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn has_preserved_content(self) -> bool {
         self.node().preserved.is_some()
+    }
+
+    /// The class outside SACM 2.3 that this element was read as an instance
+    /// of, if a tolerant read read it as a declared subclass of its kind
+    /// ([`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass),
+    /// LIB-COMPAT-017). It is preserved content: a tolerant write writes it
+    /// as the element's `xmi:type`, and a strict write refuses the element.
+    /// Only [`xmi::read`](crate::xmi::read) gives one.
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile"
+    ///     xmi:id="arguments">
+    ///   <argumentElement xmi:type="p:Proposition" xmi:id="c1"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let options = ReadOptions::default()
+    ///     .with_subclass("urn:example:profile", "Proposition", ElementKind::Claim);
+    /// let document = xmi::read(input, &options)?.into_document();
+    /// let c1 = document.get("c1").expect("c1 is read");
+    /// assert_eq!(c1.subclass().map(|class| class.name()), Some("Proposition"));
+    /// assert!(c1.has_preserved_content());
+    /// assert_eq!(document.get("c2").and_then(|c2| c2.subclass()), None);
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn subclass(self) -> Option<Subclass<'a>> {
+        let class = self.preserved()?.subclass.as_ref()?;
+        Some(Subclass::new(class.namespace.as_deref()?, &class.local))
     }
 
     /// The element's preserved content, if it holds any (ADR 0033).

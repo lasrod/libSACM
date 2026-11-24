@@ -162,7 +162,23 @@ fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<
     if depth == 0 {
         push_document_attributes(out);
     }
-    if let Some(kind) = planned.written_type {
+    // A declared subclass is written as the type, in place of the kind's,
+    // even where the role declares the kind; its binding comes with the
+    // preserved ones (LIB-COMPAT-017). Only a tolerant write gets here with
+    // one: a strict write refuses it as preserved content.
+    if let Some(class) = planned
+        .element
+        .preserved()
+        .and_then(|held| held.subclass.as_ref())
+    {
+        push_attribute_name(out, "type");
+        if let Some(prefix) = &class.prefix {
+            escape_into(out, prefix);
+            out.push(':');
+        }
+        escape_into(out, &class.local);
+        out.push('"');
+    } else if let Some(kind) = planned.written_type {
         push_attribute_name(out, "type");
         out.push_str(SACM_PREFIX);
         out.push(':');
