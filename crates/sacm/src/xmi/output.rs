@@ -497,7 +497,10 @@ struct Planned<'a> {
     element: SacmElement<'a>,
     /// Its element name.
     tag: Tag,
-    /// The class written as its `xmi:type`, if one is.
+    /// The class written as its `xmi:type`, if one is: a child's kind where
+    /// its role does not declare it, and the kind of an element that keeps
+    /// a `type` in EMF's XMI namespace or an `xsi:type`, and none in XMI
+    /// 2.5.1's, root or child (LIB-COMPAT-019).
     written_type: Option<ElementKind>,
     /// Its `assertionDeclaration`, if it is an Assertion not declared
     /// `asserted`, the default, which is not written (XMI 2.5.1 §9.4.1).
@@ -554,12 +557,19 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
             ));
         }
         let kind = element.kind();
+        // An element that keeps a `type` in EMF's XMI namespace or an
+        // `xsi:type`, and none in XMI 2.5.1's, is written with its own
+        // `xmi:type`, root or child, so a read of it reads that and keeps the
+        // other again (LIB-COMPAT-019).
+        let own = element
+            .preserved()
+            .is_some_and(Preserved::needs_written_type);
         // A child keeps the role it was added in; a root has none.
         let (tag, written_type) = match element.role() {
-            None => (Tag::Root(kind), None),
+            None => (Tag::Root(kind), own.then_some(kind)),
             Some(role) => {
                 let written_type = match role.declared {
-                    DeclaredType::Kind(declared) if declared == kind => None,
+                    DeclaredType::Kind(declared) if declared == kind && !own => None,
                     DeclaredType::Kind(_) | DeclaredType::Abstract(_) => Some(kind),
                 };
                 (Tag::Role(role.name), written_type)

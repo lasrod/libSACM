@@ -201,7 +201,7 @@ const CREATE_COUNT: usize = 38;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERROR_COUNT: usize = 23;
+const EDIT_ERROR_COUNT: usize = 24;
 const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
@@ -229,6 +229,8 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("InvalidRoot", "SACM-CMD-005"),
     ("ParentInSubtree", "SACM-CMD-005"),
     ("PositionOutOfRange", "SACM-CMD-009"),
+    // The refusal of slice 0076 (LIB-COMPAT-019).
+    ("KeptRootType", "SACM-CMD-005"),
 ];
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
@@ -372,6 +374,15 @@ const ERROR_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.o
     <argumentElement xmi:type="sacm:Claim" xmi:id="a b"><name content="Spaced"/></argumentElement>
   </argumentPackage>
 </sacm:AssuranceCasePackage>
+"#;
+
+/// The document the `KeptRootType` sample is refused on (slice 0076,
+/// LIB-COMPAT-019): the AssuranceCasePackage root `case` and the
+/// ArgumentPackage root `a`, which keeps `xmi:type="p:Bundle"`.
+const KEPT_TYPE_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile">
+  <sacm:AssuranceCasePackage xmi:id="case"><name content="Case"/></sacm:AssuranceCasePackage>
+  <sacm:ArgumentPackage xmi:type="p:Bundle" xmi:id="a"><name content="A"/></sacm:ArgumentPackage>
+</xmi:XMI>
 "#;
 
 /// The document the delete samples are taken on. Three `ArgumentPackage`s:
@@ -602,6 +613,13 @@ fn error_start() -> Document {
     match xmi::read(ERROR_START.as_bytes(), &ReadOptions::default()) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{API_006}: setup: ERROR_START does not read: {error}"),
+    }
+}
+
+fn kept_type_start() -> Document {
+    match xmi::read(KEPT_TYPE_START.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{API_006}: setup: KEPT_TYPE_START does not read: {error}"),
     }
 }
 
@@ -1204,6 +1222,8 @@ fn edit_error_samples() -> Vec<EditError> {
             refusal(&doc, MoveElement::root("case").with_position(1)),
         ]);
     }
+    // The refusal of slice 0076 (LIB-COMPAT-019), on KEPT_TYPE_START.
+    samples.push(refusal(&kept_type_start(), MoveElement::new("a", "case")));
     samples
 }
 
@@ -3963,7 +3983,8 @@ fn lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json() 
 
     // The golden files hold them: `operations.json` the three moves right
     // after the ReorderElements samples, `edit-errors.json` the four
-    // refusals last, and `mutations.json` the move last. (The bytes are
+    // refusals just before the slice-0076 sample, its last, and
+    // `mutations.json` the move last. (The bytes are
     // fixed by the LIB-API-006 golden tests, over every sample.)
     let value = |text: &str| -> serde_json::Value { from_json(text) };
     let items = |name: &str| -> Vec<serde_json::Value> {
@@ -4002,9 +4023,9 @@ fn lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json() 
     let errors = items("edit-errors.json");
     let expected: Vec<serde_json::Value> = refusals.iter().map(|(_, text)| value(text)).collect();
     assert_eq!(
-        errors.get(errors.len().saturating_sub(4)..),
+        errors.get(errors.len().saturating_sub(5)..errors.len().saturating_sub(1)),
         Some(expected.as_slice()),
-        "{EDIT_017}: edit-errors.json does not end with the four refusals"
+        "{EDIT_017}: edit-errors.json does not hold the four refusals just before the slice-0076 sample"
     );
     assert_eq!(
         items("mutations.json").last(),

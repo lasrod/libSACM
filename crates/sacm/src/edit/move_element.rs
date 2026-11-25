@@ -2,7 +2,7 @@
 
 use super::EditError;
 use super::plan::Plan;
-use crate::model::{Document, ElementId, SacmElement, admits};
+use crate::model::{Document, ElementId, Preserved, SacmElement, admits};
 
 /// Moves an element, with everything it contains and its preserved content,
 /// under another parent ([`new`](Self::new)) or to the roots
@@ -150,6 +150,15 @@ impl MoveElement {
                 }
                 up = ancestor.parent();
             }
+            // 5. The element keeps no type attribute that only a root can
+            // carry (LIB-COMPAT-019, D-ROOT-NAME).
+            if let Some(attr) = element.preserved().and_then(Preserved::kept_type) {
+                return Err(EditError::KeptRootType {
+                    element: self.element.clone(),
+                    attribute: attr.name.written(),
+                    value: attr.value.clone(),
+                });
+            }
             parent.children().count()
         } else {
             // 3. A root is a package.
@@ -161,7 +170,7 @@ impl MoveElement {
             }
             document.roots().count()
         };
-        // 5. The position is at most the number of the others.
+        // 6. The position is at most the number of the others.
         let stays = element.parent().map(SacmElement::id) == self.parent.as_ref();
         let others = siblings.saturating_sub(usize::from(stays));
         let position = self.position.unwrap_or(others);

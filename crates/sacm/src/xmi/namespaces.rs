@@ -26,7 +26,7 @@ pub(super) const XMI_NS: &str = crate::model::XMI_NS;
 /// XMI version's (XMI 2.5.1 §7.5.3): a tolerant read reads the XMI element
 /// and the attributes `id`, `type`, `idref`, `version`, `uuid` and `label`
 /// in it as XMI 2.5.1's (LIB-COMPAT-002, ADR 0044 D1).
-pub(super) const EMF_XMI_NS: &str = "http://www.omg.org/XMI";
+pub(super) const EMF_XMI_NS: &str = crate::model::EMF_XMI_NS;
 /// The prefix written for [`SACM_NS`].
 pub(super) const SACM_PREFIX: &str = "sacm";
 /// The prefix written for [`XMI_NS`].

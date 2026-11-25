@@ -847,7 +847,7 @@ fn repeat_or_refuse(
 
 /// The XML Schema instance namespace, of `xsi:type` and `xsi:nil`, which are
 /// read but never written (ADR 0017 T1; SACM23-XMI-026).
-const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
+const XSI_NS: &str = crate::model::XSI_NS;
 
 /// The requirement the read diagnostics of `xsi:type` and `xmi:version`
 /// enforce.
@@ -2083,7 +2083,8 @@ struct Kept<H> {
     /// The attributes, each with the byte offset of its name: sorted by it
     /// when the element is held, so they keep their input order.
     attributes: Vec<(usize, Attr)>,
-    /// The bindings their prefixes need.
+    /// The bindings their prefixes need, and the prefixes their type
+    /// values name (LIB-COMPAT-019).
     namespaces: Vec<(String, String)>,
     /// The prefix `nsN` given to each namespace whose attributes were
     /// written with the prefix `sacm` or `xmi` bound to it, by URI (ADR
@@ -2151,12 +2152,18 @@ impl<H: Holder> Kept<H> {
     /// attributes, the same for every attribute of that namespace, and
     /// returns the Warning that names it, as preserved content of an element
     /// (ADR 0035; a defect).
+    ///
+    /// With `binds_value`, a type attribute also keeps the binding of the
+    /// prefix its value names ([`bind_type_value`](Self::bind_type_value),
+    /// LIB-COMPAT-019), counted with the others into the read's budget (ADR
+    /// 0041 D2), as preserved content or as XMI metadata.
     fn take_attribute<'a>(
         &mut self,
         found: &Findings<'_, 'a>,
         node: Node<'a, '_>,
         attribute: &Attribute<'a, '_>,
         refuse_at: usize,
+        binds_value: bool,
     ) -> Result<Option<Keep>, ReadError> {
         let text = found.text;
         let at = attribute.range_qname().start;
@@ -2206,6 +2213,9 @@ impl<H: Holder> Kept<H> {
                 None => self.namespaces.push((prefix, uri.to_owned())),
             }
         }
+        if binds_value {
+            self.bind_type_value(node, &mut attr);
+        }
         for (prefix, uri) in self.namespaces.get(bindings..).unwrap_or_default() {
             kept = kept.saturating_add(preserve::binding_bytes(Some(prefix), uri));
         }
@@ -2219,6 +2229,72 @@ impl<H: Holder> Kept<H> {
         self.offsets.insert(at);
         self.attributes.push((at, attr));
         Ok(renamed)
+    }
+
+    /// Keeps the binding of the prefix that the value of `attr`, an attribute
+    /// of `node` kept as preserved content or as XMI metadata, names, if
+    /// `attr` is a type
+    /// attribute: `type` in XMI 2.5.1's or EMF's XMI namespace, or `xsi:type`
+    /// (LIB-COMPAT-019, ADR 0033 amendment 2). Its value is a `QName` (XMI
+    /// 2.5.1 §9.5.2 rule 2g), resolved in the scope of `node`, so the
+    /// holder's start tag must declare its prefix where it is written
+    /// (Namespaces in XML 1.0 §5, NSC: Prefix Declared).
+    ///
+    /// The value, trimmed of XML white space, is split at its first `:`. It
+    /// is no `QName`, and binds nothing, if its prefix or its local part is
+    /// empty; nor does a prefix `xml` or `xmlns`, one unbound at `node` (or
+    /// bound to the empty URI), or `sacm` or `xmi` bound to SACM 2.3 or XMI
+    /// 2.5.1, which the writer binds. `sacm` or `xmi` bound to another
+    /// namespace, or no prefix under a default namespace, is replaced in the
+    /// value by the holder's `nsN` for that namespace ([`rename`](Self::rename)),
+    /// with the white space around it kept. Any other prefix is bound as at
+    /// `node`. There is no diagnostic: the attribute's own reports it.
+    fn bind_type_value(&mut self, node: Node<'_, '_>, attr: &mut Attr) {
+        let is_type = attr.name.local == "type"
+            && matches!(
+                attr.name.namespace.as_deref(),
+                Some(XMI_NS | EMF_XMI_NS | XSI_NS)
+            );
+        if !is_type {
+            return;
+        }
+        let value = attr.value.as_str();
+        let trimmed = value.trim_matches(is_xml_space);
+        let (prefix, local) = match trimmed.split_once(':') {
+            Some((prefix, local)) => (Some(prefix), local),
+            None => (None, trimmed),
+        };
+        if prefix.is_some_and(str::is_empty) || local.is_empty() {
+            return;
+        }
+        if matches!(prefix, Some("xml" | "xmlns")) {
+            return;
+        }
+        let Some(uri) = node
+            .lookup_namespace_uri(prefix)
+            .filter(|uri| !uri.is_empty())
+        else {
+            return;
+        };
+        let pinned = match prefix {
+            Some(SACM_PREFIX) => Some(SACM_NS),
+            Some(XMI_PREFIX) => Some(XMI_NS),
+            _ => None,
+        };
+        match (prefix, pinned) {
+            (Some(_), Some(pinned)) if pinned == uri => {}
+            (Some(prefix), None) => self.namespaces.push((prefix.to_owned(), uri.to_owned())),
+            (Some(_), Some(_)) | (None, _) => {
+                let renamed = self.rename(node, uri);
+                let leading = value
+                    .len()
+                    .saturating_sub(value.trim_start_matches(is_xml_space).len());
+                let trailing = value.trim_end_matches(is_xml_space).len();
+                let before = value.get(..leading).unwrap_or_default();
+                let after = value.get(trailing..).unwrap_or_default();
+                attr.value = format!("{before}{renamed}:{local}{after}");
+            }
+        }
     }
 
     /// The prefix that attributes in the namespace `uri`, written with a
@@ -2393,16 +2469,25 @@ impl<H: Holder> Kept<H> {
     ) -> Result<(), ReadError> {
         let at = attribute.range_qname().start;
         if attribute.namespace() == Some(EMF_XMI_NS) {
-            let (mut attr, kept) = preserve::attr(found.text, attribute);
+            let (mut attr, mut kept) = preserve::attr(found.text, attribute);
             attr.name.namespace = Some(XMI_NS.to_owned());
             attr.name.prefix = Some(XMI_PREFIX.to_owned());
+            // A metadata type keeps the binding of its value's prefix
+            // (LIB-COMPAT-019), counted as take_attribute counts it.
+            let bindings = self.namespaces.len();
+            self.bind_type_value(node, &mut attr);
+            for (prefix, uri) in self.namespaces.get(bindings..).unwrap_or_default() {
+                kept = kept.saturating_add(preserve::binding_bytes(Some(prefix), uri));
+            }
             found.keep_namespace_text(kept, at)?;
             self.offsets.insert(at);
             self.attributes.push((at, attr));
             return Ok(());
         }
         // No rename: the caller checked the prefix, so there is no Warning.
-        let _ = self.take_attribute(found, node, attribute, at)?;
+        // A metadata type keeps the binding of its value's prefix
+        // (LIB-COMPAT-019).
+        let _ = self.take_attribute(found, node, attribute, at, true)?;
         Ok(())
     }
 
@@ -2447,7 +2532,7 @@ impl Kept<ElementHolder> {
         attribute: &Attribute<'a, '_>,
         refuse_at: usize,
     ) -> Result<(), ReadError> {
-        if let Some(renamed) = self.take_attribute(found, node, attribute, refuse_at)? {
+        if let Some(renamed) = self.take_attribute(found, node, attribute, refuse_at, true)? {
             found.keep(renamed, &self.holder)?;
         } else {
             let arguments = vec![Argument::text(
@@ -2475,7 +2560,7 @@ impl Kept<ElementHolder> {
         attribute: &Attribute<'a, '_>,
         keep: Keep,
     ) -> Result<(), ReadError> {
-        self.take_attribute(found, node, attribute, keep.offset)?;
+        self.take_attribute(found, node, attribute, keep.offset, true)?;
         found.keep(keep, &self.holder)?;
         Ok(())
     }
@@ -2612,7 +2697,7 @@ impl Kept<DocumentHolder> {
         attribute: &Attribute<'a, '_>,
         keep: DocumentKeep,
     ) -> Result<(), ReadError> {
-        self.take_attribute(found, node, attribute, keep.offset)?;
+        self.take_attribute(found, node, attribute, keep.offset, true)?;
         found.keep_in_document(keep)?;
         Ok(())
     }
@@ -3053,7 +3138,8 @@ impl Pending {
                 .attributes()
                 .find(|given| given.range_qname().start == earlier);
             if let Some(first) = first {
-                self.kept.take_attribute(found, node, &first, earlier)?;
+                self.kept
+                    .take_attribute(found, node, &first, earlier, true)?;
             }
             self.shorthand.content = None;
             self.shorthand.content_at = None;
@@ -4284,8 +4370,8 @@ fn navigate<'a, 'i>(
 /// The id an EMF fragment path that names `node` is read as (R4,
 /// "Result"): (a) the id of an element read as an element, or (b) of the
 /// root a resolved same-file proxy names, both in `named` by the offset of
-/// their start tag; (c) the `xmi:id`, in either XMI namespace, of an element
-/// inside preserved content, if it is in the id space. `None` for any other:
+/// their start tag; (c) the `xmi:id`, in either XMI namespace
+/// ([`xmi_attribute`]), of an element inside preserved content, if it is in the id space. `None` for any other:
 /// a `name`, `content`, `key`, `location` or `value`, XMI metadata, or a
 /// preserved element without an id.
 fn path_target(
@@ -4303,9 +4389,7 @@ fn path_target(
     if !preserved {
         return None;
     }
-    let attribute = node
-        .attributes()
-        .find(|attribute| is_xmi(attribute, "id"))?;
+    let attribute = xmi_attribute(node, "id")?;
     let value = id_value(attribute.value());
     found.ids.contains(value).then(|| ElementId::new(value))
 }
@@ -5003,7 +5087,7 @@ fn read_id<'a>(
     node: Node<'a, '_>,
     kind: ElementKind,
 ) -> Result<ElementId, ReadError> {
-    let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) else {
+    let Some(attribute) = xmi_attribute(node, "id") else {
         return found.generate_id(node, kind);
     };
     if attribute.value().is_empty() && found.mode == Mode::Tolerant {
@@ -5083,7 +5167,7 @@ fn read_owned_id<'a>(
     owner: &ElementId,
     kind: ElementKind,
 ) -> Result<Option<ElementId>, ReadError> {
-    let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) else {
+    let Some(attribute) = xmi_attribute(node, "id") else {
         return Ok(None);
     };
     let (empty, trimmed) = part.templates();
@@ -6555,24 +6639,34 @@ fn is_xmi(attribute: &Attribute<'_, '_>, local: &str) -> bool {
     is_xmi_namespace(attribute.namespace()) && attribute.name() == local
 }
 
-/// Whether `attribute` of `node` is the `xmi:<local>` the reader reads: the
-/// first in document order, when `node` carries it in both XMI namespaces.
-/// The other is kept as written (R3). XML allows one attribute per name, so
-/// `node` carries at most two, and finding the first costs one pass over its
-/// attributes for each.
+/// The `xmi:<local>` of `node` the reader reads: the one in XMI 2.5.1's
+/// namespace, or else the first in EMF's (LIB-COMPAT-019, ADR 0044
+/// amendment 1; XMI 2.5.1 §7.5.3: "Each version of XMI is unambiguously
+/// identified by its unique namespace URI"). When `node` carries it in both,
+/// EMF's is content in another namespace, kept as written. XML allows one
+/// attribute per expanded name, so `node` carries at most one in each, and
+/// finding it costs at most two passes over its attributes.
+fn xmi_attribute<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Attribute<'a, 'i>> {
+    let in_namespace = |uri: &str| {
+        node.attributes()
+            .find(|attribute| attribute.namespace() == Some(uri) && attribute.name() == local)
+    };
+    in_namespace(XMI_NS).or_else(|| in_namespace(EMF_XMI_NS))
+}
+
+/// Whether `attribute` of `node` is the `xmi:<local>` the reader reads
+/// ([`xmi_attribute`]): XMI 2.5.1's, when `node` carries it in both XMI
+/// namespaces. EMF's is then kept as written (ADR 0044 amendment 1).
 fn reads_xmi(node: Node<'_, '_>, attribute: &Attribute<'_, '_>, local: &str) -> bool {
     is_xmi(attribute, local)
-        && node
-            .attributes()
-            .find(|first| is_xmi(first, local))
-            .is_some_and(|first| first.range_qname() == attribute.range_qname())
+        && xmi_attribute(node, local)
+            .is_some_and(|read| read.range_qname() == attribute.range_qname())
 }
 
 /// Whether `node` carries `type` in both XMI namespaces, EMF's and XMI
-/// 2.5.1's. The reader takes the first as its type and keeps the other as
-/// written ([`reads_xmi`]), so no declaration applies to it: a subclass read
-/// from it would be written as an `xmi:type` beside the kept one, and the
-/// file written would not be well-formed (LIB-COMPAT-017).
+/// 2.5.1's. The reader takes XMI 2.5.1's as its type and keeps EMF's as
+/// written ([`reads_xmi`]), and no declaration applies to either: the
+/// subclass ban of LIB-COMPAT-017 stays.
 fn types_in_both_xmi_namespaces(node: Node<'_, '_>) -> bool {
     let typed_in = |uri: &str| {
         node.attributes()

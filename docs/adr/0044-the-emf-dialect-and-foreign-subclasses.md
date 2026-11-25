@@ -5,6 +5,7 @@
 - Date: 2026-11-23
 - Matrix rows: LIB-COMPAT-002, LIB-COMPAT-017; LIB-COMPAT-005 and LIB-CLI-004 use them.
 - Amends: ADR 0016 D1, ADR 0041 D6.
+- Amended: amendment 1 (2026-11-25, an attribute in both XMI namespaces).
 
 ## Context
 
@@ -93,3 +94,17 @@ class in a SACM role is not valid against the SACM XML Schema (rule 4f, Annex B.
   the `convert` subcommand.
 - D-STRICT: EMF's XMI namespace and fragment paths (LIB-COMPAT-002), and an application's
   declared subclasses (LIB-COMPAT-017), are read in tolerant mode only.
+
+## Amendment 1 (2026-11-25): an attribute in both XMI namespaces (LIB-COMPAT-019, slice 0076)
+
+Under D1: when an element carries `id`, `type`, `idref`, `version`, `uuid` or `label` in
+both XMI namespaces, XMI 2.5.1's is read, and EMF's is content in another namespace, kept as
+written (SACM-XMI-003). XMI 2.5.1 §7.5.3 (p. 10): "Each version of XMI is unambiguously
+identified by its unique namespace URI"; with XMI 2.5.1's attribute present, the alias has
+nothing to stand in for. An element that keeps `type` in EMF's namespace or `xsi:type`, and no type in XMI
+2.5.1's, is written with its own `xmi:type` (only a root keeps an `xsi:type`). This replaces slice 0075a's "the first in
+document order". D3's rule that no declaration applies to an element typed in both
+namespaces stays.
+
+*Amendment 1 status: accepted (lead ruling, 2026-11-25: it follows §7.5.3 and keeps every
+verified test; the maintainer may veto).*

@@ -160,6 +160,13 @@ pub(super) enum EditErrorRecord {
         position: usize,
         children: usize,
     },
+    /// [`EditError::KeptRootType`].
+    KeptRootType {
+        code: Code,
+        element: ElementId,
+        attribute: String,
+        value: String,
+    },
 }
 
 impl From<EditError> for EditErrorRecord {
@@ -296,6 +303,16 @@ impl From<EditError> for EditErrorRecord {
                 parent,
                 position,
                 children,
+            },
+            EditError::KeptRootType {
+                element,
+                attribute,
+                value,
+            } => Self::KeptRootType {
+                code,
+                element,
+                attribute,
+                value,
             },
         }
     }
@@ -491,6 +508,19 @@ impl TryFrom<EditErrorRecord> for EditError {
                     parent,
                     position,
                     children,
+                },
+            ),
+            R::KeptRootType {
+                code,
+                element,
+                attribute,
+                value,
+            } => (
+                code,
+                Self::KeptRootType {
+                    element,
+                    attribute,
+                    value,
                 },
             ),
         };
@@ -752,6 +782,7 @@ mod tests {
             EditError::InvalidRoot { .. } => sampled!(EDIT_ERRORS, "InvalidRoot"),
             EditError::ParentInSubtree { .. } => sampled!(EDIT_ERRORS, "ParentInSubtree"),
             EditError::PositionOutOfRange { .. } => sampled!(EDIT_ERRORS, "PositionOutOfRange"),
+            EditError::KeptRootType { .. } => sampled!(EDIT_ERRORS, "KeptRootType"),
         }
     }
 

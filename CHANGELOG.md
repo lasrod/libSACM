@@ -205,6 +205,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   SACM implementation) open, check and write back without loss, the GSN-typed ones with
   the subclass declarations an application would give; interoperability evidence, not
   conformance (`docs/compat/corpus.md`, "What LIB-COMPAT-005 claims") [LIB-COMPAT-005].
+- `EditError::KeptRootType` (SACM-CMD-005): `MoveElement::new` and `CopyElements::new`
+  refuse to make a child of an element that keeps an `xmi:type` or `xsi:type` as preserved
+  content, which only a root can carry; the document is unchanged. Its JSON record is
+  `{"type":"KeptRootType","code":"SACM-CMD-005","element":…,"attribute":…,"value":…}`
+  [LIB-COMPAT-019].
 
 ### Changed
 
@@ -227,6 +232,21 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - A root's type, and each child's type, names a SACM class in any namespace of the root's
   family: for a recognised revision the base and the base with a package name
   [LIB-COMPAT-004].
+
+### Fixed
+
+- A kept type attribute (`type` in XMI 2.5.1's or EMF's XMI namespace, or `xsi:type`), as
+  preserved content or as XMI metadata, keeps the binding of the prefix its value names,
+  so the written file declares it; a
+  prefix `sacm` or `xmi` bound to another namespace, or no prefix under a default
+  namespace, is written as the holder's `nsN` in the value [LIB-COMPAT-019].
+- An element carrying `id`, `type`, `idref`, `version`, `uuid` or `label` in both XMI
+  namespaces is read with XMI 2.5.1's and keeps EMF's as written, where the first in
+  document order was read; a tolerant write no longer writes such an attribute twice
+  [LIB-COMPAT-019].
+- An element that keeps a `type` in EMF's XMI namespace or an `xsi:type`, and none in
+  XMI 2.5.1's, is written with its own `xmi:type`, so it reads back as the same class
+  and the kept type is never read as a declared subclass [LIB-COMPAT-019].
 
 ## [0.3.0] - 2026-11-19
 

@@ -847,7 +847,7 @@ fn lib_compat_002_other_names_in_the_emf_namespace_are_kept_as_written() {
     assert_eq!(roots, ["p"], "{ROW}: {what}: the roots");
     assert_writes_back(what, document);
 
-    // An id in both namespaces: the first in document order is read.
+    // An id in both namespaces: XMI 2.5.1's is read.
     let what = "x:id then xmi:id on a Claim";
     let input = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{EMF_NS}\" \

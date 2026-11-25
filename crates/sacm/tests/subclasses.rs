@@ -1713,10 +1713,9 @@ fn lib_compat_017_a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespac
 }
 
 /// An element whose start tag carries `type` in both XMI namespaces, EMF's
-/// and XMI 2.5.1's, reads as without declarations: the reader takes the
-/// first as its type and keeps the second as written, so a subclass read
-/// from it would be written back beside a second `xmi:type`, and the file
-/// would not open (verifier round 1, B1).
+/// and XMI 2.5.1's, reads as without declarations: the reader takes XMI
+/// 2.5.1's as its type and keeps EMF's as written (LIB-COMPAT-019), and no
+/// declaration applies to either (verifier round 1, B1).
 #[test]
 fn lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations() {
     let open = format!(
