@@ -1,8 +1,8 @@
 ---
 slice: 0077
 name: attribute-limit
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-SEC-007]
 mode: pr
 base: main (fd4025c)
@@ -57,3 +57,5 @@ maintainer, 2026-11-25: a limit, not a fork; default 256).
   controls K1 to K6 in a new test; the verifier's wording W1 to W7 and three more wording
   items. New row LIB-SEC-008 (planned, M6): refuse a repeated declaration as malformed XML,
   its own small slice next.
+- 2026-11-25 verify round 2 at 3406ef4: PASS. Record `docs/verification/0077-attribute-limit.md`;
+  LIB-SEC-007 verified; LIB-SEC-008's requirement reworded with the verifier's text.
