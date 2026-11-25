@@ -5,11 +5,10 @@
 //! that element's attributes. `Limits::with_max_attributes` bounds the
 //! attributes of one element that `xmi::read` accepts, in both modes, by
 //! default 256: every attribute in a start tag counts, `xml:` attributes and
-//! repeats included, except the namespace declarations `xmlns` and
-//! `xmlns:p`, which `max_namespace_bindings` bounds. LIB-SEC-003's scan
-//! before parsing counts them at each start tag, after the depth, the
-//! bindings in scope and the namespace copies, and refuses an element over
-//! the limit with `ReadError::LimitExceeded` (SACM-SEC-003,
+//! repeats included, the first namespace declaration of each prefix not
+//! counted. LIB-SEC-003's scan before parsing counts them at each start tag,
+//! after the depth, the bindings in scope and the namespace copies, and
+//! refuses an element over the limit with `ReadError::LimitExceeded` (SACM-SEC-003,
 //! `Limit::Attributes`, template `SACM-SEC-003/attributes`) at the `<` of its
 //! start tag, wherever it stands. A read at the defaults is then linear in
 //! its input.
@@ -569,9 +568,9 @@ fn lib_sec_007_the_default_edge() {
 
 // --- 6. A hostile element --------------------------------------------------------------
 
-/// Asserts that `input`, read in each mode at the defaults within
-/// [`DEADLINE`], is refused for its attributes at `at`.
-fn assert_refused_in_time(what: &str, input: &str, at: SourceLocation) {
+/// The refusal of `input`, read in each mode at the defaults within
+/// [`DEADLINE`], which must be the same in both.
+fn refused_in_time(what: &str, input: &str) -> ReadError {
     let mut refusals = Vec::new();
     for mode in MODES {
         match read_in_time(what, input.to_owned(), mode, DEADLINE) {
@@ -589,6 +588,13 @@ fn assert_refused_in_time(what: &str, input: &str, at: SourceLocation) {
         tolerant, strict,
         "{ROW}: {what}: the modes refuse differently"
     );
+    strict.clone()
+}
+
+/// Asserts that `input`, read in each mode at the defaults within
+/// [`DEADLINE`], is refused for its attributes at `at`.
+fn assert_refused_in_time(what: &str, input: &str, at: SourceLocation) {
+    let strict = &refused_in_time(what, input);
     assert!(
         matches!(
             strict,
@@ -803,5 +809,100 @@ fn lib_sec_007_the_refusal_serializes_with_its_limit() {
             .unwrap_or_else(|failure| panic!("{ROW}: Limit::Attributes: {failure}")),
         serde_json::json!("attributes"),
         "{ROW}: the JSON of Limit::Attributes"
+    );
+}
+
+// --- 10. Repeated namespace declarations -----------------------------------------------
+
+/// The `xml` namespace, which `xmlns:xml` may declare.
+const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
+
+/// `count` copies of `item`.
+fn repeated(item: &str, count: usize) -> String {
+    item.repeat(count)
+}
+
+#[test]
+fn lib_sec_007_a_repeated_namespace_declaration_counts() {
+    let one = attributes(1);
+    // K1: the second `xmlns` and `b` are 2 under a limit of 1.
+    assert_exceeded(
+        "K1: xmlns twice and one attribute",
+        b"<a xmlns=\"\" xmlns=\"\" b=\"1\"/>",
+        one,
+        1,
+        loc(1, 1),
+    );
+    // K2: the second `xmlns:xml` and `b` are 2.
+    let xml = format!("<a xmlns:xml=\"{XML_NAMESPACE}\" xmlns:xml=\"{XML_NAMESPACE}\" b=\"1\"/>");
+    assert_exceeded(
+        "K2: xmlns:xml twice and one attribute",
+        xml.as_bytes(),
+        one,
+        1,
+        loc(1, 1),
+    );
+    // K3: the second `xmlns:p` and `b` are 2: the limit comes before the
+    // parser's duplicate check, so it is LimitExceeded, not Malformed.
+    assert_exceeded(
+        "K3: xmlns:p twice and one attribute",
+        b"<a xmlns:p=\"u\" xmlns:p=\"u\" b=\"1\"/>",
+        one,
+        1,
+        loc(1, 1),
+    );
+    // K4: 100,000 `xmlns` and 100,000 `xmlns:xml` on a root, at the defaults.
+    let what = "K4: a root of 100,000 xmlns and 100,000 xmlns:xml";
+    let root = format!(
+        "{R}{}{}/>",
+        repeated(" xmlns=\"u\"", 100_000),
+        repeated(&format!(" xmlns:xml=\"{XML_NAMESPACE}\""), 100_000)
+    );
+    assert_refused_in_time(what, &root, loc(1, 1));
+    drop(root);
+    // K5: 40,000 `xmlns=""` before the root's `sacm` and `xmi` declarations,
+    // over 40,000 Claims, each of whose names the parser looks up past them.
+    let what = "K5: a root of 40,000 xmlns over 40,000 Claims";
+    let mut claims = String::new();
+    for k in 0..40_000 {
+        let _ = write!(
+            claims,
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c{k}\"/>"
+        );
+    }
+    let root = format!(
+        "<sacm:ArgumentPackage{}\
+         xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">{claims}{END}",
+        repeated(" xmlns=\"\"", 40_000) + " "
+    );
+    assert_refused_in_time(what, &root, loc(1, 1));
+    drop(root);
+    // K6: 100,000 distinct prefixes on one start tag are over the bindings
+    // limit, found in time: the check for a repeat is not a search of the
+    // tag's earlier declarations.
+    let what = "K6: a start tag of 100,000 distinct prefixes";
+    let mut tag = String::from("<a");
+    for k in 0..100_000 {
+        let _ = write!(tag, " xmlns:p{k}=\"u\"");
+    }
+    tag.push_str("/>");
+    let error = refused_in_time(what, &tag);
+    assert!(
+        matches!(
+            error,
+            ReadError::LimitExceeded {
+                limit: Limit::NamespaceBindings,
+                max: 256,
+                location: Some(location),
+                ..
+            } if location == loc(1, 1)
+        ),
+        "{ROW}: {what}: not LimitExceeded {{ NamespaceBindings, 256 }} at (1, 1): {error:?}"
+    );
+    assert_eq!(
+        (error.code().as_str(), error.template()),
+        ("SACM-SEC-003", "SACM-SEC-003/namespace-bindings"),
+        "{ROW}: {what}: the code and template"
     );
 }

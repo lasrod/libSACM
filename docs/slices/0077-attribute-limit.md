@@ -49,3 +49,11 @@ maintainer, 2026-11-25: a limit, not a fork; default 256).
   lead-approved: `template.rs` unit test 212 -> 213, `xtask/tests/message_templates.rs`
   `REFUSAL_TEMPLATES` 102 -> 103. Lead finished the CHANGELOG Added sentence and the
   compliance-points Size bullet. Row `implemented`.
+- 2026-11-25 verify round 1 at e4de6a1: FAIL. Repeated namespace declarations (`xmlns`,
+  `xmlns:xml`), which roxmltree 0.21.2 does not refuse and the slice left uncounted, still
+  make a read at the defaults quadratic (a strict read of 40,000 repeated `xmlns=""` over
+  40,000 Claims: 3.7 s release, no diagnostic). Lead rulings for the one fix round: a
+  declaration that repeats a prefix in the same start tag counts (O(1) per declaration);
+  controls K1 to K6 in a new test; the verifier's wording W1 to W7 and three more wording
+  items. New row LIB-SEC-008 (planned, M6): refuse a repeated declaration as malformed XML,
+  its own small slice next.

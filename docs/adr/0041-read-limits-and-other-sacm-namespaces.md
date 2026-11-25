@@ -106,8 +106,7 @@ them (slice 0077: with the parser's check removed, 400,000 kept attributes on on
 read in 3.0 s debug, twice the time of 200,000).
 
 - **D8. An attribute limit.** `Limits::with_max_attributes` adds a fifth limit, by default
-  256: the attributes of one element, which is every attribute in its start tag except the
-  namespace declarations `xmlns` and `xmlns:p`, which D1's bindings limit bounds. The
+  256: the attributes of one element, which is every attribute in its start tag except the first declaration of each prefix (`xmlns` or `xmlns:p`), which D1's bindings limit bounds. A declaration that repeats one in the same start tag counts: roxmltree 0.21.2 does not refuse a repeated `xmlns` or `xmlns:xml`, and each repeat lengthens every namespace lookup at and under the element. The
   pre-parse scan counts them at each start tag, after the depth, the bindings in scope and
   the copies. It refuses an element over the limit at its `<` with
   `ReadError::LimitExceeded`, `Limit::Attributes`, template `SACM-SEC-003/attributes`, in
@@ -133,7 +132,7 @@ not yet released, gains the limit.
 
 Alternatives considered: bumping roxmltree (no release fixes it); a fork (see D9); counting
 namespace declarations (rejected: they would collide with the 256-binding limit at a root
-that declares many namespaces, and the writer adds declarations to kept elements); refusing
+that declares many namespaces, and the writer adds declarations to kept elements; a repeated declaration is counted, since it binds nothing new); refusing
 at the first attribute over the limit (rejected: the other scan limits locate at the `<`).
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-25: a limit, not a fork; default

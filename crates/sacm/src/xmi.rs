@@ -890,13 +890,14 @@ pub use limits::{Limit, Limits};
 /// # Limits
 ///
 /// Both modes read under the [`Limits`] of [`ReadOptions::with_limits`]
-/// (LIB-SEC-003): by default 32 MiB of input, a nesting depth of 256,
-/// 1,000,000 XML nodes, 256 namespace bindings in scope at an element and
-/// 256 attributes on an element. A breach is [`ReadError::LimitExceeded`]
-/// (SACM-SEC-003). The size is checked first, on the bytes; the depth, the
+/// (LIB-SEC-003, LIB-SEC-007): by default 32 MiB of input, a nesting depth
+/// of 256, 1,000,000 XML nodes, 256 namespace bindings in scope at an
+/// element and 256 attributes on an element. A breach is
+/// [`ReadError::LimitExceeded`] (SACM-SEC-003). The size is checked first, on the bytes; the depth, the
 /// bindings in scope, the bindings in scope at the elements that declare one
-/// (which count against the node limit) and the attributes of each element
-/// by one linear scan before parsing; and the nodes by the parser.
+/// (which count against the node limit) and the attributes of each element,
+/// the first namespace declaration of each prefix not counted, by one linear
+/// scan before parsing; and the nodes by the parser.
 /// Everything else a read keeps besides the parsed tree counts against the
 /// size limit, in one budget (ADR 0041 amendment 1): the namespace text that
 /// preserved content keeps, each namespace URI of a kept name and
@@ -1053,9 +1054,9 @@ pub use limits::{Limit, Limits};
 ///    after the last whole character; ISO-8859-1 has none;
 /// 7. the scan before parsing, at each start tag in document order: the
 ///    depth, the bindings in scope, the bindings in scope at the elements
-///    that declare one, and the attributes of the element, namespace
-///    declarations not counted (`LimitExceeded`). The scan stops at a
-///    DOCTYPE;
+///    that declare one, and the attributes of the element, the first
+///    namespace declaration of each prefix not counted (`LimitExceeded`). The
+///    scan stops at a DOCTYPE;
 /// 8. the parse: a DOCTYPE (`Doctype`), the node limit (`LimitExceeded`), or
 ///    a well-formedness error (`Malformed`), whichever comes first;
 /// 9. the well-formedness errors this release refuses after the XML parser
@@ -2256,8 +2257,8 @@ pub enum ReadError {
         details: Details,
     },
     /// The input passes one of the [`Limits`] of
-    /// [`ReadOptions::with_limits`] (SACM-SEC-003, LIB-SEC-003), in either
-    /// mode. Fix: if the file is trusted, read it with higher limits.
+    /// [`ReadOptions::with_limits`] (SACM-SEC-003, LIB-SEC-003, LIB-SEC-007),
+    /// in either mode. Fix: if the file is trusted, read it with higher limits.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
