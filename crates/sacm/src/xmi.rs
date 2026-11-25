@@ -1062,8 +1062,9 @@ pub use limits::{Limit, Limits};
 /// 9. the well-formedness errors this release refuses after the XML parser
 ///    has accepted the input, the earliest first (`Malformed`): a character
 ///    reference to a surrogate or above U+10FFFF, a declaration of the
-///    namespace prefix `xmlns` (`xmlns:xmlns`), a namespace prefix
-///    undeclared with `xmlns:p=""`, an element or attribute name with an
+///    namespace prefix `xmlns` (`xmlns:xmlns`), a namespace declaration
+///    repeated in one start tag (`xmlns`, or `xmlns:xml`, twice), a namespace
+///    prefix undeclared with `xmlns:p=""`, an element or attribute name with an
 ///    empty prefix (`<:c>`, `</:c>`, ` :a="1"`), and a processing instruction
 ///    whose target (the XML Name after `<?`) is `xml` in any letter case,
 ///    contains a colon, or is followed by neither white space nor `?>`.

@@ -244,6 +244,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - An unprefixed type value is resolved in the default namespace in scope, also when it
   names a subclass declared with `ReadOptions::with_subclass` [LIB-COMPAT-017,
   LIB-COMPAT-019].
+- `xmi::read` refuses, in both modes, a start tag that declares the default namespace
+  (`xmlns`) or the prefix `xml` twice, as `ReadError::Malformed` (SACM-XML-001;
+  `SACM-XML-001/duplicate-attribute`, or `/duplicate-prefix` for `xmlns:xml`), as
+  XML 1.0 §3.1 requires; it read such a file [LIB-SEC-008].
 
 ### Fixed
 
