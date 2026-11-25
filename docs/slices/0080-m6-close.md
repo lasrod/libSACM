@@ -1,8 +1,8 @@
 ---
 slice: 0080
 name: m6-close
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-003, LIB-COMPAT-005, SACM23-XMI-002, LIB-SEC-003, SACM23-CP-001, SACM23-CP-002, SACM23-CP-003, SACM23-CP-004]
 mode: pr
 base: main (d71d139)
@@ -51,3 +51,6 @@ Quality slice: acceptance by the lead. Rows in the header carry the main wording
   EMF, corpus and Difference-target sentences were too broad; stale template counts).
   Fix round: the verifier's exact text, lead (matrix, READMEs, corpus.md, statement,
   architecture.md) and builder (lib.rs, xmi.rs).
+- 2026-11-26 verify round 2 at 7155bc0: PASS for all eight rows; its four wording items
+  applied (corpus file 6, the `Mode` docs, architecture.md, a stray space). Record
+  `docs/verification/0080-m6-close.md`. M6 closed.

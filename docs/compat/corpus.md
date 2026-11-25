@@ -146,8 +146,9 @@ read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equ
 Five files of this corpus, from three tool families independent of this crate, open, are
 checked for dangling references and write back without loss: ACEditor (7),
 Epsilon (8, 9), and the EMF SACM implementation wrwei/SACM as SysMLine and SysMini use it
-(12, 13). `cargo test -p xtask --test corpus` checks every fact below (`lib_compat_005_*`);
-without the corpus, those tests are skipped.
+(12, 13). Of the other third-party files, file 6, which no SACM tool wrote, opens, and files 10,
+11, 14 and 15 do not open yet (see Findings). `cargo test -p xtask --test corpus` checks every
+fact below (`lib_compat_005_*`); without the corpus, those tests are skipped.
 
 For each of the five files:
 - a tolerant read opens it, with one SACM-XMI-015 Warning for EMF's XMI namespace;
