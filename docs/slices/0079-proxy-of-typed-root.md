@@ -1,8 +1,8 @@
 ---
 slice: 0079
 name: proxy-of-typed-root
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-020]
 mode: pr
 base: main (4ad29a6)
@@ -46,3 +46,6 @@ XMI 2.5.1 §7.10.1, §9.5.2 rule 2g, §7.8.1; D-ROOT-NAME, D-RT, D-PRESERVE; LIB
 - 2026-11-25 step 2 done (builder): built as designed; builder's gate green (3267 workspace,
   497 xtask, corpus not skipped); 21 hand mutants, 20 killed, `min_by_key` vs `find` in
   `Kept::kept_type` equivalent (root types are kept in input order). Row `implemented`.
+- 2026-11-25 verify round 1 at 60c06af: PASS. The verifier's wording applied (roots.rs docs,
+  diagnostics.md, compliance-points.md, CHANGELOG, ADR 0042 amendment 1). Record
+  `docs/verification/0079-proxy-of-typed-root.md`; LIB-COMPAT-020 verified.

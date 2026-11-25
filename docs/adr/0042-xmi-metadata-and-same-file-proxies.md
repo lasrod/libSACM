@@ -96,8 +96,9 @@ preserved content: `proxy-of-typed-root`, checked after `proxy-of-linked-root` a
 attribute gives the class (XMI 2.5.1 §9.5.2 rule 2g), so the root written in the proxy's
 place would read back as another class or be kept whole, and D-RT would fail. This is the
 rule `MoveElement` and `CopyElements` follow (`EditError::KeptRootType`, ADR 0033 amendment
-2). A root whose types name a declared subclass of its own class holds the subclass, not a
-type attribute, and moves. So does a root keeping only an EMF `type`, which a write gives
+2). In tolerant mode, a root whose types name a declared subclass of its own class holds the
+subclass, not a type attribute, and moves; a strict read ignores declarations, so its type
+is kept and its proxy is `proxy-of-typed-root`. So does a root keeping only an EMF `type`, which a write gives
 its own `xmi:type` (ADR 0044 amendment 1).
 
 Rejected alternatives: moving the root and dropping the type (D-PRESERVE); moving it and

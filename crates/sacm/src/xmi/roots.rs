@@ -3887,9 +3887,10 @@ enum Unresolved {
 /// at its `<` affecting the container: an Error in strict mode, a Warning
 /// in tolerant mode. A root that keeps a link attribute is not moved:
 /// written in a proxy's place, it would read back as a role element with a
-/// link and content, which is no element. A root that keeps `xmi:type` or `xsi:type` as preserved content
-/// is not moved: in a proxy's place its type would give the child's class
-/// (XMI 2.5.1 rule 2g; LIB-COMPAT-020, D-ROOT-NAME).
+/// link and content, which is no element. A root that keeps `xmi:type` or
+/// `xsi:type` as preserved content is not moved: in a proxy's place its type
+/// would give the child's class (XMI 2.5.1 §9.5.2 rule 2g; LIB-COMPAT-020,
+/// D-ROOT-NAME).
 ///
 /// The checks, in order: 1 the id names no root (`proxy-of-no-root`), 2
 /// the root's kind is not admitted (`proxy-wrong-kind`), 3 the root keeps a
@@ -3989,7 +3990,7 @@ fn resolve(
 /// as no root is named (1), or one of a kind its role or its type does not
 /// admit (2), or one that keeps an `href` or an `xmi:idref` (3), or one that
 /// keeps an `xmi:type` or `xsi:type` as preserved content (4): in a proxy's
-/// place its type would give the child's class (XMI 2.5.1 rule 2g;
+/// place its type would give the child's class (XMI 2.5.1 §9.5.2 rule 2g;
 /// LIB-COMPAT-020, D-ROOT-NAME). The type named is the first such attribute
 /// in input order, the one an edit's `KeptRootType` names.
 fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
@@ -4177,9 +4178,9 @@ fn input_depth(node: Node<'_, '_>) -> u64 {
 /// root that another such proxy names too is kept, as shared. `count` is the
 /// number of roots. A proxy kept by checks 1 to 4 counts toward no root: a
 /// root that keeps `xmi:type` or `xsi:type` as preserved content is not
-/// moved, as in a proxy's place its type would give the child's class (XMI
-/// 2.5.1 rule 2g; LIB-COMPAT-020), so its proxies are `proxy-of-typed-root`,
-/// never `proxy-shared`.
+/// moved, as in a proxy's place its type would give the child's class
+/// (XMI 2.5.1 §9.5.2 rule 2g; LIB-COMPAT-020), so its proxies are
+/// `proxy-of-typed-root`, never `proxy-shared`.
 fn mark_shared(outcomes: &mut [Result<usize, Unresolved>], count: usize) {
     let mut naming = vec![0_usize; count];
     for &root in outcomes.iter().flatten() {

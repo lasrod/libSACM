@@ -151,8 +151,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   followed. Otherwise it is kept whole in its container with SACM-XMI-003
   (`SACM-XMI-003/proxy-of-no-root`, `/proxy-wrong-kind`, `/proxy-of-linked-root`,
   `/proxy-of-typed-root`, `/proxy-shared`, `/proxy-cycle`, checked in that order); a root
-  that keeps an `href` or an `xmi:idref` of its own, or an `xmi:type` or `xsi:type` that
-  only a root can carry, is not moved. Depth is counted as resolved: a moved root takes
+  that keeps an `href` or an `xmi:idref` of its own, or an XMI 2.5.1 `xmi:type` or an `xsi:type` that only a root can carry, is not moved. Depth is counted as resolved: a moved root takes
   its proxy's depth and its tree shifts with it, and an element nested deeper than
   `Limits::max_depth` refuses the read as `ReadError::LimitExceeded`
   (`SACM-SEC-003/depth`) [SACM23-XMI-030, LIB-COMPAT-020].
