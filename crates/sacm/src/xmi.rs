@@ -52,10 +52,11 @@
 //!
 //! # Modes
 //!
-//! Both take a [`Mode`] in their options (ADR 0022, ADR 0035).
-//! [`ReadOptions`] default to tolerant, so that an application opens any
-//! well-formed SACM file, and [`WriteOptions`] to strict, so that what it
-//! saves is schema-valid.
+//! Both take a [`Mode`] in their options (ADR 0022, ADR 0035). [`ReadOptions`]
+//! default to tolerant, so that an application opens a well-formed SACM file
+//! that a strict read refuses for a defect it can keep (the table below lists
+//! what a tolerant read still refuses), and [`WriteOptions`] to strict, so that
+//! what it saves is schema-valid.
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
@@ -1439,12 +1440,14 @@ pub enum Mode {
     /// read, and a write refuses a document that holds preserved content or
     /// whose output would not be schema-valid.
     Strict,
-    /// Opens every well-formed SACM file within its [`Limits`]: a read keeps
-    /// what a strict read refuses, with a Warning, reads a root in an older
-    /// SACM revision's or a SACM-like namespace as SACM 2.3, the dialect EMF
-    /// writes as XMI 2.5.1, and elements typed with classes the application
-    /// declares subclasses of SACM 2.3 classes as those classes, and a write
-    /// writes the document as it is held.
+    /// Opens a well-formed SACM file unless it is one of the inputs the
+    /// [`Mode`] docs list as refused (a DOCTYPE, a repeated `xmi:id`, an
+    /// encoding, a SACM 2.4 root, an `XMI` element in another XMI namespace, a
+    /// limit): a read keeps what a strict read refuses, with a Warning, reads a
+    /// root in an older SACM revision's or a SACM-like namespace as SACM 2.3,
+    /// the dialect EMF writes as XMI 2.5.1, and elements typed with classes the
+    /// application declares subclasses of SACM 2.3 classes as those classes,
+    /// and a write writes the document as it is held.
     Tolerant,
 }
 

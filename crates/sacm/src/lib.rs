@@ -88,9 +88,12 @@
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
 //!   see [Preserved content](xmi::read#preserved-content)). A tolerant read,
-//!   the default, opens a well-formed file with SACM package roots unless it
-//!   has a DOCTYPE, repeats an `xmi:id`, is in an encoding it cannot decode or
-//!   passes the read limits ([`Limits`](xmi::Limits)): what a strict read
+//!   the default, opens a well-formed file whose roots are all SACM packages,
+//!   in SACM 2.3 or, with a Warning, an older SACM revision's or a SACM-like
+//!   namespace, unless it has a DOCTYPE, a SACM 2.4 root, an `XMI` element in a
+//!   namespace other than XMI 2.5.1's or EMF's `http://www.omg.org/XMI`, a
+//!   repeated `xmi:id` or an encoding it cannot decode, or passes the parser's
+//!   capacity or the read limits ([`Limits`](xmi::Limits)): what a strict read
 //!   refuses, such as a value that is no literal or an untyped child under an
 //!   abstract role, it keeps as preserved content with a Warning, never dropped
 //!   (see [Modes](xmi#modes)). An element without an `xmi:id` gets a generated

@@ -43,3 +43,11 @@ Quality slice: acceptance by the lead. Rows in the header carry the main wording
 
 - 2026-11-25 started from main d71d139 after #109 (M6 22/22 verified); audit applied by the
   lead; `lib.rs` crate doc by the builder.
+- Not applied: audit item 12's last bullet (follow-up #10, CLAUDE.md and the sacm-expert
+  skill naming XML Schema Part 2), which needs the maintainer's OK; it stays in
+  docs/follow-ups.md. LIB-API-018 says 111 diagnostic templates, not the audit's 110,
+  because slice 0079 added `SACM-XMI-003/proxy-of-typed-root`.
+- 2026-11-25 verify round 1 at 2a7a745: FAIL on wording only (the audit's tolerant-open,
+  EMF, corpus and Difference-target sentences were too broad; stale template counts).
+  Fix round: the verifier's exact text, lead (matrix, READMEs, corpus.md, statement,
+  architecture.md) and builder (lib.rs, xmi.rs).

@@ -143,8 +143,8 @@ read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equ
 
 ## What LIB-COMPAT-005 claims
 
-Files that tools independent of this crate wrote open, are checked for dangling references
-and write back without loss. The evidence is five files of this corpus, from three tool families: ACEditor (7),
+Five files of this corpus, from three tool families independent of this crate, open, are
+checked for dangling references and write back without loss: ACEditor (7),
 Epsilon (8, 9), and the EMF SACM implementation wrwei/SACM as SysMLine and SysMini use it
 (12, 13). `cargo test -p xtask --test corpus` checks every fact below (`lib_compat_005_*`);
 without the corpus, those tests are skipped.

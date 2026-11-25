@@ -59,7 +59,7 @@ says what that covers and where it stops.
   is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
-  opens a well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 or ISO-8859-1, or passes its read limits (by default 32 MiB,
+  opens a well-formed file whose roots are all SACM packages (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, has an `XMI` element in a namespace other than XMI 2.5.1's or EMF's `http://www.omg.org/XMI`, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 with a byte order mark or ISO-8859-1, or passes the XML parser's capacity or its read limits (by default 32 MiB,
   depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an
   element, not counting one namespace declaration per prefix): what a strict read
   refuses, such as a value that is no literal or an untyped child under an abstract role, it keeps as

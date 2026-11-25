@@ -113,8 +113,8 @@ standard leaves a gap:
 - **XMI metadata** (documentation, extensions, differences, `xmi:uuid`, `xmi:label`) is
   written back exactly as read. A strict write checks only its ids and IDREFs; if it was
   otherwise not valid against XMI.xsd when read, it is not valid when written (ADR 0043
-  S7). Differences are never applied. An `xmi:id` inside a Difference's `target`, whose
-  content XMI.xsd does not check (`processContents="skip"`), is still read as an id: one
+  S7). Differences are never applied. An `xmi:id` on or inside a Difference's `target`, whose attributes and content XMI.xsd
+  does not check (`processContents="skip"`), is still read as an id: one
   that repeats another `xmi:id` refuses the read in both modes (SACM-ID-001), and one that
   is no NCName makes a strict write refuse the document (SACM-ID-002; SACM23-XMI-031).
 - **Links to other files** are held and written back, never resolved.
