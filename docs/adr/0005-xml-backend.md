@@ -46,9 +46,10 @@ XML library type may appear in the public API.
     namespace-duplicate attribute is refused with SACM-XML-001, where C++ loads it. Such
     a file does not conform to the SACM XML Schema, so SACM 2.3 clause 2 (Conformance)
     holds. roxmltree is not a complete checker, though. It accepts a character reference
-    to a surrogate (and turns it into U+FFFD), an undeclaring `xmlns:p=""`, and unknown
-    XML-declaration pseudo-attributes. SACM23-XMI-001 must refuse or report these before
-    any content is returned.
+    to a surrogate (and turns it into U+FFFD), an undeclaring `xmlns:p=""`, unknown
+    XML-declaration pseudo-attributes, and a repeated `xmlns` or `xmlns:xml` in one start
+    tag (LIB-SEC-008). SACM23-XMI-001 must refuse or report these before any content is
+    returned.
     Today LIB-SEC-005 refuses a closed list of such leniencies (slice 0021), and
     LIB-SEC-006 runs the W3C XML Conformance Test Suite 20130923 (fetched, never
     committed): every applicable not-well-formed case is refused. Leniencies outside the

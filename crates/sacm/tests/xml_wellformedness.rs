@@ -3,7 +3,8 @@
 //! `ReadError::Malformed` (SACM-XML-001) instead of repairing (LIB-SEC-005;
 //! ADR 0005 B1, ADR 0016), and the declaration of the namespace prefix
 //! `xmlns` that the W3C XML Conformance Test Suite case rmt-ns10-032 found
-//! (LIB-SEC-006 items 8-10).
+//! (LIB-SEC-006 items 8-10), and a namespace declaration repeated in one
+//! start tag (LIB-SEC-008).
 //!
 //! Every input is an inline byte string. Most put a readable root after the
 //! construct under test, so an input that is not refused reads `Ok`, and one
@@ -27,7 +28,7 @@ use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::model::{ElementId, SacmElement};
-use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
+use sacm::xmi::{self, Limit, Limits, Mode, ReadError, ReadOptions, ReadOutput};
 
 mod common;
 
@@ -1947,4 +1948,584 @@ fn lib_sec_006_the_tree_oracle_sweep_with_xmlns_xmlns_declarations_agrees() {
             && counts.not_refused >= counts.accepted / 10,
         "{row}: the sweep is too narrow: {counts:?}"
     );
+}
+
+// --- LIB-SEC-008. A repeated namespace declaration ---------------------------------
+//
+// XML 1.0 §3.1 WFC: Unique Att Spec: "An attribute name MUST NOT appear more
+// than once in the same start-tag or empty-element tag." A namespace
+// declaration is an attribute (Namespaces 1.0 §3: "Such an attribute's name
+// must either be xmlns or begin xmlns:."). roxmltree refuses a repeated
+// `xmlns:p` for an ordinary `p` itself, but reads a repeated `xmlns` or
+// `xmlns:xml`.
+//
+// Most inputs below are L2: the readable root's start tag with `xmi:id="p"`,
+// a line feed and two spaces, so what follows starts at line 2, column 3.
+
+/// The read modes: a repeated declaration is refused alike in each.
+const BOTH_MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
+
+/// The namespace name of the prefix `xml` (X).
+const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
+
+/// The reason of the refusal of a repeated `xmlns` (D-a).
+const REPEATED_XMLNS: &str = "an element has the attribute \"xmlns\" more than once";
+
+/// The reason of the refusal of a repeated `xmlns:xml` (D-x).
+const REPEATED_XMLNS_XML: &str = "the namespace prefix \"xml\" is declared twice on one element";
+
+/// L2: the readable root's start tag with `xmi:id="p"`, a line feed, two
+/// spaces and `rest`, which so starts at line 2, column 3.
+fn l2(rest: &str) -> String {
+    format!("{ROOT_START} xmi:id=\"p\"\n  {rest}")
+}
+
+/// `xmlns:xml` bound to X, its value quoted with `quote`.
+fn xml_declaration(quote: char) -> String {
+    format!("xmlns:xml={quote}{XML_NAMESPACE}{quote}")
+}
+
+/// The text of `input` from `line` and `column` on (1-based, in characters;
+/// lines end with LF), so a test can check its own positions.
+fn text_at<'a>(row: &str, input: &'a str, line: u32, column: u32) -> &'a str {
+    let mut start = 0;
+    for _ in 1..line {
+        let Some(end) = input[start..].find('\n') else {
+            panic!("{row}: setup: {input:?} has no line {line}");
+        };
+        start += end + 1;
+    }
+    let rest = &input[start..];
+    let skip = usize::try_from(column.saturating_sub(1)).unwrap_or(usize::MAX);
+    match rest.char_indices().nth(skip) {
+        Some((offset, _)) => &rest[offset..],
+        None => panic!("{row}: setup: line {line} of {input:?} has no column {column}"),
+    }
+}
+
+/// A `Malformed` refusal that a LIB-SEC-008 test expects.
+struct Expected<'a> {
+    line: u32,
+    column: u32,
+    /// The text the input has at the location: a setup check of the test's
+    /// position.
+    at: &'a str,
+    template: &'a str,
+    /// The arguments, as `(name, text)`, in order.
+    arguments: &'a [(&'a str, &'a str)],
+    /// The `Display` after `<lead> at line L, column C: `.
+    reason: &'a str,
+    /// The names the `Display` quotes wherever they appear.
+    quoted: &'a [&'a str],
+}
+
+/// A repeated `xmlns` refused at `line` and `column`: duplicate-attribute
+/// `xmlns`, D-a.
+fn repeated_xmlns(line: u32, column: u32) -> Expected<'static> {
+    Expected {
+        line,
+        column,
+        at: "xmlns",
+        template: "SACM-XML-001/duplicate-attribute",
+        arguments: &[("attribute", "xmlns")],
+        reason: REPEATED_XMLNS,
+        quoted: &["xmlns"],
+    }
+}
+
+/// A repeated `xmlns:xml` refused at `line` and `column`: duplicate-prefix
+/// `xml`, D-x.
+fn repeated_xmlns_xml(line: u32, column: u32) -> Expected<'static> {
+    Expected {
+        line,
+        column,
+        at: "xmlns:xml=",
+        template: "SACM-XML-001/duplicate-prefix",
+        arguments: &[("prefix", "xml")],
+        reason: REPEATED_XMLNS_XML,
+        quoted: &["xml"],
+    }
+}
+
+/// Asserts that `input`, under the default limits, is refused in both modes
+/// as `expected`, after checking that `expected.at` is where `expected`
+/// says.
+fn assert_refused(row: &str, what: &str, input: &str, expected: &Expected<'_>) {
+    assert_refused_under(row, what, input, Limits::default(), expected);
+}
+
+/// [`assert_refused`] under `limits`.
+fn assert_refused_under(
+    row: &str,
+    what: &str,
+    input: &str,
+    limits: Limits,
+    expected: &Expected<'_>,
+) {
+    let found = text_at(row, input, expected.line, expected.column);
+    assert!(
+        found.starts_with(expected.at),
+        "{row}: setup: {what}: line {}, column {} of {input:?} is {:?}, not {:?}",
+        expected.line,
+        expected.column,
+        found.chars().take(16).collect::<String>(),
+        expected.at
+    );
+    assert_refused_bytes(row, what, input.as_bytes(), limits, expected);
+}
+
+/// Asserts that `input`, read under `limits` in both modes, is refused as
+/// `Malformed` with SACM-XML-001, `expected`'s template, arguments,
+/// location and exact `Display`, in the LIB-SEC-002 form.
+fn assert_refused_bytes(
+    row: &str,
+    what: &str,
+    input: &[u8],
+    limits: Limits,
+    expected: &Expected<'_>,
+) {
+    for mode in BOTH_MODES {
+        let options = ReadOptions::default().with_mode(mode).with_limits(limits);
+        let error = match read_with(row, input, options) {
+            Ok(output) => panic!(
+                "{row}: {what} ({mode:?}): read returned a document, with {} diagnostics, \
+                 for {}; expected Malformed {}",
+                output.diagnostics().len(),
+                preview(input),
+                expected.template
+            ),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error, ReadError::Malformed { .. }),
+            "{row}: {what} ({mode:?}): expected Malformed {}, got {error:?} ({error})",
+            expected.template
+        );
+        assert_eq!(
+            (error.code(), error.template(), error.location()),
+            (
+                Code::XML_MALFORMED,
+                expected.template,
+                Some(loc(row, expected.line, expected.column))
+            ),
+            "{row}: {what} ({mode:?}): code(), template() and location() of {error}"
+        );
+        let arguments: Vec<(&str, Option<&str>)> = error
+            .arguments()
+            .iter()
+            .map(|argument| (argument.name(), argument.value().as_text()))
+            .collect();
+        let wanted: Vec<(&str, Option<&str>)> = expected
+            .arguments
+            .iter()
+            .map(|&(name, text)| (name, Some(text)))
+            .collect();
+        assert_eq!(
+            arguments, wanted,
+            "{row}: {what} ({mode:?}): the arguments of {error}"
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{MALFORMED_LEAD} at line {}, column {}: {}",
+                expected.line, expected.column, expected.reason
+            ),
+            "{row}: {what} ({mode:?}): the Display"
+        );
+        assert_malformed_form(row, &error, expected.quoted);
+    }
+}
+
+#[test]
+fn lib_sec_008_a_repeated_xmlns_is_malformed_at_the_repeat() {
+    let row = "LIB-SEC-008";
+    let cases = [
+        ("empty, on the root", l2("xmlns=\"\" xmlns=\"\"/>"), 2, 12),
+        ("not empty", l2("xmlns=\"urn:x\" xmlns=\"urn:y\"/>"), 2, 17),
+        (
+            "single quotes, white space around =",
+            l2("xmlns='' xmlns = ''/>"),
+            2,
+            12,
+        ),
+        (
+            "three times: at the first repeat",
+            l2("xmlns=\"\" xmlns=\"\" xmlns=\"\"/>"),
+            2,
+            12,
+        ),
+        (
+            "an attribute between",
+            l2("xmlns=\"\" b=\"1\" xmlns=\"\"/>"),
+            2,
+            18,
+        ),
+        (
+            "across lines",
+            format!("{ROOT_START} xmi:id=\"p\"\n  xmlns=\"\"\n  xmlns=\"\"/>"),
+            3,
+            3,
+        ),
+        (
+            "on a foreign child",
+            format!("{ROOT_START} xmi:id=\"p\">\n  <c xmlns=\"\" xmlns=\"\"/>\n{ROOT_END}"),
+            2,
+            15,
+        ),
+        (
+            "on a SACM child",
+            format!(
+                "{ROOT_START} xmi:id=\"p\">\n<argumentElement xmlns=\"\" xmlns=\"\" \
+                 xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n{ROOT_END}"
+            ),
+            2,
+            27,
+        ),
+        (
+            "on an xmi:XMI wrapper",
+            format!(
+                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"\n  \
+                 xmlns=\"\" xmlns=\"\">{ROOT}</xmi:XMI>"
+            ),
+            2,
+            12,
+        ),
+        (
+            "on a root that is not a package",
+            "<r xmlns=\"\" xmlns=\"\"/>".to_owned(),
+            1,
+            13,
+        ),
+        (
+            "on an xmi:Extension document element",
+            format!("{XMI_START} xmi:id=\"f\"\n  xmlns=\"\" xmlns=\"\"/>"),
+            2,
+            12,
+        ),
+    ];
+    for (what, input, line, column) in &cases {
+        assert_refused(row, what, input, &repeated_xmlns(*line, *column));
+    }
+    // UTF-16LE with a byte order mark, which takes no column.
+    let text = l2("xmlns=\"\" xmlns=\"\"/>");
+    assert!(
+        text_at(row, &text, 2, 12).starts_with("xmlns"),
+        "{row}: setup: the UTF-16LE text has no repeat at line 2, column 12"
+    );
+    let mut utf16 = vec![0xFF, 0xFE];
+    utf16.extend(text.encode_utf16().flat_map(u16::to_le_bytes));
+    assert_refused_bytes(
+        row,
+        "UTF-16LE with a byte order mark",
+        &utf16,
+        Limits::default(),
+        &repeated_xmlns(2, 12),
+    );
+}
+
+#[test]
+fn lib_sec_008_a_repeated_xmlns_xml_is_malformed_at_the_repeat() {
+    let row = "LIB-SEC-008";
+    let double = xml_declaration('"');
+    let single = xml_declaration('\'');
+    let cases = [
+        ("on the root", l2(&format!("{double} {double}/>")), 2, 52),
+        ("single quotes", l2(&format!("{single} {single}/>")), 2, 52),
+        (
+            "xmlns between",
+            l2(&format!("{double} xmlns=\"\" {double}/>")),
+            2,
+            61,
+        ),
+        (
+            "on a foreign child",
+            format!("{ROOT_START} xmi:id=\"p\">\n  <c {double} {double}/>\n{ROOT_END}"),
+            2,
+            55,
+        ),
+    ];
+    for (what, input, line, column) in &cases {
+        assert_refused(row, what, input, &repeated_xmlns_xml(*line, *column));
+    }
+}
+
+#[test]
+fn lib_sec_008_the_parsers_own_refusals_of_a_repeat_are_kept() {
+    let row = "LIB-SEC-008";
+    let xml = xml_declaration('"');
+    let cases = [
+        (
+            "xmlns:p twice",
+            l2("xmlns:p=\"u\" xmlns:p=\"u\"/>"),
+            Expected {
+                line: 2,
+                column: 15,
+                at: "xmlns:p=",
+                template: "SACM-XML-001/duplicate-prefix",
+                arguments: &[("prefix", "p")],
+                reason: "the namespace prefix \"p\" is declared twice on one element",
+                quoted: &[],
+            },
+        ),
+        (
+            "xmlns:xml twice, the second bound elsewhere",
+            l2(&format!("{xml} xmlns:xml=\"urn:x\"/>")),
+            Expected {
+                line: 2,
+                column: 52,
+                at: "xmlns:xml=\"urn:x\"",
+                template: "SACM-XML-001/xml-prefix-uri",
+                arguments: &[],
+                reason: "the \"xml\" prefix is bound to a namespace other than the XML namespace",
+                quoted: &[],
+            },
+        ),
+        (
+            "xmlns twice, the second bound to the XML namespace",
+            l2(&format!("xmlns=\"u\" xmlns=\"{XML_NAMESPACE}\"/>")),
+            Expected {
+                line: 2,
+                column: 13,
+                at: "xmlns=\"http",
+                template: "SACM-XML-001/xml-uri-prefix",
+                arguments: &[],
+                reason: "the XML namespace is bound to a prefix other than \"xml\"",
+                quoted: &[],
+            },
+        ),
+        (
+            "xmlns twice, the second bound to the xmlns namespace",
+            l2("xmlns=\"u\" xmlns=\"http://www.w3.org/2000/xmlns/\"/>"),
+            Expected {
+                line: 2,
+                column: 13,
+                at: "xmlns=\"http",
+                template: "SACM-XML-001/xmlns-uri",
+                arguments: &[],
+                reason: "the \"xmlns\" namespace is declared, which is not allowed",
+                quoted: &[],
+            },
+        ),
+    ];
+    for (what, input, expected) in &cases {
+        assert_refused(row, what, input, expected);
+    }
+}
+
+#[test]
+fn lib_sec_008_the_limits_and_the_parser_come_first() {
+    let row = "LIB-SEC-008";
+    let double = xml_declaration('"');
+    let cases = [
+        (
+            "xmlns",
+            l2("xmlns=\"\" xmlns=\"\"/>"),
+            repeated_xmlns(2, 12),
+        ),
+        (
+            "xmlns:xml",
+            l2(&format!("{double} {double}/>")),
+            repeated_xmlns_xml(2, 52),
+        ),
+    ];
+    for (what, input, expected) in &cases {
+        // xmi:id and the repeat count, the first declaration of each prefix
+        // does not: over a limit of 1, the scan before the parse refuses the
+        // element at its `<`.
+        for mode in BOTH_MODES {
+            let options = ReadOptions::default()
+                .with_mode(mode)
+                .with_limits(Limits::default().with_max_attributes(1));
+            let result = read_with(row, input.as_bytes(), options);
+            let Err(
+                error @ ReadError::LimitExceeded {
+                    limit: Limit::Attributes,
+                    max: 1,
+                    ..
+                },
+            ) = result
+            else {
+                panic!(
+                    "{row}: {what} ({mode:?}): a repeat over max_attributes 1 is not \
+                     LimitExceeded {{ Attributes, 1 }}: {result:?}"
+                );
+            };
+            assert_eq!(
+                (error.code().as_str(), error.template(), error.location()),
+                (
+                    "SACM-SEC-003",
+                    "SACM-SEC-003/attributes",
+                    Some(loc(row, 1, 1))
+                ),
+                "{row}: {what} ({mode:?}): code(), template() and location() of {error}"
+            );
+        }
+        // Under a limit of 2, the element is not over it: the repeat.
+        let limits = Limits::default().with_max_attributes(2);
+        assert_refused_under(row, &format!("{what} under 2"), input, limits, expected);
+        // A DOCTYPE is refused before the parse.
+        let doctype = format!("<!DOCTYPE a>\n{input}");
+        for mode in BOTH_MODES {
+            let result = read_with(
+                row,
+                doctype.as_bytes(),
+                ReadOptions::default().with_mode(mode),
+            );
+            let Err(error @ ReadError::Doctype { .. }) = result else {
+                panic!("{row}: {what} ({mode:?}): a DOCTYPE first is not Doctype: {result:?}");
+            };
+            assert_eq!(
+                (error.template(), error.location()),
+                ("SACM-SEC-001/doctype", Some(loc(row, 1, 1))),
+                "{row}: {what} ({mode:?}): template() and location() of {error}"
+            );
+        }
+    }
+    // A parser error later in the input wins over the repeat.
+    let later = l2(&format!("xmlns=\"\" xmlns=\"\"><?xml x?>{ROOT_END}"));
+    assert_refused(
+        row,
+        "a later misplaced XML declaration",
+        &later,
+        &Expected {
+            line: 2,
+            column: 21,
+            at: "<?xml x?>",
+            template: "SACM-XML-001/misplaced-declaration",
+            arguments: &[],
+            reason: "an XML declaration is not at the start of the document",
+            quoted: &[],
+        },
+    );
+}
+
+#[test]
+fn lib_sec_008_the_earliest_construct_wins_beside_a_repeat() {
+    let row = "LIB-SEC-008";
+    let cases = [
+        (
+            "an undeclaring before the repeat",
+            l2("xmlns:q=\"\" xmlns=\"\" xmlns=\"\"/>"),
+            Expected {
+                line: 2,
+                column: 3,
+                at: "xmlns:q=",
+                template: "SACM-XML-001/prefix-undeclared",
+                arguments: &[("prefix", "q")],
+                reason: "the namespace prefix \"q\" is declared with an empty value, and a \
+                         prefix cannot be undeclared",
+                quoted: &[],
+            },
+        ),
+        (
+            "an empty prefix before the repeat",
+            l2("xmlns=\"\" :a=\"1\" xmlns=\"\"/>"),
+            Expected {
+                line: 2,
+                column: 12,
+                at: ":a=",
+                template: "SACM-XML-001/empty-prefix",
+                arguments: &[("name", ":a")],
+                reason: "the name \":a\" has an empty namespace prefix",
+                quoted: &[],
+            },
+        ),
+        (
+            "a surrogate reference before the repeat",
+            l2("a=\"&#xD800;\" xmlns=\"\" xmlns=\"\"/>"),
+            Expected {
+                line: 2,
+                column: 6,
+                at: "&#xD800;",
+                template: "SACM-XML-001/reference-to-surrogate",
+                arguments: &[("reference", "&#xD800;")],
+                reason: "the character reference \"&#xD800;\" refers to a surrogate, which is \
+                         not a character",
+                quoted: &[],
+            },
+        ),
+        (
+            "xmlns:xmlns before the repeat",
+            l2("xmlns=\"\" xmlns:xmlns=\"u\" xmlns=\"\"/>"),
+            Expected {
+                line: 2,
+                column: 12,
+                at: "xmlns:xmlns=",
+                template: "SACM-XML-001/xmlns-prefix-declared",
+                arguments: &[],
+                reason: XMLNS_DECLARED,
+                quoted: &[],
+            },
+        ),
+        (
+            "a surrogate reference in the repeat's value, at (2,19)",
+            l2("xmlns=\"\" xmlns=\"&#xD800;\"/>"),
+            repeated_xmlns(2, 12),
+        ),
+        (
+            "a reserved PI target after the repeat, at (2,21)",
+            l2(&format!("xmlns=\"\" xmlns=\"\"><?XML x?>{ROOT_END}")),
+            repeated_xmlns(2, 12),
+        ),
+    ];
+    for (what, input, expected) in &cases {
+        assert_refused(row, what, input, expected);
+    }
+}
+
+#[test]
+fn lib_sec_008_declarations_that_do_not_repeat_in_one_start_tag_are_not_refused() {
+    let row = "LIB-SEC-008";
+    let xml = xml_declaration('"');
+    let cases = [
+        (
+            "the same prefix on other elements",
+            format!(
+                "{ROOT_START} xmi:id=\"p\" xmlns=\"\">\n  <c xmlns=\"\"/><d xmlns=\"\"/>\n{ROOT_END}"
+            ),
+        ),
+        (
+            "two prefixes bound to one namespace",
+            l2("xmlns=\"urn:u\" xmlns:q=\"urn:u\"/>"),
+        ),
+        (
+            "xmlns:p beside xmlns:P",
+            l2("xmlns:p=\"u\" xmlns:P=\"u\"/>"),
+        ),
+        ("xmlns beside XMLNS", l2("xmlns=\"\" XMLNS=\"\"/>")),
+        ("one xmlns:xml", l2(&format!("{xml}/>"))),
+        (
+            "repeats in a comment, a CDATA section, a PI and an attribute value",
+            format!(
+                "{ROOT_START} xmi:id=\"p\"><!-- xmlns=\"\" xmlns=\"\" -->\
+                 <![CDATA[<c xmlns=\"\" xmlns=\"\"/>]]><?pi xmlns=\"\" xmlns=\"\"?>\
+                 <c a=' xmlns=\"\" xmlns=\"\"'/>{ROOT_END}"
+            ),
+        ),
+    ];
+    for (what, input) in &cases {
+        for mode in BOTH_MODES {
+            let result = read_with(
+                row,
+                input.as_bytes(),
+                ReadOptions::default().with_mode(mode),
+            );
+            let output = match result {
+                Ok(output) => output,
+                Err(error) => {
+                    panic!("{row}: {what} ({mode:?}): refused: {error:?} ({error})")
+                }
+            };
+            let roots: Vec<&str> = output
+                .document()
+                .roots()
+                .map(|root| root.id().as_str())
+                .collect();
+            assert_eq!(
+                roots,
+                ["p"],
+                "{row}: {what} ({mode:?}): does not read as one root p"
+            );
+        }
+    }
 }

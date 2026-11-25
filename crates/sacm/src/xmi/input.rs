@@ -1,6 +1,6 @@
 //! The input layer of the XMI reader: bytes to a well-formed XML tree, or a
-//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009,
-//! SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
+//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-SEC-008,
+//! LIB-API-009, SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
 //!
 //! [`read`](super::read) first refuses input longer than its size limit, on
 //! the bytes (LIB-SEC-003). Then the steps here run in this order:
@@ -34,7 +34,9 @@
 //!    is `Malformed`, at the earliest offending construct: a character
 //!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
 //!    into U+FFFD), a declaration of the prefix `xmlns` (`xmlns:xmlns`), a
-//!    prefix undeclared with `xmlns:p=""`, an element or attribute name with
+//!    namespace declaration repeated in one start tag (`xmlns` or `xmlns:xml`
+//!    twice; roxmltree refuses other repeated prefixes itself), a prefix
+//!    undeclared with `xmlns:p=""`, an element or attribute name with
 //!    an empty prefix (`:c`), and a processing instruction whose target (the
 //!    XML Name after `<?`) is `xml` in any letter case, contains a colon, or
 //!    is followed by neither white space nor `?>`. Within the W3C XML
@@ -56,6 +58,7 @@
 //! converted to byte offsets first.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Details, SourceLocation};
@@ -620,16 +623,17 @@ impl<'a> Cursor<'a, '_> {
 /// Refuses the first construct in `text` that XML 1.0 or Namespaces 1.0
 /// make a fatal error but roxmltree lets through (LIB-SEC-005, LIB-SEC-006):
 /// a character reference to a surrogate or above U+10FFFF, a declaration of
-/// the prefix `xmlns` (`xmlns:xmlns`, Namespaces 1.0 §3), a prefix undeclared
-/// with `xmlns:p=""`, an element or attribute name with an empty prefix
-/// (`<:c>`, `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed, and a
-/// processing instruction whose target (the XML Name after `<?`, [4]/[4a]) is
-/// `xml` in any letter case, contains a colon (Namespaces 1.0 §7), or is
-/// followed by neither white space nor `?>` ([16]). The target checks run in
-/// that order, and none applies to the checked declaration. Within the W3C
-/// XML Conformance Test Suite, this list is closed (LIB-SEC-006). Outside
-/// it, other roxmltree leniencies may remain: LIB-SEC-005's sweep checks only
-/// that this scan agrees with roxmltree's tree.
+/// the prefix `xmlns` (`xmlns:xmlns`, Namespaces 1.0 §3), a namespace
+/// declaration repeated in one start tag (XML 1.0 §3.1, LIB-SEC-008), a prefix
+/// undeclared with `xmlns:p=""`, an element or attribute name with an empty
+/// prefix (`<:c>`, `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed,
+/// and a processing instruction whose target (the XML Name after `<?`,
+/// [4]/[4a]) is `xml` in any letter case, contains a colon (Namespaces 1.0 §7),
+/// or is followed by neither white space nor `?>` ([16]). The target checks run
+/// in that order, and none applies to the checked declaration. Within the W3C
+/// XML Conformance Test Suite, this list is closed (LIB-SEC-006). Outside it,
+/// other roxmltree leniencies may remain: LIB-SEC-005's sweep checks only that
+/// this scan agrees with roxmltree's tree.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree
@@ -761,8 +765,8 @@ fn check_name(text: &str, offset: usize, name: &str) -> Result<(), ReadError> {
 }
 
 /// Checks the start tag at byte `offset` of `text`: its element and
-/// attribute names, its namespace declarations, and the character references
-/// in its attribute values.
+/// attribute names, its namespace declarations (none repeated in the tag),
+/// and the character references in its attribute values.
 /// Returns its length up to its closing `>` or `/>`, which the scan then
 /// reads as character data, or `None` if it does not end.
 fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
@@ -772,6 +776,8 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
         .find(|c: char| is_xml_space(c) || matches!(c, '/' | '>'))
         .unwrap_or(tag.len());
     check_name(text, offset + 1, tag.get(1..index).unwrap_or_default())?;
+    // The namespace declarations of this tag so far, by name as written.
+    let mut declared = HashSet::new();
     loop {
         let Some(rest) = tag.get(index..) else {
             return Ok(None);
@@ -798,6 +804,15 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
                 offset + index,
                 details(&template::XML_001_XMLNS_PREFIX_DECLARED, Vec::new()),
             ));
+        }
+        // XML 1.0 §3.1 Unique Att Spec: roxmltree refuses a repeated `xmlns:p`,
+        // but not a repeated `xmlns` or `xmlns:xml`.
+        if (name == "xmlns" || name.starts_with("xmlns:")) && !declared.insert(name) {
+            let reason = match name.strip_prefix("xmlns:") {
+                Some(prefix) => details_of(&template::XML_001_DUPLICATE_PREFIX, "prefix", prefix),
+                None => details_of(&template::XML_001_DUPLICATE_ATTRIBUTE, "attribute", name),
+            };
+            return Err(malformed(text, offset + index, reason));
         }
         let Some(open) = trimmed.find(['"', '\'']) else {
             return Ok(None);
@@ -1515,6 +1530,66 @@ mod tests {
         assert_eq!(
             at("<r :xmlns='x' xmlns:xmlns='y'/>"),
             Err(SourceLocation::at(1, 4))
+        );
+    }
+
+    #[test]
+    fn check_unrepaired_refuses_a_repeated_namespace_declaration() {
+        // At the repeat, with `duplicate-attribute` for `xmlns` and
+        // `duplicate-prefix` for `xmlns:p`.
+        for (input, column, reason) in [
+            (
+                "<r xmlns='' xmlns=''/>",
+                13,
+                "an element has the attribute \"xmlns\" more than once",
+            ),
+            (
+                "<r xmlns:p='u' xmlns:p='u'/>",
+                16,
+                "the namespace prefix \"p\" is declared twice on one element",
+            ),
+            (
+                "<r xmlns:xml='x' xmlns:xml='x'/>",
+                18,
+                "the namespace prefix \"xml\" is declared twice on one element",
+            ),
+        ] {
+            let result = check(input);
+            assert_eq!(
+                result.as_ref().map_err(ReadError::location),
+                Err(SourceLocation::at(1, column)),
+                "{input:?}"
+            );
+            assert!(
+                result.is_err_and(|error| error.to_string().ends_with(reason)),
+                "{input:?}"
+            );
+        }
+        // Not a repeat: another letter case, another element, another
+        // prefix, or the text inside an attribute value.
+        for input in [
+            "<r xmlns='' XMLNS=''/>",
+            "<r xmlns=''><c xmlns=''/></r>",
+            "<r xmlns:p='u' xmlns:q='u'/>",
+            "<r a=\" xmlns='' xmlns=''\"/>",
+        ] {
+            assert_eq!(at(input), Ok(()), "{input:?}");
+        }
+        // Each declaration is looked up in constant time: a tag of 300,000
+        // declarations and a repeat of the first is refused within the
+        // deadline of `check`.
+        let mut text = String::from("<r");
+        text.extend((0..300_000).map(|k| format!(" xmlns:p{k}='u'")));
+        text.push_str(" xmlns:p0='u'/>");
+        let repeat = text
+            .rfind(" xmlns:p0=")
+            .and_then(|space| u32::try_from(space + 2).ok())
+            .and_then(|column| SourceLocation::at(1, column));
+        assert!(repeat.is_some(), "the repeat is in the text");
+        assert_eq!(
+            at(&text),
+            Err(repeat),
+            "a repeat after 300,000 declarations"
         );
     }
 
