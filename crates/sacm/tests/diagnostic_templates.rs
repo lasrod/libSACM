@@ -68,8 +68,9 @@ const NS: &str = concat!(
 /// SACM-XMI-007 and adds `SACM-XMI-010/xsi-type-on-proxy` (SACM23-XMI-029;
 /// ADR 0040 amendment 1), and slice 0075a adds three for the EMF dialect
 /// (LIB-COMPAT-002; ADR 0044), and slice 0075b one for a declared subclass
-/// (LIB-COMPAT-017; ADR 0044 D4).
-const DIAGNOSTIC_TEMPLATES: usize = 110;
+/// (LIB-COMPAT-017; ADR 0044 D4), and slice 0079 one for a proxy of a root
+/// that keeps a type attribute (LIB-COMPAT-020; ADR 0042 amendment 1).
+const DIAGNOSTIC_TEMPLATES: usize = 111;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -1175,6 +1176,27 @@ fn metadata_cases() -> Vec<Case> {
             ],
             "the element {element:?} is a proxy of the root {target:?}, which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
             "the element \"argumentPackage\" is a proxy of the root \"args\", which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // The root `args` keeps an `xmi:type` that only a root can carry
+        // (LIB-COMPAT-020), with its own `attribute-kept`, whose message is
+        // another.
+        case(
+            "SACM-XMI-003/proxy-of-typed-root",
+            tolerant(proxied("<argumentPackage xmi:idref=\"args\"/>").replace(
+                "<sacm:ArgumentPackage xmi:id=\"args\">",
+                "<sacm:ArgumentPackage xmi:id=\"args\" xmi:type=\"sacm:ArtifactPackage\">",
+            )),
+            (WARNING, "SACM23-XMI-030", Some("7.10.1")),
+            &[
+                ("element", t("argumentPackage")),
+                ("target", t("args")),
+                ("attribute", t("xmi:type")),
+                ("value", t("sacm:ArtifactPackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+            ],
+            "the element {element:?} is a proxy of the root {target:?}, which keeps the type attribute {attribute}={value:?} that only a root can carry, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"argumentPackage\" is a proxy of the root \"args\", which keeps the type attribute xmi:type=\"sacm:ArtifactPackage\" that only a root can carry, so it is kept as written as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses",
         ),
         // Two proxies of `args`, one in `case` and one in `two`: each is
         // `proxy-shared`, and only the message of the first names `case`.

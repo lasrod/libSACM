@@ -1400,6 +1400,11 @@ impl Findings<'_, '_> {
                 &template::XMI_003_PROXY_WRONG_KIND
             }
             Unresolved::LinkedRoot => &template::XMI_003_PROXY_OF_LINKED_ROOT,
+            Unresolved::TypedRoot { attribute, value } => {
+                arguments.push(Argument::text("attribute", attribute));
+                arguments.push(Argument::text("value", value));
+                &template::XMI_003_PROXY_OF_TYPED_ROOT
+            }
             Unresolved::Shared => &template::XMI_003_PROXY_SHARED,
             Unresolved::Cycle => &template::XMI_003_PROXY_CYCLE,
         };
@@ -2140,6 +2145,19 @@ impl<H: Holder> Kept<H> {
                 Some(namespace) => is_xmi_namespace(Some(namespace)) && name.local == "idref",
             }
         })
+    }
+
+    /// The type attribute it keeps that only a root can carry, if any: the
+    /// first, in input order, that is `type` in XMI 2.5.1's namespace or
+    /// `xsi:type`, the one `Preserved::kept_type` names once the element is
+    /// held. A same-file proxy does not move a root that keeps one
+    /// (LIB-COMPAT-020, D-ROOT-NAME).
+    fn kept_type(&self) -> Option<&Attr> {
+        self.attributes
+            .iter()
+            .filter(|(_, attr)| attr.is_root_only_type())
+            .min_by_key(|(at, _)| *at)
+            .map(|(_, attr)| attr)
     }
 
     /// Takes `attribute` of `node` as preserved content, with the bindings
@@ -3834,9 +3852,11 @@ fn read_spelled_part<'a>(
 /// Why a same-file proxy is kept instead of resolved (SACM23-XMI-030), in
 /// the order of the checks: the id names no root; the root's kind is not of
 /// the role's declared type or of the proxy's type, which is `class`; the
-/// root keeps an `href` or an `xmi:idref` of its own; another proxy names
-/// the root too; or the proxies form a cycle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// root keeps an `href` or an `xmi:idref` of its own; the root keeps the
+/// type attribute `attribute`, of value `value`, that only a root can carry
+/// (LIB-COMPAT-020); another proxy names the root too; or the proxies form
+/// a cycle.
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Unresolved {
     NoRoot,
     WrongKind {
@@ -3844,6 +3864,10 @@ enum Unresolved {
         class: &'static str,
     },
     LinkedRoot,
+    TypedRoot {
+        attribute: String,
+        value: String,
+    },
     Shared,
     Cycle,
 }
@@ -3854,20 +3878,30 @@ enum Unresolved {
 /// element"), and returns which roots stay roots, by index.
 ///
 /// A proxy whose id names a root of a kind its role and its type admit,
-/// that keeps no `href` or `xmi:idref` of its own, that no other such proxy
-/// names, and that is in no cycle, moves the root into its place: the root
-/// gets the proxy's container as its parent and the proxy's place in
-/// document order. Chains are followed, since each moved root keeps its
-/// tree. Every other proxy is kept whole as preserved content of its
-/// container, at its place, with one SACM-XMI-003 at its `<` affecting the
-/// container: an Error in strict mode, a Warning in tolerant mode. A root
-/// that keeps a link attribute is not moved: written in a proxy's place, it
-/// would read back as a role element with a link and content, which is no
-/// element.
+/// that keeps no `href` or `xmi:idref` of its own, nor an `xmi:type` or
+/// `xsi:type`, that no other such proxy names, and that is in no cycle,
+/// moves the root into its place: the root gets the proxy's container as
+/// its parent and the proxy's place in document order. Chains are followed,
+/// since each moved root keeps its tree. Every other proxy is kept whole as
+/// preserved content of its container, at its place, with one SACM-XMI-003
+/// at its `<` affecting the container: an Error in strict mode, a Warning
+/// in tolerant mode. A root that keeps a link attribute is not moved:
+/// written in a proxy's place, it would read back as a role element with a
+/// link and content, which is no element. A root that keeps `xmi:type` or
+/// `xsi:type` as preserved content is not moved: in a proxy's place its type
+/// would give the child's class (XMI 2.5.1 §9.5.2 rule 2g; LIB-COMPAT-020,
+/// D-ROOT-NAME).
 ///
-/// Depth is counted as resolved ([`check_depth`]): an element nested deeper
-/// than `max_depth` once the roots have moved refuses the read, in both
-/// modes, before any proxy is reported (LIB-SEC-003).
+/// The checks, in order: 1 the id names no root (`proxy-of-no-root`), 2
+/// the root's kind is not admitted (`proxy-wrong-kind`), 3 the root keeps a
+/// link (`proxy-of-linked-root`), 4 the root keeps a type attribute only a
+/// root can carry (`proxy-of-typed-root`), 5 another proxy that passed 1 to
+/// 4 names the root too (`proxy-shared`), 6 the proxies left form a cycle
+/// (`proxy-cycle`), then 7 the depth as resolved.
+///
+/// Depth is counted as resolved (check 7, [`check_depth`]): an element
+/// nested deeper than `max_depth` once the roots have moved refuses the
+/// read, in both modes, before any proxy is reported (LIB-SEC-003).
 ///
 /// Linear in the roots, the proxies and the elements of the moved roots,
 /// but for the sort of the root ids and the grouping by container.
@@ -3951,29 +3985,35 @@ fn resolve(
     Ok(stays)
 }
 
-/// Checks 1 and 2 of [`resolve`] for each proxy of `roots`, whose elements
-/// are sorted by place, and the check of the root's own link attributes: the
-/// index of the root it names, or why it is kept, as no root is named, or
-/// one of a kind its role or its type does not admit, or one that keeps an
-/// `href` or an `xmi:idref`.
+/// Checks 1 to 4 of [`resolve`] for each proxy of `roots`, whose elements
+/// are sorted by place: the index of the root it names, or why it is kept,
+/// as no root is named (1), or one of a kind its role or its type does not
+/// admit (2), or one that keeps an `href` or an `xmi:idref` (3), or one that
+/// keeps an `xmi:type` or `xsi:type` as preserved content (4): in a proxy's
+/// place its type would give the child's class (XMI 2.5.1 §9.5.2 rule 2g;
+/// LIB-COMPAT-020, D-ROOT-NAME). The type named is the first such attribute
+/// in input order, the one an edit's `KeptRootType` names.
 fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
     let index_of = |read: &[Pending], order: usize| {
         read.binary_search_by_key(&order, |element| element.order)
             .ok()
     };
-    // Each root by its id, with its kind and whether it keeps a link.
+    // Each root by its id, with its kind, whether it keeps a link and the
+    // type attribute it keeps that only a root can carry.
     let mut kinds = Vec::with_capacity(roots.orders.len());
     let mut linked = Vec::with_capacity(roots.orders.len());
+    let mut typed: Vec<Option<&Attr>> = Vec::with_capacity(roots.orders.len());
     let mut by_id = std::collections::BTreeMap::new();
     for (root, &order) in roots.orders.iter().enumerate() {
         let element = index_of(&roots.read, order).and_then(|index| roots.read.get(index));
         kinds.push(element.map(|element| element.kind));
         linked.push(element.is_some_and(|element| element.kept.keeps_link()));
+        typed.push(element.and_then(|element| element.kept.kept_type()));
         if let Some(element) = element {
             by_id.insert(element.id.as_str().to_owned(), root);
         }
     }
-    // Checks 1 and 2, proxy by proxy.
+    // Checks 1 to 4, proxy by proxy.
     roots
         .proxies
         .iter()
@@ -3996,6 +4036,12 @@ fn proxy_roots(roots: &Roots) -> Vec<Result<usize, Unresolved>> {
             }
             if linked.get(root).copied().unwrap_or(false) {
                 return Err(Unresolved::LinkedRoot);
+            }
+            if let Some(attr) = typed.get(root).copied().flatten() {
+                return Err(Unresolved::TypedRoot {
+                    attribute: attr.name.written(),
+                    value: attr.value.clone(),
+                });
             }
             Ok(root)
         })
@@ -4128,9 +4174,13 @@ fn input_depth(node: Node<'_, '_>) -> u64 {
     u64::try_from(node.ancestors().filter(Node::is_element).count()).unwrap_or(u64::MAX)
 }
 
-/// Check 3 of [`resolve`]: each proxy that passed checks 1 and 2 and names a
+/// Check 5 of [`resolve`]: each proxy that passed checks 1 to 4 and names a
 /// root that another such proxy names too is kept, as shared. `count` is the
-/// number of roots.
+/// number of roots. A proxy kept by checks 1 to 4 counts toward no root: a
+/// root that keeps `xmi:type` or `xsi:type` as preserved content is not
+/// moved, as in a proxy's place its type would give the child's class
+/// (XMI 2.5.1 §9.5.2 rule 2g; LIB-COMPAT-020), so its proxies are
+/// `proxy-of-typed-root`, never `proxy-shared`.
 fn mark_shared(outcomes: &mut [Result<usize, Unresolved>], count: usize) {
     let mut naming = vec![0_usize; count];
     for &root in outcomes.iter().flatten() {
@@ -4147,10 +4197,10 @@ fn mark_shared(outcomes: &mut [Result<usize, Unresolved>], count: usize) {
     }
 }
 
-/// Check 4 of [`resolve`]: each proxy left that is part of a cycle of
+/// Check 6 of [`resolve`]: each proxy left that is part of a cycle of
 /// proxies (a self-link included) is kept. `count` is the number of roots.
 fn mark_cycles(outcomes: &mut [Result<usize, Unresolved>], proxies: &[Proxy], count: usize) {
-    // Check 4: the rest name each root at most once, so following, from
+    // Check 6: the rest name each root at most once, so following, from
     // each root, the tree of the proxy that names it is a walk along one
     // path; one that comes back to itself is a cycle. Each root is walked
     // once, so this is linear.

@@ -104,8 +104,8 @@ standard leaves a gap:
     `xmi:idref` on a root, on a `name`, `content`, `key`, `location` or `value`, or on an
     element that also has content, and both on one reference element; a reference element
     with neither; a same-file proxy that names no root, a root of a class its property or
-    its `xmi:type` does not admit, a root with an `href` or `xmi:idref` of its own, or a
-    root another proxy names too, and each proxy of a cycle.
+    its `xmi:type` does not admit, a root with an `href` or `xmi:idref` of its own, a root that keeps an XMI 2.5.1 `xmi:type` or an `xsi:type` (which only a root can carry), or a root another
+    proxy names too, and each proxy of a cycle.
   - The model's spelling `ArtifactAssertedRelationship` as an `xmi:type` is kept by a strict
     read with a SACM-XMI-013 Error, and read as `ArtifactAssetRelationship` by a tolerant
     read (SACM23-XMI-009).

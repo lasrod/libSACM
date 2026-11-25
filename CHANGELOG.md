@@ -150,11 +150,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   admit moves that root into its place, in both modes, with no diagnostic; chains are
   followed. Otherwise it is kept whole in its container with SACM-XMI-003
   (`SACM-XMI-003/proxy-of-no-root`, `/proxy-wrong-kind`, `/proxy-of-linked-root`,
-  `/proxy-shared`, `/proxy-cycle`, checked in that order); a root that keeps an `href` or
-  an `xmi:idref` of its own is not moved. Depth is counted as resolved: a moved root takes
+  `/proxy-of-typed-root`, `/proxy-shared`, `/proxy-cycle`, checked in that order); a root
+  that keeps an `href` or an `xmi:idref` of its own, or an XMI 2.5.1 `xmi:type` or an `xsi:type` that only a root can carry, is not moved. Depth is counted as resolved: a moved root takes
   its proxy's depth and its tree shifts with it, and an element nested deeper than
   `Limits::max_depth` refuses the read as `ReadError::LimitExceeded`
-  (`SACM-SEC-003/depth`) [SACM23-XMI-030].
+  (`SACM-SEC-003/depth`) [SACM23-XMI-030, LIB-COMPAT-020].
 - Cross-document links are read in both modes with no diagnostic, held as written, never
   resolved, compared, and written back by both saves: an `href` whose fragment is an
   XPointer (its document part may be empty), an `href` with a type before its URI

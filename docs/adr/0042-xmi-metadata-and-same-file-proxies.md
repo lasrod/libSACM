@@ -87,3 +87,23 @@ or a proxy", and says that "the definition of the proxy is replaced by the refer
   (Q3 b).
 - Picking the first of two proxies that name one root: that is a reader that picks for the
   user (sacm-expert rule 4).
+
+## Amendment 1 (2026-11-25): a root that keeps a type attribute (LIB-COMPAT-020, slice 0079)
+
+Under D8, **Kept** gains a root that keeps `type` in XMI 2.5.1's namespace or `xsi:type` as
+preserved content: `proxy-of-typed-root`, checked after `proxy-of-linked-root` and before
+`proxy-shared`. Only a root can carry such a type (D-ROOT-NAME). On a child a type
+attribute gives the class (XMI 2.5.1 §9.5.2 rule 2g), so the root written in the proxy's
+place would read back as another class or be kept whole, and D-RT would fail. This is the
+rule `MoveElement` and `CopyElements` follow (`EditError::KeptRootType`, ADR 0033 amendment
+2). In tolerant mode, a root whose types name a declared subclass of its own class holds the
+subclass, not a type attribute, and moves; a strict read ignores declarations, so its type
+is kept and its proxy is `proxy-of-typed-root`. So does a root keeping only an EMF `type`, which a write gives
+its own `xmi:type` (ADR 0044 amendment 1).
+
+Rejected alternatives: moving the root and dropping the type (D-PRESERVE); moving it and
+writing it back as a root behind a proxy (the writer would undo the resolution, and a child
+would hold a type only a root can carry, which edits refuse).
+
+*Amendment 1 status: accepted (lead ruling, applying slice 0076 Q1, the maintainer,
+2026-11-25, to proxies; the maintainer may veto).*
