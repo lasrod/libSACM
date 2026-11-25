@@ -61,7 +61,8 @@ says what that covers and where it stops.
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an
   older SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
-  depth 256, 1,000,000 XML nodes and 256 namespace bindings in scope): what a strict read
+  depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an
+  element, not counting one namespace declaration per prefix): what a strict read
   refuses, such as a value that is no literal or an untyped child under an abstract role, it keeps as
   preserved content with a Warning, never dropped (`Document::has_preserved_content`),
   and it reads the four names formal/23-05-08 and ptc/22-03-13 spell differently,

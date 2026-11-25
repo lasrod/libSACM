@@ -3,7 +3,7 @@
 - Status: accepted (the maintainer, 2026-11-19: M6 decisions Q5, Q9 and Q10, and the memory
   accounting in D2).
 - Date: 2026-11-19
-- Matrix rows: LIB-SEC-003, LIB-COMPAT-004, LIB-COMPAT-016.
+- Matrix rows: LIB-SEC-003, LIB-COMPAT-004, LIB-COMPAT-016; LIB-SEC-007 (amendment 2).
 - Amends: ADR 0005 B2, ADR 0016 D6 (closed here), ADR 0030 amendment 3 (labels) and ADR 0035 D1.
 
 ## Context
@@ -94,3 +94,46 @@ diagnostic, counted where it is emitted. A breach is `LimitExceeded`, template
 memory a read takes is then bounded by the limits.
 
 Verification 0072 round 2 added two requirements, for the cost of a read as well as its memory. **The first breach of the budget ends the read**, so that no diagnostic is built after it. **Each namespace value is classified, and each family membership decided, once per read**, so that the classification stays linear in the input.
+
+## Amendment 2 (2026-11-25): an attribute limit (LIB-SEC-007, slice 0077)
+
+Slice 0075a found that one element with 100,000 attributes took about 214 s to read in a
+debug build. The cause is roxmltree 0.21.2: it checks each attribute of an element against
+the element's earlier ones (`src/parse.rs:1015`), so its time per element grows with the
+square of the element's attributes, before the reader runs. One start tag within the
+default size limit can hold about three million attributes. The reader itself is linear in
+them (slice 0077: with the parser's check removed, 400,000 kept attributes on one Claim
+read in 3.0 s debug, twice the time of 200,000).
+
+- **D8. An attribute limit.** `Limits::with_max_attributes` adds a fifth limit, by default
+  256: the attributes of one element, which is every attribute in its start tag except the first declaration of each prefix (`xmlns` or `xmlns:p`), which D1's bindings limit bounds. A declaration that repeats one in the same start tag counts: roxmltree 0.21.2 does not refuse a repeated `xmlns` or `xmlns:xml`, and each repeat lengthens every namespace lookup at and under the element. The
+  pre-parse scan counts them at each start tag, after the depth, the bindings in scope and
+  the copies. It refuses an element over the limit at its `<` with
+  `ReadError::LimitExceeded`, `Limit::Attributes`, template `SACM-SEC-003/attributes`, in
+  both modes. The parser then makes fewer than 256 comparisons per attribute, so a read at
+  the defaults is linear in its input. A hostile 32 MiB input of 256-attribute elements
+  reads in about 2 to 4 s in a release build, where ordinary content of that size takes
+  about 1 s. The largest element in the corpus has 8 attributes.
+- **D9. No parser fork.** roxmltree is not forked, vendored or patched. A `[patch]` does not
+  reach users of the published crate, and a fork would make us maintain a security-critical
+  parser for inputs no real file has. Its latest release, 0.21.2, is quadratic. Upstream
+  knows (roxmltree issue 153, closed 2026-10-24): its unreleased master caps an element at
+  65,535 attributes, which still costs about 2·10⁹ comparisons. If a release makes the check
+  linear, the default can rise, and the limit stays.
+- **D10. Writes.** `write` has no limit (D3). An element can be written with more
+  attributes than it was read with: values read in element form (SACM23-XMI-014) and a
+  generated `xmi:id`. Output of an element at the limit may need a raised limit to read
+  back.
+
+Consequences: a file with an element of more than 256 attributes (none is known) is refused
+by default. An application that reads trusted files of that kind raises the limit and
+accepts the parser's quadratic cost for those elements. The CHANGELOG entry of LIB-SEC-003,
+not yet released, gains the limit.
+
+Alternatives considered: bumping roxmltree (no release fixes it); a fork (see D9); counting
+namespace declarations (rejected: they would collide with the 256-binding limit at a root
+that declares many namespaces, and the writer adds declarations to kept elements; a repeated declaration is counted, since it binds nothing new); refusing
+at the first attribute over the limit (rejected: the other scan limits locate at the `<`).
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-25: a limit, not a fork; default
+256).*

@@ -12,9 +12,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 ### Breaking
 
 - `xmi::read` now refuses, by default and in both modes, input over 32 MiB, nested deeper
-  than 256, with more than 1,000,000 XML nodes, or with more than 256 namespace bindings
-  in scope at an element, as `ReadError::LimitExceeded`; read a trusted file with higher
-  `Limits` [LIB-SEC-003].
+  than 256, with more than 1,000,000 XML nodes, with more than 256 namespace bindings in
+  scope at an element, or with more than 256 attributes on one element, the first namespace
+  declaration of each prefix not counted, as `ReadError::LimitExceeded`; read a trusted file
+  with higher `Limits` [LIB-SEC-003, LIB-SEC-007].
 - A strict read's refusal of a root in a SACM-like namespace (`SACM-XMI-002/other-namespace`)
   now ends `(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)`, where it
   ended `(… is to read it in tolerant mode)` [LIB-COMPAT-004].
@@ -108,6 +109,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   limit, in one budget: the namespace text preserved content keeps, as each element or
   attribute is kept (`/kept-namespaces`), and the text of each diagnostic, the bytes of its
   text arguments and affected ids, where it is emitted (`/kept-text`) [LIB-SEC-003].
+- `Limits::with_max_attributes`, `Limits::max_attributes`, `Limit::Attributes` and the
+  template `SACM-SEC-003/attributes`: the scan before parsing refuses an element with more
+  attributes than the limit, by default 256, the first namespace declaration of each prefix
+  not counted [LIB-SEC-007].
 - A tolerant read reads a root in the namespace of SACM 2.0, 2.1 or 2.2 that it
   recognises as SACM 2.3, with one SACM-XMI-008 Warning (`Code::XMI_OTHER_REVISION`,
   template `SACM-XMI-008/other-revision`), and an Event's `occurence` as its date

@@ -117,8 +117,9 @@ standard leaves a gap:
 - **Comments and processing instructions** carry no model content and are not kept: a read
   drops them and a write writes none (ADR 0033).
 - **Size.** A read refuses, in both modes, input over its limits (by default 32 MiB, depth
-  256, 1,000,000 XML nodes and 256 namespace bindings in scope at an element);
-  `ReadOptions::with_limits` raises them (LIB-SEC-003).
+  256, 1,000,000 XML nodes, 256 namespace bindings in scope at an element and 256
+  attributes on an element, not counting one namespace declaration per prefix);
+  `ReadOptions::with_limits` raises them (LIB-SEC-003, LIB-SEC-007).
 - **DOCTYPE.** A document with a DOCTYPE declaration is refused in both modes
   (LIB-SEC-001).
 - **Encoding.** A read decodes UTF-8 (and so ASCII), UTF-16 with a byte order mark and

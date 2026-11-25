@@ -75,8 +75,9 @@ const HEADING: &str = "## Message templates";
 /// of SACM-XMI-007 (SACM23-XMI-029, ADR 0040 amendment 1): Read 76, Unread
 /// 17, Write 7; and slice 0075a adds `SACM-XMI-015/not-xmi-element` and
 /// `/emf-xmi-namespace` (Unread; LIB-COMPAT-002, ADR 0044 D1): Read 76,
-/// Unread 19, Write 7.
-const REFUSAL_TEMPLATES: usize = 102;
+/// Unread 19, Write 7; and slice 0077 adds `SACM-SEC-003/attributes` (Read;
+/// LIB-SEC-007, ADR 0041 amendment 2): Read 77, Unread 19, Write 7.
+const REFUSAL_TEMPLATES: usize = 103;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";

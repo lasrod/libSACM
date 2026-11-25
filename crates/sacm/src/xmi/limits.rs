@@ -1,21 +1,23 @@
-//! The read limits (LIB-SEC-003; ADR 0041 D1, D2 and amendment 1):
-//! [`Limits`], [`Limit`], the pre-parse scan that checks the nesting depth,
-//! the namespace bindings in scope and the namespace copies before roxmltree
-//! parses, and the [`Budget`] of what a read keeps besides the parsed tree.
+//! The read limits (LIB-SEC-003, LIB-SEC-007; ADR 0041 D1, D2, amendments 1
+//! and 2): [`Limits`], [`Limit`], the pre-parse scan that checks the nesting
+//! depth, the namespace bindings in scope, the namespace copies and the
+//! attributes of each element before roxmltree parses, and the [`Budget`] of
+//! what a read keeps besides the parsed tree.
 //!
 //! The scan is one linear pass in document order. It skips comments, CDATA
 //! sections, processing instructions (the XML declaration included), quoted
 //! attribute values and character data. At each start tag it checks, in this
-//! order, the depth, the distinct bindings in scope, and the running total of
+//! order, the depth, the distinct bindings in scope, the running total of
 //! bindings in scope at the elements that declare one, which roxmltree 0.21
-//! copies into its namespace table and which count against the node limit. A
-//! self-closing tag pops at once. It stops without refusing at `<!` other
-//! than a comment or a CDATA section (a DOCTYPE, which the parser refuses),
-//! at a construct that is not closed, and at an end tag with nothing open:
-//! the parser refuses what is left.
+//! copies into its namespace table and which count against the node limit,
+//! and then the element's attributes, the first namespace declaration of
+//! each prefix not counted. A self-closing tag pops at once. It stops
+//! without refusing at `<!` other than a comment or a CDATA section (a
+//! DOCTYPE, which the parser refuses), at a construct that is not closed,
+//! and at an end tag with nothing open: the parser refuses what is left.
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::ReadError;
@@ -33,10 +35,14 @@ use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 /// | [`max_depth`](Self::max_depth) | 256 | by a scan before parsing, at each start tag; the document element is depth 1. And as resolved, once every root is read: a root that a same-file proxy moves takes the proxy's depth, and its tree shifts with it (SACM23-XMI-030) |
 /// | [`max_nodes`](Self::max_nodes) | 1,000,000 | by the parser, for its nodes; by the scan, for the bindings in scope at the elements that declare one |
 /// | [`max_namespace_bindings`](Self::max_namespace_bindings) | 256 | by the scan, at each start tag: one per prefix in scope, the default namespace counted, `xml` not |
+/// | [`max_attributes`](Self::max_attributes) | 256 | by the scan, at each start tag, after the bindings and copies: every attribute but the first namespace declaration of each prefix |
 ///
 /// The size, depth, binding and node limits bound what a read allocates. The
-/// bindings in scope that the parser copies count against the node limit.
-/// Everything else the read keeps besides the parsed tree counts against the
+/// attribute limit bounds its time: the parser checks each attribute of an
+/// element against the earlier ones, so at the default it makes at most 255
+/// comparisons per attribute (LIB-SEC-007). The bindings in scope that the
+/// parser copies count against the node limit. Everything else the read
+/// keeps besides the parsed tree counts against the
 /// size limit, in one budget separate from the input's own size (ADR 0041 D2,
 /// amendment 1):
 ///
@@ -94,18 +100,22 @@ pub struct Limits {
     max_nodes: u64,
     /// The most bindings in scope at one element.
     max_namespace_bindings: u64,
+    /// The most attributes on one element, the first namespace declaration
+    /// of each prefix not counted.
+    max_attributes: u64,
 }
 
 impl Default for Limits {
-    /// 33,554,432 bytes (32 MiB), depth 256, 1,000,000 nodes and 256
-    /// bindings (M6 decision Q9; the size and node limits as the maintainer
-    /// lowered them on 2026-11-19).
+    /// 33,554,432 bytes (32 MiB), depth 256, 1,000,000 nodes, 256 bindings
+    /// (M6 decision Q9; the size and node limits as the maintainer lowered
+    /// them on 2026-11-19) and 256 attributes (ADR 0041 amendment 2).
     fn default() -> Self {
         Self {
             max_input_bytes: 33_554_432,
             max_depth: 256,
             max_nodes: 1_000_000,
             max_namespace_bindings: 256,
+            max_attributes: 256,
         }
     }
 }
@@ -148,6 +158,38 @@ impl Limits {
         self
     }
 
+    /// These limits, refusing an element with more than `attributes`
+    /// attributes in its start tag; the first declaration of each prefix
+    /// (`xmlns` or `xmlns:p`) is not counted, because the bindings limit
+    /// bounds it; a declaration that repeats one earlier in the same start
+    /// tag is counted.
+    /// The parser compares each attribute of an element with the earlier
+    /// ones, so an element's read time grows with the square of its
+    /// attributes: raise this only for trusted input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::xmi::{self, Limit, Limits, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:v"
+    ///     xmi:id="p" v:a="1" v:b="2"/>"#;
+    /// // Three attributes; the three namespace declarations do not count.
+    /// let tight = ReadOptions::default().with_limits(Limits::default().with_max_attributes(2));
+    /// let error = xmi::read(input, &tight).unwrap_err();
+    /// assert!(matches!(error, ReadError::LimitExceeded { limit: Limit::Attributes, max: 2, .. }));
+    /// assert_eq!(error.template(), "SACM-SEC-003/attributes");
+    /// assert_eq!(error.to_string(), "an element has more attributes than the limit of 2 at line 1, column 1");
+    /// assert_eq!(Limits::default().max_attributes(), 256);
+    /// assert!(xmi::read(input, &ReadOptions::default()).is_ok());
+    /// ```
+    #[must_use]
+    pub fn with_max_attributes(mut self, attributes: u64) -> Self {
+        self.max_attributes = attributes;
+        self
+    }
+
     /// The most bytes of input, and of what a read keeps besides the parsed
     /// tree: the namespace text of preserved content and the text of its
     /// diagnostics.
@@ -174,6 +216,13 @@ impl Limits {
     #[must_use]
     pub fn max_namespace_bindings(&self) -> u64 {
         self.max_namespace_bindings
+    }
+
+    /// The most attributes one element may have, the first namespace
+    /// declaration of each prefix not counted.
+    #[must_use]
+    pub fn max_attributes(&self) -> u64 {
+        self.max_attributes
     }
 
     /// The node limit to give roxmltree: `max_nodes`, at most `u32::MAX`.
@@ -209,16 +258,20 @@ pub enum Limit {
     Nodes,
     /// [`Limits::max_namespace_bindings`].
     NamespaceBindings,
+    /// [`Limits::max_attributes`]: the attributes of one element, the first
+    /// namespace declaration of each prefix not counted.
+    Attributes,
 }
 
 impl fmt::Display for Limit {
-    /// `input bytes`, `depth`, `nodes` or `namespace bindings`.
+    /// `input bytes`, `depth`, `nodes`, `namespace bindings` or `attributes`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InputBytes => "input bytes",
             Self::Depth => "depth",
             Self::Nodes => "nodes",
             Self::NamespaceBindings => "namespace bindings",
+            Self::Attributes => "attributes",
         })
     }
 }
@@ -405,9 +458,15 @@ impl<'t> Scan<'t, '_> {
     }
 
     /// Checks the element whose start tag at byte `offset` declares
-    /// `declared`, then opens it: its depth, then the bindings in scope at
-    /// it, then the copies.
-    fn open(&mut self, offset: usize, declared: Vec<Option<&'t str>>) -> Result<(), ReadError> {
+    /// `declared` and has `attributes` other attributes, then opens it: its
+    /// depth, then the bindings in scope at it, then the copies, then its
+    /// attributes.
+    fn open(
+        &mut self,
+        offset: usize,
+        declared: Vec<Option<&'t str>>,
+        attributes: u64,
+    ) -> Result<(), ReadError> {
         let depth = u64::try_from(self.frames.len())
             .unwrap_or(u64::MAX)
             .saturating_add(1);
@@ -441,6 +500,14 @@ impl<'t> Scan<'t, '_> {
                 ));
             }
         }
+        if attributes > self.limits.max_attributes {
+            return Err(self.refuse(
+                Limit::Attributes,
+                self.limits.max_attributes,
+                offset,
+                &template::SEC_003_ATTRIBUTES,
+            ));
+        }
         self.frames.push(declared);
         Ok(())
     }
@@ -457,9 +524,9 @@ impl<'t> Scan<'t, '_> {
     }
 }
 
-/// Checks the depth, the namespace bindings in scope and the namespace
-/// copies of `text` against `limits`, before it is parsed, as the module
-/// docs describe.
+/// Checks the depth, the namespace bindings in scope, the namespace copies
+/// and the attributes of each element of `text` against `limits`, before it
+/// is parsed, as the module docs describe.
 pub(super) fn scan(text: &str, limits: &Limits) -> Result<(), ReadError> {
     let mut scan = Scan {
         text,
@@ -487,12 +554,12 @@ pub(super) fn scan(text: &str, limits: &Limits) -> Result<(), ReadError> {
             }
         } else if rest.starts_with('<') {
             match start_tag(rest) {
-                Some((length, declared, empty)) => {
-                    scan.open(offset, declared)?;
-                    if empty {
+                Some(tag) => {
+                    scan.open(offset, tag.declared, tag.attributes)?;
+                    if tag.empty {
                         scan.close();
                     }
-                    Some(length)
+                    Some(tag.length)
                 }
                 None => None,
             }
@@ -515,11 +582,24 @@ fn past(rest: &str, open: &str, close: &str) -> Option<usize> {
     body.find(close).map(|end| open.len() + end + close.len())
 }
 
-/// The start tag at the start of `rest`: its length through its `>`, the
-/// prefixes it declares (`None` for the default namespace; `xml` left out),
-/// and whether it is self-closing. `None` if it is not a well-formed tag the
-/// scan can follow, which the parser then refuses.
-fn start_tag(rest: &str) -> Option<(usize, Vec<Option<&str>>, bool)> {
+/// A start tag as the scan reads it.
+#[derive(Debug, PartialEq, Eq)]
+struct StartTag<'t> {
+    /// Its length through its `>`.
+    length: usize,
+    /// The prefixes it declares, each once: `None` for the default
+    /// namespace; `xml` left out.
+    declared: Vec<Option<&'t str>>,
+    /// Its attributes, the first namespace declaration of each prefix not
+    /// counted, repeats included.
+    attributes: u64,
+    /// Whether it is self-closing.
+    empty: bool,
+}
+
+/// The start tag at the start of `rest`. `None` if it is not a well-formed
+/// tag the scan can follow, which the parser then refuses.
+fn start_tag(rest: &str) -> Option<StartTag<'_>> {
     let after = rest.get(1..)?;
     let name = after
         .find(|c: char| is_xml_space(c) || matches!(c, '/' | '>'))
@@ -529,15 +609,28 @@ fn start_tag(rest: &str) -> Option<(usize, Vec<Option<&str>>, bool)> {
     }
     let mut index = 1 + name;
     let mut declared = Vec::new();
+    // The prefixes this tag has declared, `xml` included.
+    let mut seen = HashSet::new();
+    let mut attributes: u64 = 0;
     loop {
         let tail = rest.get(index..)?;
         let trimmed = tail.trim_start_matches(is_xml_space);
         index += tail.len() - trimmed.len();
         if trimmed.starts_with('>') {
-            return Some((index + 1, declared, false));
+            return Some(StartTag {
+                length: index + 1,
+                declared,
+                attributes,
+                empty: false,
+            });
         }
         if trimmed.starts_with("/>") {
-            return Some((index + 2, declared, true));
+            return Some(StartTag {
+                length: index + 2,
+                declared,
+                attributes,
+                empty: true,
+            });
         }
         let length = trimmed.find(|c: char| is_xml_space(c) || matches!(c, '=' | '/' | '>'))?;
         if length == 0 {
@@ -561,27 +654,72 @@ fn start_tag(rest: &str) -> Option<(usize, Vec<Option<&str>>, bool)> {
             .filter(|&c| matches!(c, '"' | '\''))?;
         let value = trimmed.get(1..)?.find(quote)?;
         index += value + 2;
-        if attribute == "xmlns" {
-            declared.push(None);
-        } else if let Some(prefix) = attribute.strip_prefix("xmlns:") {
-            if prefix != "xml" {
-                declared.push(Some(prefix));
+        let declaration = if attribute == "xmlns" {
+            Some(None)
+        } else {
+            attribute.strip_prefix("xmlns:").map(Some)
+        };
+        match declaration {
+            // The first declaration of its prefix in this tag.
+            Some(prefix) if seen.insert(prefix) => {
+                if prefix != Some("xml") {
+                    declared.push(prefix);
+                }
             }
+            // An attribute, or a declaration that repeats one in this tag.
+            _ => attributes = attributes.saturating_add(1),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Limits, scan, start_tag};
+    use super::{Limits, StartTag, scan, start_tag};
 
     #[test]
     fn a_start_tag_gives_its_length_declarations_and_whether_it_is_empty() {
         assert_eq!(
             start_tag("<a xmlns='u' xmlns:b=\">\" c=\"1\"/>x"),
-            Some((32, vec![None, Some("b")], true))
+            Some(StartTag {
+                length: 32,
+                declared: vec![None, Some("b")],
+                attributes: 1,
+                empty: true,
+            })
         );
-        assert_eq!(start_tag("<a xmlns:xml=\"u\">"), Some((17, vec![], false)));
+        assert_eq!(
+            start_tag("<a xmlns:xml=\"u\">"),
+            Some(StartTag {
+                length: 17,
+                declared: vec![],
+                attributes: 0,
+                empty: false,
+            })
+        );
+        // An `xml:` attribute and a repeated one count, each time.
+        assert_eq!(
+            start_tag("<a xml:lang=\"en\" b=\"1\" b=\"2\">"),
+            Some(StartTag {
+                length: 29,
+                declared: vec![],
+                attributes: 3,
+                empty: false,
+            })
+        );
+        // The first declaration of each prefix, `xml` included, is not
+        // counted, and is declared once; each repeat counts.
+        assert_eq!(
+            start_tag(
+                "<a xmlns=\"\" xmlns:xml=\"x\" xmlns:p=\"u\" xmlns=\"\" xmlns:xml=\"x\" \
+                 xmlns:p=\"u\" xmlns:p=\"u\" b=\"1\"/>"
+            ),
+            Some(StartTag {
+                length: 92,
+                declared: vec![None, Some("p")],
+                attributes: 5,
+                empty: true,
+            })
+        );
         assert_eq!(start_tag("<a b>"), None);
         assert_eq!(start_tag("< a>"), None);
         assert_eq!(start_tag("<a b=\"1>"), None);
@@ -610,6 +748,31 @@ mod tests {
     }
 
     #[test]
+    fn a_declaration_repeats_only_within_its_own_start_tag() {
+        // `b` declares again what `a` and its sibling declared: in its own
+        // tag that is a first declaration, so `b` has 1 attribute.
+        let one = Limits::default().with_max_attributes(1);
+        for text in [
+            "<a xmlns=\"\" xmlns:xml=\"x\" xmlns:p=\"u\"><b xmlns=\"\" xmlns:xml=\"x\" xmlns:p=\"u\" c=\"1\"/></a>",
+            "<r><a xmlns=\"\" xmlns:p=\"u\"/><b xmlns=\"\" xmlns:p=\"u\" c=\"1\"/></r>",
+        ] {
+            assert!(scan(text, &one).is_ok(), "{text}");
+        }
+        // Each repeat in one tag counts, so 2 attributes are over 1.
+        for text in [
+            "<a xmlns=\"\" xmlns=\"\" c=\"1\"/>",
+            "<a xmlns:xml=\"x\" xmlns:xml=\"x\" c=\"1\"/>",
+            "<a xmlns:p=\"u\" xmlns:p=\"u\" c=\"1\"/>",
+        ] {
+            assert_eq!(
+                scan(text, &one).err().map(|e| e.template()),
+                Some("SACM-SEC-003/attributes"),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
     fn the_depth_is_checked_before_the_bindings_and_those_before_the_copies() {
         let template = |text: &str, limits: &Limits| scan(text, limits).err().map(|e| e.template());
         let both = "<a xmlns:b=\"u\"><c xmlns:d=\"v\"/></a>";
@@ -629,6 +792,30 @@ mod tests {
             ),
             Some("SACM-SEC-003/namespace-copies")
         );
+    }
+
+    #[test]
+    fn the_attributes_are_checked_after_the_depth_the_bindings_and_the_copies() {
+        let template = |text: &str, limits: &Limits| scan(text, limits).err().map(|e| e.template());
+        // `c` is depth 2, has 2 bindings in scope, takes the copies to 3, and
+        // has 2 attributes besides its declaration.
+        let all = "<a xmlns:b=\"u\"><c xmlns:d=\"v\" e=\"1\" f=\"2\"/></a>";
+        let tight = Limits::default()
+            .with_max_depth(1)
+            .with_max_namespace_bindings(1)
+            .with_max_nodes(1)
+            .with_max_attributes(1);
+        assert_eq!(template(all, &tight), Some("SACM-SEC-003/depth"));
+        let tight = tight.with_max_depth(2);
+        assert_eq!(
+            template(all, &tight),
+            Some("SACM-SEC-003/namespace-bindings")
+        );
+        let tight = tight.with_max_namespace_bindings(2);
+        assert_eq!(template(all, &tight), Some("SACM-SEC-003/namespace-copies"));
+        let tight = tight.with_max_nodes(3);
+        assert_eq!(template(all, &tight), Some("SACM-SEC-003/attributes"));
+        assert_eq!(template(all, &tight.with_max_attributes(2)), None);
     }
 
     #[test]

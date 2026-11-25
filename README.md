@@ -27,7 +27,7 @@ values. A name, or a value of a content, key or location, may be an
 tolerant read, the default, opens
 every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an older
 SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
-depth 256, 1,000,000 XML nodes and 256 namespace bindings in scope): what a strict read refuses, such as a
+depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an element, not counting one namespace declaration per prefix): what a strict read refuses, such as a
 value that is no literal or an untyped child under an abstract role,
 it keeps as preserved content with a Warning; and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
 (`ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
