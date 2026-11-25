@@ -130,6 +130,9 @@ templates! {
     SEC_003_NAMESPACE_BINDINGS = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/namespace-bindings",
         [Count("max")],
         "an element has more namespace bindings in scope than the limit of {max}";
+    SEC_003_ATTRIBUTES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/attributes",
+        [Count("max")],
+        "an element has more attributes than the limit of {max}";
     SEC_002_UNHELD_OUTSIDE = PARSER_LIMIT, Unread, "SACM-SEC-002/unheld-outside",
         [Text("error")],
         "the content outside every element cannot be held in the document: {error}";
@@ -881,8 +884,9 @@ mod tests {
         // fix round, added SACM-XMI-010/xsi-type-on-proxy; slice 0075a added
         // two refusal and three diagnostic templates (LIB-COMPAT-002; ADR
         // 0044); slice 0075b added one diagnostic template (LIB-COMPAT-017;
-        // ADR 0044 D4).
-        assert_eq!(count, 212, "LIB-API-017: the number of templates");
+        // ADR 0044 D4); slice 0077 added one refusal template (LIB-SEC-007;
+        // ADR 0041 amendment 2).
+        assert_eq!(count, 213, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)

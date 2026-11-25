@@ -25,8 +25,9 @@
 //! 5. Invalid UTF-8 is `Malformed`, at the first invalid byte. In UTF-16, an
 //!    unpaired surrogate is `Malformed` at the surrogate, and an odd byte
 //!    count after the last whole character. ISO-8859-1 has no invalid byte.
-//! 6. The scan of `limits` checks the depth, the namespace bindings in scope
-//!    and the namespace copies (LIB-SEC-003); roxmltree then parses with
+//! 6. The scan of `limits` checks the depth, the namespace bindings in scope,
+//!    the namespace copies (LIB-SEC-003) and the attributes of each element
+//!    (LIB-SEC-007); roxmltree then parses with
 //!    DTDs refused and the node limit: a DOCTYPE is `Doctype`, the node
 //!    limit `LimitExceeded`, and any other error is `Malformed`.
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error

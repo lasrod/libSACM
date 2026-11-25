@@ -17,7 +17,7 @@
 //!   `SACM-XMI-015/not-xmi-element`, and on
 //!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
 //!   of their code; and the inputs and the templates no input reaches
-//!   together are the 102 refusal templates, once each.
+//!   together are the 103 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
@@ -73,6 +73,10 @@
 //! label of SACM-XMI-015 with a row is `(strict mode never reads it; ROW
 //! reads it in tolerant mode)` since.
 //!
+//! Slice 0077 limits the attributes of an element (LIB-SEC-007, ADR 0041
+//! amendment 2): it adds `SACM-SEC-003/attributes`, an eighth `SACM-SEC-003`
+//! template, which gives 103.
+//!
 //! Slice 0072 also changes the English of the three `SACM-XML-002` templates, which
 //! name ISO-8859-1 now, and the label of SACM-XMI-002 and SACM-XMI-008 with
 //! a row, `(strict mode never reads it; ROW reads it in tolerant mode)`
@@ -107,8 +111,10 @@ const NS: &str = concat!(
 /// slice 0073b removes the four `Unsupported` templates of SACM-XMI-007,
 /// whose links it reads (SACM23-XMI-029, ADR 0040 amendment 1), and 102 once
 /// slice 0075a adds `SACM-XMI-015/not-xmi-element` and
-/// `SACM-XMI-015/emf-xmi-namespace` (LIB-COMPAT-002, ADR 0044 D1).
-const REFUSAL_TEMPLATES: usize = 102;
+/// `SACM-XMI-015/emf-xmi-namespace` (LIB-COMPAT-002, ADR 0044 D1), and 103
+/// once slice 0077 adds `SACM-SEC-003/attributes` (LIB-SEC-007, ADR 0041
+/// amendment 2).
+const REFUSAL_TEMPLATES: usize = 103;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -1067,8 +1073,9 @@ fn kept_text() -> Vec<u8> {
     input.into_bytes()
 }
 
-/// The seven `SACM-SEC-003` templates of `ReadError::LimitExceeded` (slice
-/// 0072, LIB-SEC-003), each read strictly under the limits set for it.
+/// The eight `SACM-SEC-003` templates of `ReadError::LimitExceeded` (slice
+/// 0072, LIB-SEC-003; `/attributes`, slice 0077, LIB-SEC-007), each read
+/// strictly under the limits set for it.
 fn limit_cases() -> Vec<Case> {
     use sacm::xmi::Limits;
     let under = |template: &'static str,
@@ -1140,6 +1147,14 @@ fn limit_cases() -> Vec<Case> {
             &[("max", n(1))],
             "an element has more namespace bindings in scope than the limit of {max}",
             "an element has more namespace bindings in scope than the limit of 1 at line 1, column 16",
+        ),
+        under(
+            "SACM-SEC-003/attributes",
+            b"<a b=\"1\" c=\"2\"/>",
+            Limits::default().with_max_attributes(1),
+            &[("max", n(1))],
+            "an element has more attributes than the limit of {max}",
+            "an element has more attributes than the limit of 1 at line 1, column 1",
         ),
     ]
 }
@@ -1345,7 +1360,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 102, once each.
+    // The inputs and the templates without one are the 103, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

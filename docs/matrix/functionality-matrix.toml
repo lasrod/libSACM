@@ -8568,10 +8568,33 @@ notes = "Reworded and re-checked in slice 0024: SACM23-XMI-018 decodes UTF-16, s
 id = "LIB-SEC-007"
 area = "SEC"
 milestone = "M6"
-title = "A read is linear in the attributes of an element"
-requirement = "Reading an element takes time linear in its number of attributes, in both modes, also when they are kept as preserved content, so that a document within the default read limits (LIB-SEC-003) cannot take quadratic time. A strict read of one element with 100,000 attributes outside SACM and XMI, and a tolerant read that keeps them, each finish within the deadline of the existing linearity tests."
-source = "Found by the builder in slice 0075a (2026-11-23): one element with 100,000 vendor attributes took about 214 s to read strictly in a debug build. LIB-SEC-003 (the read limits); D-PRESERVE."
+title = "An element's attributes are limited, so a read is not quadratic in them"
+requirement = "`Limits::with_max_attributes` bounds the attributes of one element that `xmi::read` accepts, in both modes, by default 256, beside LIB-SEC-003's four limits. Every attribute in a start tag counts, `xml:` attributes and repeats included, except the namespace declarations `xmlns` and `xmlns:p`, which `max_namespace_bindings` bounds. LIB-SEC-003's pre-parse scan counts them at each start tag after the depth, the bindings in scope and the namespace copies, and refuses an element over the limit with `ReadError::LimitExceeded` (SACM-SEC-003, `Limit::Attributes`, template `SACM-SEC-003/attributes`) at the `<` of its start tag, before roxmltree parses it, wherever it stands: a root, a SACM element, preserved content or the `XMI` element. roxmltree 0.21.2 compares each attribute of an element with the earlier ones, so its time per element grows with the square of that element's attributes. The limit caps this at `max_attributes - 1` comparisons per attribute, and the rest of the read, kept attributes included, is linear in them, so a read at the defaults is linear in its input. Raising the limit brings back the parser's quadratic cost for the elements that use it, and `with_max_attributes` says so. `xmi::write` has no limit: an element can be written with more attributes than it was read with (values read in element form, a generated `xmi:id`)."
+source = "Slice 0075a (2026-11-23): one element with 100,000 vendor attributes took about 214 s to read strictly in a debug build. Slice 0077 research: roxmltree 0.21.2 src/parse.rs:1014-1020 (`resolve_attributes` scans the element's earlier attributes for each one); 0.21.2 is the latest release, and its unreleased master caps an element at u16::MAX attributes (commit 800fd72, roxmltree issue 153) but stays quadratic. The reader with that check removed: 400,000 kept attributes on one Claim in 3.0 s debug. Corpus: at most 8 attributes on an element (10 with namespace declarations), test fixtures at most 12. LIB-SEC-002 (a duplicate attribute is Malformed); LIB-SEC-003; ADR 0041 amendment 2 (the maintainer, 2026-11-25: a limit, not a fork; default 256); D-PRESERVE."
 kind = "security"
-status = "planned"
+tests = [
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_the_attribute_limit_has_its_default_and_setter",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_an_element_over_the_attribute_limit_is_refused_at_its_start_tag",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_namespace_declarations_do_not_count_and_every_other_attribute_does",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_the_limit_is_checked_before_parsing_after_the_other_scan_limits",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_the_default_edge",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_100000_attributes_on_one_element_are_refused_in_time",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_a_read_at_the_default_limit_is_linear_in_the_attributes",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_a_raised_limit_reads_and_keeps_them",
+  "crates/sacm/tests/attribute_limit.rs::lib_sec_007_the_refusal_serializes_with_its_limit",
+]
+code = ["crates/sacm/src/xmi/limits.rs", "crates/sacm/src/diagnostic/template.rs", "crates/sacm/src/xmi.rs", "docs/adr/0041-read-limits-and-other-sacm-namespaces.md"]
+status = "implemented"
 depends_on = ["LIB-SEC-003", "LIB-COMPAT-003"]
-notes = "To be fixed in its own slice after 0075a. Slice 0075a step 2 found the cause: roxmltree 0.21.2's duplicate-attribute check scans the element's earlier attributes for each one (parse.rs:1015), so parsing alone is quadratic per element (debug: 5,000 attributes 0.49 s, 10,000 1.97 s, 20,000 7.73 s), before the reader runs. The same 100,000 attributes 10 per element read in 0.26 s. Candidates: a limit on attributes per element checked before parsing, and an upstream report."
+notes = "Slice 0077: the cause is roxmltree's duplicate-attribute check, quadratic per element, and the reader itself was measured linear. A limit was chosen over a fork (ADR 0041 amendment 2). When a roxmltree release makes the check linear, the default can rise; re-check then. The parser's namespace scans per element are bounded by `max_namespace_bindings` and the copy count. Design: target/slice-0077-design.md."
+acceptance = [
+  "`lib_sec_007_the_attribute_limit_has_its_default_and_setter`: `max_attributes()` is 256; `with_max_attributes(7)` sets only it; each other setter leaves it; `with_limits` round-trips it; `Limit::Attributes` displays `attributes`.",
+  "`lib_sec_007_an_element_over_the_attribute_limit_is_refused_at_its_start_tag`: under a limit of 3, a root, a SACM child, a foreign child kept whole and an `xmi:XMI` element with 4 counted attributes are each `LimitExceeded` (`Attributes`, SACM-SEC-003, `SACM-SEC-003/attributes`, `max` 3) at their `<`, with its Display, in both modes; with 3, or under a limit of 4, the root and the children read, and the `xmi:XMI` element, which holds no package, is `NoPackage`.",
+  "`lib_sec_007_namespace_declarations_do_not_count_and_every_other_attribute_does`: `xmlns` and `xmlns:p` declarations are not counted; `xml:` attributes and a repeated attribute are, so a repeat over the limit is `LimitExceeded`, not `Malformed`.",
+  "`lib_sec_007_the_limit_is_checked_before_parsing_after_the_other_scan_limits`: the depth, bindings and copies limits are reported first at the same start tag; an over-limit element is refused before later malformed input; a DOCTYPE is still `Doctype`.",
+  "`lib_sec_007_the_default_edge`: 256 counted attributes read in both modes; 257 are refused under the defaults.",
+  "`lib_sec_007_100000_attributes_on_one_element_are_refused_in_time`: 100,000 attributes on a SACM element and on a foreign element are refused at their `<` within the deadline of the existing limit tests, in each mode.",
+  "`lib_sec_007_a_read_at_the_default_limit_is_linear_in_the_attributes`: 1,000 foreign elements of 256 attributes, and 100 Claims of 254 kept attributes, read in each mode within the existing linearity deadline, with their exact diagnostics, and write back `==`.",
+  "`lib_sec_007_a_raised_limit_reads_and_keeps_them`: a Claim with 2,000 kept attributes is refused at the defaults and under a limit of 2,001, and reads in both modes, keeping them, under 2,002.",
+  "`lib_sec_007_the_refusal_serializes_with_its_limit`: with the `serde` feature, the refusal serializes to its JSON (`\"limit\": \"attributes\"`, `\"max\"`, location) and reads back equal; `Limit::Attributes` is `\"attributes\"`.",
+]

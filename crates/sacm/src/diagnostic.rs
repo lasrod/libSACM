@@ -187,13 +187,15 @@ catalog! {
     /// [`Limits`](crate::xmi::Limits) of
     /// [`ReadOptions::with_limits`](crate::xmi::ReadOptions::with_limits): its
     /// size, the nesting depth of its elements, the XML nodes the parser
-    /// builds, or the namespace bindings in scope at an element; the
+    /// builds, the namespace bindings in scope at an element, or the
+    /// attributes of an element, namespace declarations not counted; the
     /// bindings the elements declaring namespaces hold in scope count against
     /// the node limit, and what the read keeps besides the parsed tree, the
     /// namespace text of preserved content and the text of its diagnostics,
     /// against the size limit, in one budget. Both modes refuse it as
     /// [`ReadError::LimitExceeded`](crate::xmi::ReadError::LimitExceeded)
-    /// (LIB-SEC-003). Fix: if the file is trusted, read it with higher limits.
+    /// (LIB-SEC-003, LIB-SEC-007). Fix: if the file is trusted, read it with
+    /// higher limits.
     pub const LIMIT_EXCEEDED: Code = Code::from_static("SACM-SEC-003");
 
     /// SACM-XMI-001: an interchange root (the document element, or each
