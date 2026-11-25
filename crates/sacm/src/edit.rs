@@ -206,7 +206,7 @@
 //! | 2. under a parent: the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
 //! | 3. the parent's class can hold the element's kind; for the roots, the element is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] | SACM-CMD-005 |
 //! | 4. the parent is not the element and not inside it | [`EditError::ParentInSubtree`] | SACM-CMD-005 |
-//! | 5. under a parent: the element keeps no type attribute, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
+//! | 5. under a parent: the element keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
 //! | 6. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
 //!
 //! A copy captures its source elements when it is built: an id the source
@@ -223,7 +223,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
-//! | 2. each top, in list order: the parent's class can hold it, and it keeps no type attribute, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
+//! | 2. each top, in list order: the parent's class can hold it, and it keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
 //! | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
 //! | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |

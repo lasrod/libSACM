@@ -69,3 +69,15 @@ D-ROOT-NAME; ADR 0044.
   tests `a_metadata_type_value_keeps_the_binding_of_its_prefix` and
   `a_type_values_binding_counts_against_the_size_limit` added. Lead gate green (3240
   workspace, 497 xtask, corpus not skipped). Row `implemented`.
+- 2026-11-25 verify round 1 at 2acc64d: FAIL, two blocking round-trip losses. CI mutants
+  48 caught, 0 missed. Lead rulings for the one fix round:
+  - B1: a `version` in both XMI namespaces is read as the version and ignored, both of
+    them, one SACM-XMI-011 each (D-XMI-VERSION); control test.
+  - B2: an unprefixed type value is resolved in the default namespace in scope, also for a
+    declared subclass (XML Schema QName resolution; SACM23-XMI-002 already does so for
+    SACM classes). This reverses slice 0075b's "an unprefixed type never matches": verified
+    LIB-COMPAT-017's test case `a_type_names_a_subclass_only_by_a_prefix_...` (e) flips and
+    the test is renamed; LIB-COMPAT-017 is re-checked in round 2 and repointed to this
+    slice's record on PASS. ADR 0044 amendment 1 extended. The maintainer may veto.
+  - Wording findings applied with the verifier's text (matrix by the lead; xmi.rs, edit.rs
+    tables and CHANGELOG by the builder).

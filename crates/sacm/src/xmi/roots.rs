@@ -1914,7 +1914,9 @@ fn read_wrapper<'a>(
     // and `xmi:version` a strict read refuses, and a tolerant read keeps as
     // the document's preserved content (ADR 0033, ADR 0035 D3).
     for attribute in wrapper.attributes() {
-        if reads_xmi(wrapper, &attribute, "version") {
+        // A `version` in both XMI namespaces is read and ignored, both of
+        // them ([`is_version`]).
+        if is_version(&attribute) {
             found.xmi_version(
                 &attribute,
                 &template::XMI_011_VERSION_ON_XMI_ELEMENT,
@@ -2333,9 +2335,10 @@ impl<H: Holder> Kept<H> {
     ///
     /// Its prefix is written as a preserved attribute's would be (ADR 0035),
     /// without the Warning of a renamed one: `xmi` bound to XMI 2.5.1 needs
-    /// no binding; `sacm` or `xmi` bound to another namespace is replaced by
-    /// the holder's `nsN` for it ([`rename`](Self::rename)), which its
-    /// renamed attributes share; any other prefix is kept, and bound. (No
+    /// no binding; `sacm` or `xmi` bound to another namespace, or no prefix
+    /// under a default namespace, is replaced by the holder's `nsN` for it
+    /// ([`rename`](Self::rename)), which its renamed attributes share; any
+    /// other prefix is kept, and bound. (No
     /// type names a subclass with the prefix `xml`, whose binding no start
     /// tag declares, nor with `sacm` bound to SACM 2.3: see
     /// [`declared_subclass`].)
@@ -2353,18 +2356,18 @@ impl<H: Holder> Kept<H> {
             ..
         } = declared;
         let bindings = self.namespaces.len();
-        let pinned = match prefix.as_str() {
-            SACM_PREFIX => Some(SACM_NS),
-            XMI_PREFIX => Some(XMI_NS),
+        let pinned = match prefix.as_deref() {
+            Some(SACM_PREFIX) => Some(SACM_NS),
+            Some(XMI_PREFIX) => Some(XMI_NS),
             _ => None,
         };
-        let prefix = match pinned {
-            Some(pinned) if pinned != namespace => self.rename(node, &namespace),
-            Some(_) => prefix,
-            None => {
+        let prefix = match (prefix, pinned) {
+            (Some(prefix), Some(pinned)) if pinned == namespace => prefix,
+            (Some(prefix), None) => {
                 self.namespaces.push((prefix.clone(), namespace.clone()));
                 prefix
             }
+            (Some(_), Some(_)) | (None, _) => self.rename(node, &namespace),
         };
         let mut kept = u64::try_from(namespace.len()).unwrap_or(u64::MAX);
         for (prefix, uri) in self.namespaces.get(bindings..).unwrap_or_default() {
@@ -4813,7 +4816,7 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
         if is_type(root, &attribute) || reads_xmi(root, &attribute, "id") {
             continue;
         }
-        if reads_xmi(root, &attribute, "version") {
+        if is_version(&attribute) {
             let version = &template::XMI_011_VERSION_ON_ROOT;
             found.xmi_version(&attribute, version, named(kind, id_text), Some(id_text))?;
             continue;
@@ -6643,7 +6646,8 @@ fn is_xmi(attribute: &Attribute<'_, '_>, local: &str) -> bool {
 /// namespace, or else the first in EMF's (LIB-COMPAT-019, ADR 0044
 /// amendment 1; XMI 2.5.1 §7.5.3: "Each version of XMI is unambiguously
 /// identified by its unique namespace URI"). When `node` carries it in both,
-/// EMF's is content in another namespace, kept as written. XML allows one
+/// EMF's is content in another namespace, kept as written; a `version` in
+/// both is read twice instead ([`is_version`]). XML allows one
 /// attribute per expanded name, so `node` carries at most one in each, and
 /// finding it costs at most two passes over its attributes.
 fn xmi_attribute<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Attribute<'a, 'i>> {
@@ -6661,6 +6665,16 @@ fn reads_xmi(node: Node<'_, '_>, attribute: &Attribute<'_, '_>, local: &str) -> 
     is_xmi(attribute, local)
         && xmi_attribute(node, local)
             .is_some_and(|read| read.range_qname() == attribute.range_qname())
+}
+
+/// Whether `attribute` of a root or of the XMI element is an `xmi:version`
+/// the reader reads and ignores, with one SACM-XMI-011 each (D-XMI-VERSION):
+/// `version` in either XMI namespace ([`is_xmi`]). Unlike the other
+/// attributes the alias covers, one in each is read, and neither is kept
+/// (LIB-COMPAT-019, ADR 0044 amendment 1): the version is in the namespace
+/// URI (XMI 2.5.1 §7.5.3), so neither value is content to write back.
+fn is_version(attribute: &Attribute<'_, '_>) -> bool {
+    is_xmi(attribute, "version")
 }
 
 /// Whether `node` carries `type` in both XMI namespaces, EMF's and XMI
@@ -6829,9 +6843,10 @@ struct Declared {
     at: usize,
     /// Its value, trimmed of XML white space, as the diagnostic names it.
     written: String,
-    /// The prefix of the value.
-    prefix: String,
-    /// The namespace URI the prefix is bound to at the element.
+    /// The prefix of the value, if it has one.
+    prefix: Option<String>,
+    /// The namespace URI the prefix, or else the default namespace, is
+    /// bound to at the element.
     namespace: String,
     /// The local part of the value: the class's name.
     local: String,
@@ -6849,10 +6864,15 @@ impl Declared {
 
 /// The declared subclass that `attribute`, a type attribute of `node`,
 /// names, in tolerant mode only: its value, trimmed of XML white space, is
-/// a prefixed `QName` resolved in the scope of `node` to a namespace that is
-/// neither in the root's family nor SACM 2.3's, whose (URI, local part) the
-/// application declared, compared exactly (ADR 0044 D3). An unprefixed type
-/// is in no namespace, as a role element is, and never names one. Only a
+/// a `QName` resolved in the scope of `node` to a namespace that is neither
+/// in the root's family nor SACM 2.3's, whose (URI, local part) the
+/// application declared, compared exactly (ADR 0044 D3). An unprefixed
+/// value is resolved in the default namespace in scope, as XML Schema
+/// resolves a `QName` and as [`sacm_class`] resolves a SACM class
+/// (SACM23-XMI-002; ADR 0044 amendment 1); with no default namespace, or
+/// under `xmlns=""`, it is in no namespace and names none. (A child under a
+/// default namespace is itself in it, so it is no role element and never
+/// gets here: only a root's unprefixed type can name one.) Only a
 /// declaration in the input binds a prefix here, so neither `xml` nor
 /// `xmlns` resolves, and no prefix is bound to an empty namespace (the
 /// input layer refuses `xmlns:p=""` and `xmlns:xmlns` as malformed XML): an
@@ -6867,8 +6887,13 @@ fn declared_subclass(
         return None;
     }
     let value = attribute.value().trim_matches(is_xml_space);
-    let (prefix, local) = value.split_once(':')?;
-    let namespace = node.lookup_namespace_uri(Some(prefix))?;
+    let (prefix, local) = match value.split_once(':') {
+        Some((prefix, local)) => (Some(prefix), local),
+        None => (None, value),
+    };
+    let namespace = node
+        .lookup_namespace_uri(prefix)
+        .filter(|uri| !uri.is_empty())?;
     if namespace == SACM_NS || found.types.contains(namespace) {
         return None;
     }
@@ -6876,7 +6901,7 @@ fn declared_subclass(
     Some(Declared {
         at: attribute.range_qname().start,
         written: value.to_owned(),
-        prefix: prefix.to_owned(),
+        prefix: prefix.map(str::to_owned),
         namespace: namespace.to_owned(),
         local: local.to_owned(),
         kind,

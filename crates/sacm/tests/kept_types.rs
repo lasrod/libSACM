@@ -544,7 +544,13 @@ fn lib_compat_019_a_kept_type_attribute_keeps_the_binding_of_its_value_prefix() 
             )),
         },
     ];
-    for value in ["sacm:Claim", "xmi:Bundle", "q:Bundle"] {
+    for value in [
+        "sacm:Claim",
+        "xmi:Bundle",
+        "q:Bundle",
+        "xml:Bundle",
+        "xmlns:Bundle",
+    ] {
         cases.push(WriteCase {
             what: format!("(g) the value {value:?}, which adds no binding"),
             input: format!("<sacm:ArgumentPackage {h} xmi:type=\"{value}\" xmi:id=\"a\"/>"),
@@ -1514,4 +1520,290 @@ fn lib_compat_019_a_type_values_binding_counts_against_the_size_limit() {
     let roomy = tolerant().with_limits(Limits::default().with_max_input_bytes(size * 4));
     let document = read_with(what, &input, &roomy).into_document();
     assert_writes_back(what, &document, &roomy);
+}
+
+// --- Verifier round 1: a version in both XMI namespaces, an unprefixed subclass ---
+
+/// An owned part carrying `id` in both XMI namespaces is checked by its XMI
+/// 2.5.1 `xmi:id`, not by the first in document order: EMF's, a duplicate of
+/// the root's id, refuses nothing, and the part, which keeps no attribute of
+/// its own, is kept whole (ADR 0044 amendment 1; verifier round 1, a
+/// surviving mutation of `read_owned_id`).
+#[test]
+fn lib_compat_019_an_owned_part_with_an_id_in_both_xmi_namespaces_is_checked_by_its_xmi_2_5_1_id() {
+    let what = "a root's name with emf:id=\"a\" before xmi:id=\"n2\"";
+    let input = format!(
+        "<sacm:ArgumentPackage {} xmlns:emf=\"{EMF_NS}\" xmi:id=\"a\">\
+         <name emf:id=\"a\" xmi:id=\"n2\" lang=\"en\" content=\"a\"/></sacm:ArgumentPackage>",
+        h()
+    );
+    let output = read_with(what, &input, &tolerant());
+    assert_found(
+        what,
+        &output,
+        &[
+            expected(
+                Severity::Warning,
+                ELEMENT_KEPT,
+                loc(1, column_of(&input, "<name")),
+                &["a"],
+                &[
+                    ("element", "name"),
+                    ("holder_class", "ArgumentPackage"),
+                    ("holder_id", "a"),
+                ],
+            ),
+            emf_read(column_of(&input, "emf:id="), "emf:id"),
+        ],
+    );
+    let document = output.into_document();
+    assert_eq!(ids(&document), ["a"], "{ROW}: {what}: the ids");
+    assert_writes_back(what, &document, &tolerant());
+}
+
+/// A `version` in both XMI namespaces, on a root and on `xmi:XMI`, in either
+/// order, is read as the version and ignored, both of them, with one
+/// SACM-XMI-011 Info each, and nothing is kept: the write carries neither,
+/// reads back `==` and writes again byte-identical (D-XMI-VERSION, ADR 0044
+/// amendment 1; verifier round 1, B1).
+#[test]
+fn lib_compat_019_a_version_in_both_xmi_namespaces_is_read_and_ignored_twice() {
+    const ON_ROOT: &str = "SACM-XMI-011/version-on-root";
+    const ON_XMI: &str = "SACM-XMI-011/version-on-xmi-element";
+    let h = h();
+    let emf = format!("xmlns:emf=\"{EMF_NS}\"");
+    let on_root = |input: &str, attribute: &str, value: &str| {
+        expected(
+            Severity::Info,
+            ON_ROOT,
+            loc(1, column_of(input, &format!("{attribute}="))),
+            &["a"],
+            &[("value", value), ("class", "ArgumentPackage"), ("id", "a")],
+        )
+    };
+    let on_xmi = |input: &str, attribute: &str, value: &str| {
+        expected(
+            Severity::Info,
+            ON_XMI,
+            loc(1, column_of(input, &format!("{attribute}="))),
+            &[],
+            &[("value", value)],
+        )
+    };
+    let wrapper_golden = lines(&[
+        DECLARATION,
+        &wrapper_start(),
+        "  <sacm:ArgumentPackage xmi:id=\"a\" />",
+        "  <sacm:ArgumentPackage xmi:id=\"b\" />",
+        "</xmi:XMI>",
+    ]);
+    for (order, versions, emf_first) in [
+        (
+            "emf:version first",
+            "emf:version=\"2.0\" xmi:version=\"2.5.1\"",
+            true,
+        ),
+        (
+            "xmi:version first",
+            "xmi:version=\"2.5.1\" emf:version=\"2.0\"",
+            false,
+        ),
+    ] {
+        // On a root.
+        let input = format!("<sacm:ArgumentPackage {h} {emf} {versions} xmi:id=\"a\"/>");
+        let emf_version = on_root(&input, "emf:version", "2.0");
+        let xmi_version = on_root(&input, "xmi:version", "2.5.1");
+        let emf_name = emf_read(column_of(&input, "emf:version="), "emf:version");
+        let found = if emf_first {
+            vec![emf_version, emf_name, xmi_version]
+        } else {
+            vec![xmi_version, emf_version, emf_name]
+        };
+        assert_case(&WriteCase {
+            what: format!("a root, {order}"),
+            input,
+            found,
+            golden: empty_root_golden(&format!("{} xmi:id=\"a\" />", r2())),
+        });
+
+        // On xmi:XMI.
+        let input = format!(
+            "<xmi:XMI {h} {emf} {versions}><sacm:ArgumentPackage xmi:id=\"a\"/>\
+             <sacm:ArgumentPackage xmi:id=\"b\"/></xmi:XMI>"
+        );
+        let emf_version = on_xmi(&input, "emf:version", "2.0");
+        let xmi_version = on_xmi(&input, "xmi:version", "2.5.1");
+        let emf_name = emf_read(column_of(&input, "emf:version="), "emf:version");
+        let found = if emf_first {
+            vec![emf_version, emf_name, xmi_version]
+        } else {
+            vec![xmi_version, emf_version, emf_name]
+        };
+        assert_case(&WriteCase {
+            what: format!("xmi:XMI, {order}"),
+            input,
+            found,
+            golden: wrapper_golden.clone(),
+        });
+    }
+}
+
+/// An unprefixed type value is resolved in the default namespace in scope,
+/// as XML Schema resolves a `QName` and as a SACM class in a type value is
+/// (SACM23-XMI-002), also when it names a subclass the application declared
+/// with `ReadOptions::with_subclass` (LIB-COMPAT-017; ADR 0044 amendment 1;
+/// verifier round 1, B2). Under a default namespace bound to the declared
+/// namespace, a root reads as the subclass, written with the holder's `nsN`,
+/// and reads back `==` with the same options. With no default namespace, or
+/// `xmlns=""`, the value is in no namespace and names no subclass, even one
+/// declared in the empty namespace. A role element under a default namespace
+/// is itself in it, so it is no role element and is kept whole (ADR 0033):
+/// on a child, a default namespace never names a subclass.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table of the root cases, then the child cases, each with its diagnostics"
+)]
+fn lib_compat_019_an_unprefixed_type_value_names_a_declared_subclass_in_the_default_namespace() {
+    const SUBCLASS_KEPT: &str = "SACM-XMI-003/subclass-type-kept";
+    let h = h();
+    let r2 = r2();
+    let bundle =
+        ReadOptions::default().with_subclass("urn:d", "Bundle", ElementKind::ArgumentPackage);
+    let empty_bundle =
+        ReadOptions::default().with_subclass("", "Bundle", ElementKind::ArgumentPackage);
+    let subclass_of = |document: &Document, id: &str| {
+        document
+            .get(id)
+            .and_then(SacmElement::subclass)
+            .map(|class| (class.namespace().to_owned(), class.name().to_owned()))
+    };
+
+    // (a) A root under a default namespace bound to the declared one.
+    let what = "(a) a root's unprefixed type under the declared default namespace";
+    let input =
+        format!("<sacm:ArgumentPackage {h} xmlns=\"urn:d\" xmi:type=\"Bundle\" xmi:id=\"a\"/>");
+    let output = read_with(what, &input, &bundle);
+    assert_found(
+        what,
+        &output,
+        &[expected(
+            Severity::Warning,
+            SUBCLASS_KEPT,
+            loc(1, column_of(&input, "xmi:type=")),
+            &["a"],
+            &[
+                ("type", "Bundle"),
+                ("class", "ArgumentPackage"),
+                ("id", "a"),
+            ],
+        )],
+    );
+    let document = output.into_document();
+    assert_eq!(
+        (kind_of(&document, "a"), subclass_of(&document, "a")),
+        (
+            Some(ElementKind::ArgumentPackage),
+            Some(("urn:d".to_owned(), "Bundle".to_owned()))
+        ),
+        "{ROW}: {what}: a is not an ArgumentPackage with the subclass Bundle of urn:d"
+    );
+    assert_writes_golden(
+        what,
+        &document,
+        &bundle,
+        &empty_root_golden(&format!(
+            "{r2} xmi:type=\"ns1:Bundle\" xmi:id=\"a\" xmlns:ns1=\"urn:d\" />"
+        )),
+    );
+
+    // (b) to (d) A root whose unprefixed type is in no namespace: kept as an
+    // attribute, as without the declarations.
+    let no_default = format!("<sacm:ArgumentPackage {h} xmi:type=\"Bundle\" xmi:id=\"a\"/>");
+    let undeclared =
+        format!("<sacm:ArgumentPackage {h} xmlns=\"\" xmi:type=\"Bundle\" xmi:id=\"a\"/>");
+    for (what, input, declared) in [
+        ("(b) no default namespace", &no_default, &bundle),
+        (
+            "(c) no default namespace, a subclass declared in the empty namespace",
+            &no_default,
+            &empty_bundle,
+        ),
+        (
+            "(d) xmlns=\"\", a subclass declared in the empty namespace",
+            &undeclared,
+            &empty_bundle,
+        ),
+    ] {
+        let output = read_with(what, input, declared);
+        assert_found(
+            what,
+            &output,
+            &[kept(
+                column_of(input, "xmi:type="),
+                "xmi:type",
+                "ArgumentPackage",
+                "a",
+            )],
+        );
+        let document = output.into_document();
+        assert_eq!(
+            subclass_of(&document, "a"),
+            None,
+            "{ROW}: {what}: a has a subclass"
+        );
+        assert_writes_golden(
+            what,
+            &document,
+            declared,
+            &empty_root_golden(&format!("{r2} xmi:id=\"a\" xmi:type=\"Bundle\" />")),
+        );
+    }
+
+    // (e) to (g) A child: in the default namespace it is no role element; in
+    // no namespace its unprefixed type is in none and names no subclass. Each
+    // is kept whole, as without the declarations.
+    let proposition = ReadOptions::default().with_subclass("urn:d", "Prop", ElementKind::Claim);
+    let empty_proposition = ReadOptions::default().with_subclass("", "Prop", ElementKind::Claim);
+    for (what, input, declared) in [
+        (
+            "(e) a child under the declared default namespace",
+            format!(
+                "<sacm:ArgumentPackage {h} xmi:id=\"a\"><argumentElement xmlns=\"urn:d\" \
+                 xmi:type=\"Prop\" xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+            ),
+            &proposition,
+        ),
+        (
+            "(f) a child with no default namespace, a subclass declared in the empty namespace",
+            format!(
+                "<sacm:ArgumentPackage {h} xmi:id=\"a\"><argumentElement xmi:type=\"Prop\" \
+                 xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+            ),
+            &empty_proposition,
+        ),
+        (
+            "(g) a child with xmlns=\"\" under a default namespace, a subclass declared in the \
+             empty namespace",
+            format!(
+                "<sacm:ArgumentPackage {h} xmlns=\"urn:d\" xmi:id=\"a\"><argumentElement \
+                 xmlns=\"\" xmi:type=\"Prop\" xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+            ),
+            &empty_proposition,
+        ),
+    ] {
+        let output = read_with(what, &input, declared);
+        assert_found(
+            what,
+            &output,
+            &[element_kept(column_of(&input, "<argumentElement"))],
+        );
+        let document = output.into_document();
+        assert_eq!(
+            kind_of(&document, "c1"),
+            None,
+            "{ROW}: {what}: c1 is read, not kept whole"
+        );
+        assert_writes_back(what, &document, declared);
+    }
 }

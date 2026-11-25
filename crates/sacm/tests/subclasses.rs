@@ -1628,10 +1628,11 @@ fn lib_compat_017_types_with_one_name_in_two_namespaces_disagree() {
 /// rule for a preserved attribute's prefix), so the document element's
 /// start tag carries it once. A type with the prefix `xml`, whose binding
 /// no start tag declares, the prefix `xmlns`, which binds no name, an empty
-/// namespace, and an unprefixed type, even under a default namespace, name
-/// no subclass.
+/// namespace, and an unprefixed type with no default namespace name no
+/// subclass; an unprefixed type under a default namespace is resolved in it
+/// (ADR 0044 amendment 1).
 #[test]
-fn lib_compat_017_a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespace() {
+fn lib_compat_017_a_type_names_a_subclass_by_its_prefix_or_the_default_namespace() {
     let root_with = |value: &str| {
         format!(
             "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
@@ -1693,10 +1694,33 @@ fn lib_compat_017_a_type_names_a_subclass_only_by_a_prefix_bound_to_its_namespac
         );
     }
 
-    // (e) An unprefixed type of a root under a default namespace.
-    let what = "(e) an unprefixed root type";
+    // (e) An unprefixed type of a root under a default namespace bound to
+    // the declared namespace is resolved in it, as XML Schema resolves a
+    // QName (ADR 0044 amendment 1): the root reads as the subclass and
+    // writes back ==.
+    let what = "(e) an unprefixed root type under the declared default namespace";
     let input = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" xmlns=\"{P}\" \
+         xmi:type=\"Bundle\" xmi:id=\"a\"/>"
+    );
+    let output = read_with(what, &input, &options());
+    let root = element(what, output.document(), "a");
+    assert_eq!(
+        (
+            class_of(root),
+            with_template(output.diagnostics(), KEPT).len()
+        ),
+        (Some(in_profile("Bundle")), 1),
+        "{ROW}: {what}: a is not read as the subclass Bundle: {}",
+        brief(output.diagnostics())
+    );
+    assert_writes_back(what, output.document(), &options());
+
+    // (f) An unprefixed type of a root with no default namespace is in no
+    // namespace: it is kept as an attribute.
+    let what = "(f) an unprefixed root type with no default namespace";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
          xmi:type=\"Bundle\" xmi:id=\"a\"/>"
     );
     let output = read_with(what, &input, &options());

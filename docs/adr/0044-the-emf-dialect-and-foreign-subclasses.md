@@ -104,7 +104,15 @@ identified by its unique namespace URI"; with XMI 2.5.1's attribute present, the
 nothing to stand in for. An element that keeps `type` in EMF's namespace or `xsi:type`, and no type in XMI
 2.5.1's, is written with its own `xmi:type` (only a root keeps an `xsi:type`). This replaces slice 0075a's "the first in
 document order". D3's rule that no declaration applies to an element typed in both
-namespaces stays.
+namespaces stays. A `version` in both namespaces is read as the version and ignored, both
+of them, with one SACM-XMI-011 each (D-XMI-VERSION).
+
+Under D3: a type value without a prefix is resolved in the default namespace in scope, as
+XML Schema resolves a `QName` value and as a SACM class in a type value already is
+(SACM23-XMI-002); with no default namespace it is in no namespace and names no subclass.
+This replaces slice 0075b's "an unprefixed type never matches", which disagreed with the
+reader's own resolution of SACM classes and broke a round trip once slice 0076 kept the
+value's binding.
 
 *Amendment 1 status: accepted (lead ruling, 2026-11-25: it follows §7.5.3 and keeps every
 verified test; the maintainer may veto).*
