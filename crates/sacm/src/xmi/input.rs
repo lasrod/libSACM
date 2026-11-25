@@ -1,6 +1,6 @@
 //! The input layer of the XMI reader: bytes to a well-formed XML tree, or a
-//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009,
-//! SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
+//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-SEC-008,
+//! LIB-API-009, SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
 //!
 //! [`read`](super::read) first refuses input longer than its size limit, on
 //! the bytes (LIB-SEC-003). Then the steps here run in this order:
@@ -624,16 +624,16 @@ impl<'a> Cursor<'a, '_> {
 /// make a fatal error but roxmltree lets through (LIB-SEC-005, LIB-SEC-006):
 /// a character reference to a surrogate or above U+10FFFF, a declaration of
 /// the prefix `xmlns` (`xmlns:xmlns`, Namespaces 1.0 §3), a namespace
-/// declaration repeated in one start tag (XML 1.0 §3.1), a prefix undeclared
-/// with `xmlns:p=""`, an element or attribute name with an empty prefix
-/// (`<:c>`, `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed, and a
-/// processing instruction whose target (the XML Name after `<?`, [4]/[4a]) is
-/// `xml` in any letter case, contains a colon (Namespaces 1.0 §7), or is
-/// followed by neither white space nor `?>` ([16]). The target checks run in
-/// that order, and none applies to the checked declaration. Within the W3C
-/// XML Conformance Test Suite, this list is closed (LIB-SEC-006). Outside
-/// it, other roxmltree leniencies may remain: LIB-SEC-005's sweep checks only
-/// that this scan agrees with roxmltree's tree.
+/// declaration repeated in one start tag (XML 1.0 §3.1, LIB-SEC-008), a prefix
+/// undeclared with `xmlns:p=""`, an element or attribute name with an empty
+/// prefix (`<:c>`, `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed,
+/// and a processing instruction whose target (the XML Name after `<?`,
+/// [4]/[4a]) is `xml` in any letter case, contains a colon (Namespaces 1.0 §7),
+/// or is followed by neither white space nor `?>` ([16]). The target checks run
+/// in that order, and none applies to the checked declaration. Within the W3C
+/// XML Conformance Test Suite, this list is closed (LIB-SEC-006). Outside it,
+/// other roxmltree leniencies may remain: LIB-SEC-005's sweep checks only that
+/// this scan agrees with roxmltree's tree.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree

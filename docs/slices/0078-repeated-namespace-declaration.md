@@ -1,8 +1,8 @@
 ---
 slice: 0078
 name: repeated-namespace-declaration
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-SEC-008]
 mode: pr
 base: main (8fd8216)
@@ -46,3 +46,6 @@ LIB-SEC-002, LIB-SEC-005; D-STRICT.
   fire at an attribute); the unit test's constant-time case is enlarged from 100,000
   to 300,000 declarations (correct code 0.74 s, the linear-search mutant 349 s, against a
   5 s deadline).
+- 2026-11-25 verify round 1 at d3268d9: PASS. The verifier's wording applied (matrix, ADR 0005
+  B1, `input.rs` docs) and an older timeout mutant triaged. Record
+  `docs/verification/0078-repeated-namespace-declaration.md`; LIB-SEC-008 verified.

@@ -8619,7 +8619,8 @@ tests = [
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_008_declarations_that_do_not_repeat_in_one_start_tag_are_not_refused",
 ]
 code = ["crates/sacm/src/xmi/input.rs", "crates/sacm/src/xmi.rs", "docs/sacm/diagnostics.md"]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0078-repeated-namespace-declaration.md"
 depends_on = ["LIB-SEC-002", "LIB-SEC-007"]
 notes = "Filed in slice 0077 (2026-11-25), pre-existing. Slice 0078: refused among LIB-SEC-005's checks after the parse, not in the pre-parse scan, so the earliest offending construct is still the one reported and the scan refuses only limits. The parser still parses the repeats before they are refused; LIB-SEC-007 counts them, which keeps that parse bounded. Design: target/slice-0078-design.md."
 acceptance = [
@@ -8629,5 +8630,5 @@ acceptance = [
   "`lib_sec_008_the_limits_and_the_parser_come_first`: a repeat over `max_attributes` 1 is `LimitExceeded` (`Attributes`) at (1,1) and under 2 is `Malformed`, for `xmlns` and `xmlns:xml`; a DOCTYPE is `Doctype`; a later parser error (`misplaced-declaration`) wins over the repeat.",
   "`lib_sec_008_the_earliest_construct_wins_beside_a_repeat`: an earlier undeclared prefix, empty prefix, surrogate reference or `xmlns:xmlns` is reported instead of the repeat; the repeat is reported instead of a later bad reference in its own value or a later reserved PI target.",
   "`lib_sec_008_declarations_that_do_not_repeat_in_one_start_tag_are_not_refused`: the same prefix on other elements, two prefixes bound to one namespace, `xmlns:p` beside `xmlns:P`, `XMLNS`, a single `xmlns:xml`, and repeats inside a comment, CDATA section, PI or attribute value each read `Ok` in both modes.",
-  "A unit test (`xmi::input`) shows a repeated `xmlns`, `xmlns:p` and `xmlns:xml` refused with these templates, and a start tag of 100,000 distinct declarations and a final repeat refused within 5 s; the `read` docs (`# Errors` step 9) and the input.rs module docs list the check; no case of the W3C suite changes (LIB-SEC-006's counts stay).",
+  "A unit test (`xmi::input`) shows a repeated `xmlns`, `xmlns:p` and `xmlns:xml` refused with these templates, and a start tag of 300,000 distinct declarations and a final repeat of the first refused within 5 s; the `read` docs (`# Errors` step 9) and the input.rs module docs list the check; no case of the W3C suite changes (LIB-SEC-006's counts stay).",
 ]
