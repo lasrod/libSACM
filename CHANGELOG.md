@@ -9,6 +9,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
 ### Breaking
 
 - `xmi::read` refuses, in both modes, a start tag that declares the default namespace
@@ -248,6 +250,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - An unprefixed type value is resolved in the default namespace in scope, also when it
   names a subclass declared with `ReadOptions::with_subclass` [LIB-COMPAT-017,
   LIB-COMPAT-019].
+- The crates no longer set `homepage`, which named the repository again; crates.io links
+  the repository.
 
 ### Fixed
 

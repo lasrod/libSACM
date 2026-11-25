@@ -133,7 +133,7 @@ checks, a public API review, examples on every major type and a user guide.
 
 ```toml
 [dependencies]
-sacm = "0.3"
+sacm = "0.4"
 ```
 
 Load a document, inspect it, edit it, validate it and save it:

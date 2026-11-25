@@ -6,16 +6,15 @@ members = ["crates/sacm", "crates/sacm-cli", "xtask"]
 default-members = ["crates/sacm", "crates/sacm-cli"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 # MSRV policy: see CONTRIBUTING.md. Raising it is a minor-version change.
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/lasrod/libSACM"
-homepage = "https://github.com/lasrod/libSACM"
 
 [workspace.dependencies]
-sacm = { path = "crates/sacm", version = "0.3.0" }
+sacm = { path = "crates/sacm", version = "0.4.0" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

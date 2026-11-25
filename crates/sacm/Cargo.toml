@@ -10,7 +10,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 # The published package holds the sources, the README, the MIT LICENSE and this manifest
 # only. Tests and test data stay in the repository: they are megabytes no user builds
 # (LIB-QA-005).
