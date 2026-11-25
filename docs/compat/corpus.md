@@ -136,15 +136,15 @@ read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equ
 | The Assurance Forge legacy app dialect (`id=`, `name=`, class-named children) | 3–6 | LIB-COMPAT-012 (deferred: only SACM and GSN are read, the maintainer, 2026-11-19) |
 | EMF dialects: the XMI namespace `http://www.omg.org/XMI` and `//@role.N` and `/N` fragment paths, read since slice 0075a with one SACM-XMI-015 Warning per file (7–9, 12, 13) and one SACM-XMI-017 for file 7's 35 paths, all read; a strict read refuses the XMI namespace. File 8's paths sit in kept SACM 2.0 `argumentAsset` children, so none is read. gid identity is not read | 7–13 | LIB-COMPAT-002 |
 | The declared encoding ISO-8859-1: read since slice 0072. With the XMI 2.0 `xmi:XMI` element read since slice 0075a, a tolerant read refuses the files next for their loose `ArgumentReasoning` and `Assertion` roots beside the packages (SACM-XMI-001 at line 7 and 9); a strict read refuses the XMI 2.0 namespace (SACM-XMI-015) | 10, 11 | LIB-COMPAT-016; LIB-COMPAT-014 (deferred, the maintainer, 2026-11-23) |
-| An ODE `DDIPackage` container root (SACM-XMI-001) | 14, 15 | LIB-COMPAT-009 (M6) |
+| An ODE `DDIPackage` container root (SACM-XMI-001) | 14, 15 | LIB-COMPAT-009 (deferred, the maintainer, 2026-11-19) |
 | GSN classes layered on SACM by `xsi:type` (`gsn_:Goal`): without declarations, kept whole as preserved content (SACM-XMI-003); read since slice 0075b as the SACM classes an application declares them subclasses of (see "What LIB-COMPAT-005 claims") | 12, 13 | LIB-COMPAT-017 |
 | Tolerant write-back | 1–9, 12, 13 | Reads back equal: no loss found |
 | Tolerant write-back after a renamed prefix: until slice 0075a, a root attribute whose `xmi` prefix was bound to XMI 2.0's `http://www.omg.org/XMI` was written as `ns1:…`, and each holder of preserved content read back with one namespace declaration more. Resolved: the XMI 2.0 `xmi:version` and `xmi:id` are read as XMI 2.5.1's, so no prefix is renamed | 8, 9, 12, 13 | LIB-COMPAT-002 |
 
 ## What LIB-COMPAT-005 claims
 
-Files that tools independent of this crate wrote are read, checked and written back without
-loss. The evidence is five files of this corpus, from three tool families: ACEditor (7),
+Files that tools independent of this crate wrote open, are checked for dangling references
+and write back without loss. The evidence is five files of this corpus, from three tool families: ACEditor (7),
 Epsilon (8, 9), and the EMF SACM implementation wrwei/SACM as SysMLine and SysMini use it
 (12, 13). `cargo test -p xtask --test corpus` checks every fact below (`lib_compat_005_*`);
 without the corpus, those tests are skipped.

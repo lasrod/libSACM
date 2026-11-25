@@ -88,16 +88,17 @@
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
 //!   see [Preserved content](xmi::read#preserved-content)). A tolerant read,
-//!   the default, opens every well-formed file with SACM 2.3 package roots:
-//!   what a strict read refuses, such as a value that is no literal or an
-//!   untyped child under an abstract role, it keeps as preserved content
-//!   with a Warning, never dropped (see [Modes](xmi#modes)). An element
-//!   without an `xmi:id` gets a generated one, such as `claim_1`, which
-//!   `write` saves; see [Ids](xmi::read#ids). XMI metadata, such as
-//!   `xmi:uuid` ([`uuid`](model::SacmElement::uuid)) or an
+//!   the default, opens a well-formed file with SACM package roots unless it
+//!   has a DOCTYPE, repeats an `xmi:id`, is in an encoding it cannot decode or
+//!   passes the read limits ([`Limits`](xmi::Limits)): what a strict read
+//!   refuses, such as a value that is no literal or an untyped child under an
+//!   abstract role, it keeps as preserved content with a Warning, never dropped
+//!   (see [Modes](xmi#modes)). An element without an `xmi:id` gets a generated
+//!   one, such as `claim_1`, which `write` saves; see [Ids](xmi::read#ids). XMI
+//!   metadata, such as `xmi:uuid` ([`uuid`](model::SacmElement::uuid)) or an
 //!   `xmi:Extension`, is read in both modes and kept as written (see
-//!   [XMI metadata](xmi::read#xmi-metadata)), and a root that a same-file
-//!   proxy names moves into the proxy's place (see
+//!   [XMI metadata](xmi::read#xmi-metadata)), and a root that a same-file proxy
+//!   names moves into the proxy's place (see
 //!   [Same-file proxies](xmi::read#same-file-proxies)).
 //! - [`xmi::write`] writes a document deterministically, XMI metadata and
 //!   preserved content included. A strict save, the default, refuses output that would not be

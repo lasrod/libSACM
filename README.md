@@ -12,9 +12,11 @@ statement](docs/sacm/compliance-points.md) says what that covers and how it is c
 
 ## Status
 
-Milestones M0 (foundation) to M5 (modularity: package interfaces and bindings) are done:
-the base model, argumentation, the artifact and terminology models, and the interfaces and
-bindings of every package. 0.1.0 was published on 2026-11-17 and 0.2.0 on 2026-11-19.
+Milestones M0 (foundation) to M6 (interoperability and compliance claims) are done: the
+base model, argumentation, the artifact and terminology models, the interfaces and bindings
+of every package, tolerant reading of the EMF dialect and older SACM revisions, and the
+four model compliance points. 0.1.0 was published on 2026-11-17, and 0.2.0 and 0.3.0 on
+2026-11-19.
 Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`
 and `TerminologyPackage` roots, the interfaces and bindings of every package, as roots and children, and, in them, nested packages, the
 argumentation elements (Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup and the
@@ -24,9 +26,7 @@ terminology elements Category, Term, Expression and TerminologyGroup, each with 
 `gid`, flags, references, descriptions, notes, implementation constraints and tagged
 values. A name, or a value of a content, key or location, may be an
 `ExpressionLangString` (§8.4) that links an ExpressionElement. Content that is not SACM 2.3 is kept as preserved content (SACM-XMI-003). A
-tolerant read, the default, opens
-every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an older
-SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
+tolerant read, the default, opens a well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 or ISO-8859-1, or passes its read limits (by default 32 MiB,
 depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an element, not counting one namespace declaration per prefix): what a strict read refuses, such as a
 value that is no literal or an untyped child under an abstract role,
 it keeps as preserved content with a Warning; and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently

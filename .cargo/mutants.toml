@@ -26,7 +26,7 @@ exclude_re = [
   "^crates/sacm/src/xmi/roots\\.rs:\\d+:\\d+: replace < with <= in Findings<'_, '_>::legacy_shape$",
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace check_preserved_ids -> Result<\(\), String> with Ok\(\(\)\)$',
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace \|\| with && in check_preserved_ids$',
-  '^crates/sacm/src/model/document\.rs:1627:41: replace < with <= in Document::move_changes$',
-  '^crates/sacm/src/model/document\.rs:1634:71: replace < with <= in Document::move_changes$',
+  '^crates/sacm/src/model/document\.rs:1944:41: replace < with <= in Document::move_changes$',
+  '^crates/sacm/src/model/document\.rs:1951:71: replace < with <= in Document::move_changes$',
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace release_holder with \(\)$',
 ]
