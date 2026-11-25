@@ -1,8 +1,8 @@
 ---
 slice: 0076
 name: kept-type-write
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-019]
 mode: pr
 base: main (dab82db)
@@ -81,3 +81,6 @@ D-ROOT-NAME; ADR 0044.
     slice's record on PASS. ADR 0044 amendment 1 extended. The maintainer may veto.
   - Wording findings applied with the verifier's text (matrix by the lead; xmi.rs, edit.rs
     tables and CHANGELOG by the builder).
+- 2026-11-25 verify round 2 at 8da4d18: PASS for LIB-COMPAT-019 and LIB-COMPAT-017; the
+  verifier's matrix and ADR wording applied. Record `docs/verification/0076-kept-type-write.md`;
+  LIB-COMPAT-019 verified, LIB-COMPAT-017 repointed. The 0075b follow-up row is closed.

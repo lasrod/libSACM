@@ -97,9 +97,9 @@ class in a SACM role is not valid against the SACM XML Schema (rule 4f, Annex B.
 
 ## Amendment 1 (2026-11-25): an attribute in both XMI namespaces (LIB-COMPAT-019, slice 0076)
 
-Under D1: when an element carries `id`, `type`, `idref`, `version`, `uuid` or `label` in
-both XMI namespaces, XMI 2.5.1's is read, and EMF's is content in another namespace, kept as
-written (SACM-XMI-003). XMI 2.5.1 §7.5.3 (p. 10): "Each version of XMI is unambiguously
+Under D1: when an element carries `id`, `type`, `uuid` or `label` in both XMI
+namespaces, XMI 2.5.1's is read, and EMF's is content in another namespace, kept as written
+(SACM-XMI-003); an `idref` in both on a SACM element is kept as written, both of them. XMI 2.5.1 §7.5.3 (p. 10): "Each version of XMI is unambiguously
 identified by its unique namespace URI"; with XMI 2.5.1's attribute present, the alias has
 nothing to stand in for. An element that keeps `type` in EMF's namespace or `xsi:type`, and no type in XMI
 2.5.1's, is written with its own `xmi:type` (only a root keeps an `xsi:type`). This replaces slice 0075a's "the first in
