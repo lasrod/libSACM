@@ -195,10 +195,7 @@ impl Preserved {
     /// gives the class (XMI 2.5.1 §9.5.2 rule 2g), so an element holding one
     /// cannot be made a child.
     pub(crate) fn kept_type(&self) -> Option<&Attr> {
-        self.attributes.iter().find(|attr| {
-            attr.name.local == "type"
-                && matches!(attr.name.namespace.as_deref(), Some(XMI_NS | XSI_NS))
-        })
+        self.attributes.iter().find(|attr| attr.is_root_only_type())
     }
 
     /// Whether the holder must be written with its own `xmi:type`: it keeps
@@ -290,6 +287,17 @@ impl Preserved {
             }
             self.children.push(placed);
         }
+    }
+}
+
+impl Attr {
+    /// Whether it is a type attribute that only a root can carry: `type` in
+    /// XMI 2.5.1's namespace or `xsi:type` (LIB-COMPAT-019, LIB-COMPAT-020,
+    /// D-ROOT-NAME). On a child a type attribute gives the class (XMI 2.5.1
+    /// §9.5.2 rule 2g); a `type` in EMF's XMI namespace is not one, as the
+    /// holder is written with its own `xmi:type`.
+    pub(crate) fn is_root_only_type(&self) -> bool {
+        self.name.local == "type" && matches!(self.name.namespace.as_deref(), Some(XMI_NS | XSI_NS))
     }
 }
 

@@ -98,8 +98,9 @@ const ROW_018: &str = "LIB-API-018";
 /// and `SACM-XMI-017/paths-read` and `/paths-partly-read`, which gives 71
 /// (LIB-COMPAT-002, ADR 0044); slice 0075b adds
 /// `SACM-XMI-003/subclass-type-kept`, which gives 72 (LIB-COMPAT-017, ADR
-/// 0044 D4).
-const DIAGNOSTIC_TEMPLATES: usize = 110;
+/// 0044 D4); slice 0079 adds `SACM-XMI-003/proxy-of-typed-root`, which
+/// gives 73 from the reader (LIB-COMPAT-020, ADR 0042 amendment 1).
+const DIAGNOSTIC_TEMPLATES: usize = 111;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.

@@ -16,9 +16,14 @@
 //! container, with one SACM-XMI-003 at its `<` (an Error strict, a Warning
 //! tolerant), in this order of checks: `proxy-of-no-root`,
 //! `proxy-wrong-kind`, `proxy-of-linked-root` (the root keeps an `href` or
-//! an `xmi:idref` of its own), `proxy-shared` (each of two or more proxies
-//! naming one root), `proxy-cycle` (each proxy of a cycle). A proxy with
-//! anything else on or in it is `element-kept`.
+//! an `xmi:idref` of its own), `proxy-of-typed-root` (the root keeps an
+//! `xmi:type` or `xsi:type` as preserved content, which only a root can
+//! carry; LIB-COMPAT-020, D-ROOT-NAME), `proxy-shared` (each of two or more
+//! proxies naming one root that pass the checks before it), `proxy-cycle`
+//! (each proxy of a cycle). A proxy with anything else on or in it is
+//! `element-kept`. A root whose type names a declared subclass of its own
+//! class, or that keeps only an EMF `type`, keeps no such attribute and is
+//! moved.
 //!
 //! Depth is counted as resolved: a root that stays keeps its input depth, a
 //! moved root takes its proxy's, and its tree shifts with it. Anything
@@ -29,10 +34,15 @@
 
 use sacm::compare::semantic_compare;
 use sacm::diagnostic::{ArgumentValue, Code, Diagnostic, Severity};
-use sacm::model::{Document, SacmElement};
+use sacm::edit::{self, EditError, MoveElement};
+use sacm::model::{Document, ElementKind, SacmElement};
 use sacm::xmi::{self, Limit, Limits, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-030";
+
+/// A same-file proxy does not move a root that keeps a root-only type
+/// attribute (slice 0079; ADR 0042 amendment 1).
+const ROW_020: &str = "LIB-COMPAT-020";
 
 /// Both modes, strict first.
 const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
@@ -1630,5 +1640,823 @@ fn sacm23_xmi_030_a_chain_deeper_than_the_depth_limit_is_refused() {
             ["a", "b"],
             "{ROW}: {what}: roots()"
         );
+    }
+}
+
+// --- 14. LIB-COMPAT-020: a root that keeps a root-only type attribute -----------------
+
+/// The template of a proxy of a root that keeps `xmi:type` or `xsi:type`.
+const TYPED_ROOT: &str = "SACM-XMI-003/proxy-of-typed-root";
+
+/// The template of an attribute kept as preserved content.
+const ATTRIBUTE_KEPT: &str = "SACM-XMI-003/attribute-kept";
+
+/// The bindings of `xsi` and `v`, for the `xmi:XMI` of [`typed`].
+const XSI_V: &str = " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:v=\"urn:v\"";
+
+/// The binding of `v`, for the `xmi:XMI` of [`typed`].
+const V: &str = " xmlns:v=\"urn:v\"";
+
+/// The kept proxy of `args` as a tolerant write writes it, with no binding
+/// of its own.
+const PLAIN_PROXY_LINE: &str = "    <argumentPackage xmi:idref=\"args\" />";
+
+/// The kept proxy of `args` as a tolerant write writes it, when `xmi:XMI`
+/// binds `xsi` and `v`.
+const XSI_V_PROXY_LINE: &str = "    <argumentPackage xmlns:v=\"urn:v\" \
+                                xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" \
+                                xmi:idref=\"args\" />";
+
+/// The tolerant `proxy-of-typed-root` of test 1 (a) as JSON.
+#[cfg(feature = "serde")]
+const TYPED_ROOT_JSON: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/data/golden/serde/same-file-proxies-xmi-003.json"
+);
+
+/// One line: `xmi:XMI`, with `extra` after its two bindings, holding the
+/// root `case` with a proxy of `args` (its `<` at column 173 plus the length
+/// of `extra`), then the root ArgumentPackage `args` carrying `attrs` (from
+/// column 272 plus the length of `extra`).
+fn typed(extra: &str, attrs: &str) -> String {
+    format!(
+        "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+         xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"{extra}>\
+         <sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>\
+         <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>\
+         <sacm:ArgumentPackage xmi:id=\"args\" {attrs}><name content=\"args\"/>\
+         </sacm:ArgumentPackage></xmi:XMI>"
+    )
+}
+
+/// Checks that `at`, on the one line of `input`, is where `text` starts.
+fn assert_at(what: &str, input: &str, at: (u32, u32), text: &str) {
+    let rest =
+        at.1.checked_sub(1)
+            .and_then(|column| usize::try_from(column).ok())
+            .and_then(|start| input.get(start..));
+    assert!(
+        at.0 == 1 && !input.contains('\n') && rest.is_some_and(|rest| rest.starts_with(text)),
+        "{ROW_020}: setup: {what}: {text:?} does not start at line {}, column {}",
+        at.0,
+        at.1
+    );
+}
+
+/// A diagnostic as [`Found`], from its parts.
+fn found_of(
+    code: &'static str,
+    severity: Severity,
+    template: &'static str,
+    at: (u32, u32),
+    affected: &[&str],
+    arguments: &[(&'static str, &str)],
+) -> Found {
+    (
+        code,
+        severity,
+        template,
+        Some(at),
+        affected.iter().map(|id| (*id).to_owned()).collect(),
+        arguments
+            .iter()
+            .map(|(name, value)| (*name, (*value).to_owned()))
+            .collect(),
+    )
+}
+
+/// The `proxy-of-typed-root` of the proxy of `args` in `case`, at `at`,
+/// naming the root's type attribute `attribute` with `value`.
+fn typed_root(mode: Mode, at: (u32, u32), attribute: &str, value: &str) -> Found {
+    kept(
+        mode,
+        TYPED_ROOT,
+        at,
+        "case",
+        &[
+            ("element", "argumentPackage"),
+            ("target", "args"),
+            ("attribute", attribute),
+            ("value", value),
+            ("holder_class", "AssuranceCasePackage"),
+            ("holder_id", "case"),
+        ],
+    )
+}
+
+/// The `attribute-kept` of the attribute `attribute` of the root `args`, at
+/// `at`.
+fn args_attribute_kept(mode: Mode, at: (u32, u32), attribute: &str) -> Found {
+    kept(
+        mode,
+        ATTRIBUTE_KEPT,
+        at,
+        "args",
+        &[
+            ("attribute", attribute),
+            ("holder_class", "ArgumentPackage"),
+            ("holder_id", "args"),
+        ],
+    )
+}
+
+/// The tolerant write of a [`typed`] input whose proxy of `args` is kept,
+/// as `proxy_line`, and whose `args` stays a root, starting with
+/// `root_line`.
+fn kept_golden(proxy_line: &str, root_line: &str) -> String {
+    [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<xmi:XMI xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\">",
+        "  <sacm:AssuranceCasePackage xmi:id=\"case\">",
+        "    <name content=\"case\" />",
+        proxy_line,
+        "  </sacm:AssuranceCasePackage>",
+        root_line,
+        "    <name content=\"args\" />",
+        "  </sacm:ArgumentPackage>",
+        "</xmi:XMI>",
+        "",
+    ]
+    .join("\n")
+}
+
+/// The tolerant write of a [`typed`] input whose proxy of `args` resolved:
+/// `args` is a child of `case`, starting with `child_line`.
+fn moved_golden(child_line: &str) -> String {
+    [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"case\">",
+        "  <name content=\"case\" />",
+        child_line,
+        "    <name content=\"args\" />",
+        "  </argumentPackage>",
+        "</sacm:AssuranceCasePackage>",
+        "",
+    ]
+    .join("\n")
+}
+
+/// Reads `input` with `options`, which must return a document.
+fn read_with(what: &str, input: &str, options: &ReadOptions) -> ReadOutput {
+    match xmi::read(input.as_bytes(), options) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW_020}: {what}: the read refused it: {error:?} ({error})"),
+    }
+}
+
+/// Writes `doc` tolerantly, which must give `golden`; reads that back with
+/// `options`, which must give `==`; and writes it again, which must give the
+/// same bytes.
+fn assert_round_trip(what: &str, doc: &Document, options: &ReadOptions, golden: &str) {
+    let text = written(what, doc, Mode::Tolerant);
+    assert_eq!(
+        text, golden,
+        "{ROW_020}: {what}: the tolerant write is not its golden"
+    );
+    let back = read_with("the output", &text, options).into_document();
+    assert!(
+        back == *doc,
+        "{ROW_020}: {what}: the output read back is not ==: {:?}\n{text}",
+        semantic_compare(doc, &back)
+    );
+    assert_eq!(
+        written("the output read back", &back, Mode::Tolerant),
+        text,
+        "{ROW_020}: {what}: the second write is not byte-identical"
+    );
+}
+
+/// Moving `args` into `case` in a copy of `doc` must be refused as
+/// `KeptRootType`, naming `attribute` with `value`: the attribute that
+/// `proxy-of-typed-root` names.
+fn assert_move_refused(what: &str, doc: &Document, attribute: &str, value: &str) {
+    let mut edited = doc.clone();
+    match edit::apply(&mut edited, MoveElement::new("args", "case")) {
+        Err(EditError::KeptRootType {
+            element,
+            attribute: held,
+            value: held_value,
+            ..
+        }) => assert_eq!(
+            (element.as_str(), held.as_str(), held_value.as_str()),
+            ("args", attribute, value),
+            "{ROW_020}: {what}: the KeptRootType of moving args into case does not name the \
+             attribute proxy-of-typed-root names"
+        ),
+        other => panic!("{ROW_020}: {what}: moving args into case is not KeptRootType: {other:?}"),
+    }
+}
+
+/// A case of `lib_compat_020_a_root_keeping_a_type_attribute_is_not_moved_by_a_proxy`.
+struct TypedCase {
+    about: &'static str,
+    input: String,
+    /// The `<` of the proxy, and the type attribute and value its
+    /// `proxy-of-typed-root` names.
+    proxy_at: (u32, u32),
+    attribute: &'static str,
+    value: &'static str,
+    /// Each attribute `args` keeps, with where it starts.
+    kept: Vec<((u32, u32), &'static str)>,
+    /// The tolerant write.
+    golden: String,
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn lib_compat_020_a_root_keeping_a_type_attribute_is_not_moved_by_a_proxy() {
+    let cases = [
+        TypedCase {
+            about: "(a) xmi:type naming another SACM class",
+            input: typed("", "xmi:type=\"sacm:ArtifactPackage\""),
+            proxy_at: (1, 173),
+            attribute: "xmi:type",
+            value: "sacm:ArtifactPackage",
+            kept: vec![((1, 272), "xmi:type")],
+            golden: kept_golden(
+                PLAIN_PROXY_LINE,
+                "  <sacm:ArgumentPackage xmi:id=\"args\" xmi:type=\"sacm:ArtifactPackage\">",
+            ),
+        },
+        TypedCase {
+            about: "(b) xsi:type naming a foreign class",
+            input: typed(XSI_V, "xsi:type=\"v:Bundle\""),
+            proxy_at: (1, 243),
+            attribute: "xsi:type",
+            value: "v:Bundle",
+            kept: vec![((1, 342), "xsi:type")],
+            golden: kept_golden(
+                XSI_V_PROXY_LINE,
+                "  <sacm:ArgumentPackage xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"args\" \
+                 xmlns:v=\"urn:v\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" \
+                 xsi:type=\"v:Bundle\">",
+            ),
+        },
+        TypedCase {
+            about: "(c) xmi:type naming a foreign class",
+            input: typed(V, "xmi:type=\"v:Bundle\""),
+            proxy_at: (1, 189),
+            attribute: "xmi:type",
+            value: "v:Bundle",
+            kept: vec![((1, 288), "xmi:type")],
+            golden: kept_golden(
+                "    <argumentPackage xmlns:v=\"urn:v\" xmi:idref=\"args\" />",
+                "  <sacm:ArgumentPackage xmi:id=\"args\" xmlns:v=\"urn:v\" xmi:type=\"v:Bundle\">",
+            ),
+        },
+        TypedCase {
+            about: "(d) xmi:type naming a subclass of the root's class",
+            input: typed("", "xmi:type=\"sacm:ArgumentPackageInterface\""),
+            proxy_at: (1, 173),
+            attribute: "xmi:type",
+            value: "sacm:ArgumentPackageInterface",
+            kept: vec![((1, 272), "xmi:type")],
+            golden: kept_golden(
+                PLAIN_PROXY_LINE,
+                "  <sacm:ArgumentPackage xmi:id=\"args\" \
+                 xmi:type=\"sacm:ArgumentPackageInterface\">",
+            ),
+        },
+        TypedCase {
+            about: "(e) xsi:type, then xmi:type",
+            input: typed(
+                XSI_V,
+                "xsi:type=\"v:Bundle\" xmi:type=\"sacm:ArtifactPackage\"",
+            ),
+            proxy_at: (1, 243),
+            attribute: "xsi:type",
+            value: "v:Bundle",
+            kept: vec![((1, 342), "xsi:type"), ((1, 362), "xmi:type")],
+            golden: kept_golden(
+                XSI_V_PROXY_LINE,
+                "  <sacm:ArgumentPackage xmi:id=\"args\" xmlns:v=\"urn:v\" \
+                 xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"v:Bundle\" \
+                 xmi:type=\"sacm:ArtifactPackage\">",
+            ),
+        },
+    ];
+    for case in &cases {
+        assert_at(case.about, &case.input, case.proxy_at, "<argumentPackage ");
+        for (at, attribute) in &case.kept {
+            assert_at(case.about, &case.input, *at, &format!("{attribute}="));
+        }
+        for mode in MODES {
+            let what = format!("{}, {mode:?}", case.about);
+            let output = read_ok(&what, mode, &case.input);
+            let mut expected = vec![typed_root(mode, case.proxy_at, case.attribute, case.value)];
+            expected.extend(
+                case.kept
+                    .iter()
+                    .map(|(at, attribute)| args_attribute_kept(mode, *at, attribute)),
+            );
+            assert_eq!(
+                diagnostics(&what, &output),
+                expected,
+                "{ROW_020}: {what}: not proxy-of-typed-root, then the root's attribute-kept"
+            );
+            let doc = output.document();
+            assert_eq!(
+                root_ids(doc),
+                ["case", "args"],
+                "{ROW_020}: {what}: args does not stay a root"
+            );
+            assert_eq!(
+                parent_of(&what, doc, "args"),
+                None,
+                "{ROW_020}: {what}: args has a parent"
+            );
+            assert!(
+                doc.get("case")
+                    .is_some_and(SacmElement::has_preserved_content),
+                "{ROW_020}: {what}: case does not keep the proxy"
+            );
+            assert_move_refused(&what, doc, case.attribute, case.value);
+            if mode == Mode::Tolerant {
+                assert_round_trip(
+                    &what,
+                    doc,
+                    &ReadOptions::default().with_mode(Mode::Tolerant),
+                    &case.golden,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn lib_compat_020_a_declared_subclass_or_an_emf_type_on_a_root_is_moved_as_before() {
+    let declared = |mode: Mode, kind: ElementKind| {
+        ReadOptions::default()
+            .with_mode(mode)
+            .with_subclass("urn:v", "Bundle", kind)
+    };
+    let subclass_kept = |at: (u32, u32)| {
+        found_of(
+            "SACM-XMI-003",
+            Severity::Warning,
+            "SACM-XMI-003/subclass-type-kept",
+            at,
+            &["args"],
+            &[
+                ("type", "v:Bundle"),
+                ("class", "ArgumentPackage"),
+                ("id", "args"),
+            ],
+        )
+    };
+    let moved = |what: &str, doc: &Document| {
+        assert_eq!(root_ids(doc), ["case"], "{ROW_020}: {what}: roots()");
+        assert_eq!(
+            parent_of(what, doc, "args").as_deref(),
+            Some("case"),
+            "{ROW_020}: {what}: args is not moved into case"
+        );
+    };
+    let declared_golden =
+        moved_golden("  <argumentPackage xmi:type=\"v:Bundle\" xmi:id=\"args\" xmlns:v=\"urn:v\">");
+    // The inputs (c) and (b) of
+    // `lib_compat_020_a_root_keeping_a_type_attribute_is_not_moved_by_a_proxy`.
+    let input_c = typed(V, "xmi:type=\"v:Bundle\"");
+    let input_b = typed(XSI_V, "xsi:type=\"v:Bundle\"");
+    assert_at("(i)", &input_c, (1, 189), "<argumentPackage ");
+    assert_at("(i)", &input_c, (1, 288), "xmi:type=");
+    assert_at("(iii)", &input_b, (1, 342), "xsi:type=");
+
+    // (i) The type names a subclass of ArgumentPackage the application
+    // declared: `args` holds the subclass, not a type attribute, and moves.
+    let what = "(i) xmi:type naming a declared subclass, Tolerant";
+    let options = declared(Mode::Tolerant, ElementKind::ArgumentPackage);
+    let output = read_with(what, &input_c, &options);
+    assert_eq!(
+        diagnostics(what, &output),
+        [subclass_kept((1, 288))],
+        "{ROW_020}: {what}: not exactly subclass-type-kept"
+    );
+    let doc = output.document();
+    moved(what, doc);
+    assert!(
+        doc.get("args").and_then(SacmElement::subclass).is_some(),
+        "{ROW_020}: {what}: args holds no subclass"
+    );
+    assert_round_trip(what, doc, &options, &declared_golden);
+
+    // (ii) Strict reads no subclass: the type is a kept attribute, so the
+    // root is not moved.
+    let what = "(ii) xmi:type naming a declared subclass, Strict";
+    let output = read_with(
+        what,
+        &input_c,
+        &declared(Mode::Strict, ElementKind::ArgumentPackage),
+    );
+    assert_eq!(
+        diagnostics(what, &output),
+        [
+            typed_root(Mode::Strict, (1, 189), "xmi:type", "v:Bundle"),
+            args_attribute_kept(Mode::Strict, (1, 288), "xmi:type"),
+        ],
+        "{ROW_020}: {what}: not proxy-of-typed-root, then the root's attribute-kept"
+    );
+    assert_eq!(
+        root_ids(output.document()),
+        ["case", "args"],
+        "{ROW_020}: {what}: args does not stay a root"
+    );
+
+    // (iii) The same subclass by `xsi:type`.
+    let what = "(iii) xsi:type naming a declared subclass, Tolerant";
+    let output = read_with(what, &input_b, &options);
+    assert_eq!(
+        diagnostics(what, &output),
+        [
+            subclass_kept((1, 342)),
+            found_of(
+                "SACM-XMI-010",
+                Severity::Warning,
+                "SACM-XMI-010/xsi-type",
+                (1, 342),
+                &["args"],
+                &[("class", "ArgumentPackage"), ("id", "args")],
+            ),
+        ],
+        "{ROW_020}: {what}: not subclass-type-kept, then xsi-type"
+    );
+    let doc = output.document();
+    moved(what, doc);
+    assert_round_trip(what, doc, &options, &declared_golden);
+
+    // (iv) A subclass declared for another kind gives `args` no subclass:
+    // the type is a kept attribute, so the root is not moved.
+    let what = "(iv) xmi:type naming a subclass declared for ArtifactPackage, Tolerant";
+    let output = read_with(
+        what,
+        &input_c,
+        &declared(Mode::Tolerant, ElementKind::ArtifactPackage),
+    );
+    assert_eq!(
+        diagnostics(what, &output),
+        [
+            typed_root(Mode::Tolerant, (1, 189), "xmi:type", "v:Bundle"),
+            args_attribute_kept(Mode::Tolerant, (1, 288), "xmi:type"),
+        ],
+        "{ROW_020}: {what}: not proxy-of-typed-root, then the root's attribute-kept"
+    );
+    assert_eq!(
+        root_ids(output.document()),
+        ["case", "args"],
+        "{ROW_020}: {what}: args does not stay a root"
+    );
+
+    // (v) An EMF `type` is not one only a root can carry: a write gives its
+    // holder its own `xmi:type`, so the root moves.
+    let tolerant = ReadOptions::default().with_mode(Mode::Tolerant);
+    let input = typed(
+        " xmlns:emf=\"http://www.omg.org/XMI\"",
+        "emf:type=\"sacm:ArtifactPackage\"",
+    );
+    assert_at("(v)", &input, (1, 307), "emf:type=");
+    let what = "(v) an EMF type on the root, Tolerant";
+    let output = read_with(what, &input, &tolerant);
+    assert_eq!(
+        diagnostics(what, &output),
+        [
+            args_attribute_kept(Mode::Tolerant, (1, 307), "emf:type"),
+            found_of(
+                "SACM-XMI-015",
+                Severity::Warning,
+                "SACM-XMI-015/emf-xmi-namespace-read",
+                (1, 307),
+                &[],
+                &[("name", "emf:type")],
+            ),
+        ],
+        "{ROW_020}: {what}: not attribute-kept, then emf-xmi-namespace-read"
+    );
+    let doc = output.document();
+    moved(what, doc);
+    assert_round_trip(
+        what,
+        doc,
+        &tolerant,
+        &moved_golden(
+            "  <argumentPackage xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"args\" \
+             xmlns:emf=\"http://www.omg.org/XMI\" emf:type=\"sacm:ArtifactPackage\">",
+        ),
+    );
+
+    // (vi) A document in EMF's XMI namespace: the root's `xmi:type` is EMF's.
+    let input = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" \
+                 xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\
+                 <sacm:AssuranceCasePackage xmi:id=\"case\"><name content=\"case\"/>\
+                 <argumentPackage xmi:idref=\"args\"/></sacm:AssuranceCasePackage>\
+                 <sacm:ArgumentPackage xmi:id=\"args\" xmi:type=\"sacm:ArtifactPackage\">\
+                 <name content=\"args\"/></sacm:ArgumentPackage></xmi:XMI>";
+    assert_at("(vi)", input, (1, 1), "<xmi:XMI ");
+    assert_at("(vi)", input, (1, 222), "<sacm:ArgumentPackage ");
+    let what = "(vi) an EMF document whose root keeps xmi:type, Tolerant";
+    let output = read_with(what, input, &tolerant);
+    assert_eq!(
+        diagnostics(what, &output),
+        [
+            found_of(
+                "SACM-XMI-015",
+                Severity::Warning,
+                "SACM-XMI-015/emf-xmi-namespace-read",
+                (1, 1),
+                &[],
+                &[("name", "xmi:XMI")],
+            ),
+            found_of(
+                "SACM-XMI-003",
+                Severity::Warning,
+                "SACM-XMI-003/prefix-renamed",
+                (1, 222),
+                &["args"],
+                &[
+                    ("attribute", "xmi:type"),
+                    ("element", "sacm:ArgumentPackage"),
+                    ("prefix", "xmi"),
+                    ("namespace", "http://www.omg.org/XMI"),
+                    ("pinned_namespace", "http://www.omg.org/spec/XMI/20131001"),
+                    ("renamed_prefix", "ns1"),
+                    ("holder_class", "ArgumentPackage"),
+                    ("holder_id", "args"),
+                ],
+            ),
+        ],
+        "{ROW_020}: {what}: not emf-xmi-namespace-read, then prefix-renamed"
+    );
+    let doc = output.document();
+    moved(what, doc);
+    assert_round_trip(
+        what,
+        doc,
+        &tolerant,
+        &moved_golden(
+            "  <argumentPackage xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"args\" \
+             xmlns:ns1=\"http://www.omg.org/XMI\" ns1:type=\"sacm:ArtifactPackage\">",
+        ),
+    );
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn lib_compat_020_the_typed_root_check_follows_proxy_of_linked_root_and_precedes_proxy_shared_and_proxy_cycle()
+ {
+    // After `proxy-of-linked-root`: a root that keeps both a link and a type
+    // is `proxy-of-linked-root` only.
+    let input = typed("", "xmi:type=\"sacm:ArtifactPackage\" href=\"o.xmi#x\"");
+    assert_at("linked and typed", &input, (1, 173), "<argumentPackage ");
+    assert_at("linked and typed", &input, (1, 272), "xmi:type=");
+    assert_at("linked and typed", &input, (1, 304), "href=");
+    for mode in MODES {
+        let what = format!("a root with xmi:type and href, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        assert_eq!(
+            diagnostics(&what, &output),
+            [
+                kept(
+                    mode,
+                    "SACM-XMI-003/proxy-of-linked-root",
+                    (1, 173),
+                    "case",
+                    &proxy_arguments("argumentPackage", "args", "AssuranceCasePackage", "case"),
+                ),
+                args_attribute_kept(mode, (1, 272), "xmi:type"),
+                args_attribute_kept(mode, (1, 304), "href"),
+            ],
+            "{ROW_020}: {what}: not proxy-of-linked-root, then the root's two attribute-kept"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["case", "args"],
+            "{ROW_020}: {what}: args does not stay a root"
+        );
+    }
+
+    // After `proxy-wrong-kind`, before `proxy-shared`: of three proxies of a
+    // typed root, one of the wrong kind, the other two are each
+    // `proxy-of-typed-root`.
+    let single = "<argumentPackage xmi:idref=\"args\"/>";
+    let input = typed("", "xmi:type=\"sacm:ArtifactPackage\"").replacen(
+        single,
+        &format!("<artifactPackage xmi:idref=\"args\"/>{single}{single}"),
+        1,
+    );
+    assert_at("three proxies", &input, (1, 173), "<artifactPackage ");
+    assert_at("three proxies", &input, (1, 208), "<argumentPackage ");
+    assert_at("three proxies", &input, (1, 243), "<argumentPackage ");
+    assert_at("three proxies", &input, (1, 342), "xmi:type=");
+    for mode in MODES {
+        let what = format!("three proxies of a root with xmi:type, {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        assert_eq!(
+            diagnostics(&what, &output),
+            [
+                kept(
+                    mode,
+                    "SACM-XMI-003/proxy-wrong-kind",
+                    (1, 173),
+                    "case",
+                    &[
+                        ("element", "artifactPackage"),
+                        ("target", "args"),
+                        ("target_class", "ArgumentPackage"),
+                        ("class", "ArtifactPackage"),
+                        ("holder_class", "AssuranceCasePackage"),
+                        ("holder_id", "case"),
+                    ],
+                ),
+                typed_root(mode, (1, 208), "xmi:type", "sacm:ArtifactPackage"),
+                typed_root(mode, (1, 243), "xmi:type", "sacm:ArtifactPackage"),
+                args_attribute_kept(mode, (1, 342), "xmi:type"),
+            ],
+            "{ROW_020}: {what}: not proxy-wrong-kind, then two proxy-of-typed-root, then the \
+             root's attribute-kept"
+        );
+        assert_eq!(
+            root_ids(output.document()),
+            ["case", "args"],
+            "{ROW_020}: {what}: args does not stay a root"
+        );
+    }
+
+    // Before `proxy-cycle`: `a` names the typed root `b`, and `b` names `a`.
+    // a's proxy is `proxy-of-typed-root` and counts toward no cycle, so b's
+    // resolves and `a` moves under `b`.
+    let input = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+                 xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\
+                 <sacm:AssuranceCasePackage xmi:id=\"a\"><name content=\"a\"/>\
+                 <assuranceCasePackage xmi:idref=\"b\"/></sacm:AssuranceCasePackage>\
+                 <sacm:AssuranceCasePackage xmi:id=\"b\" xmi:type=\"sacm:ArtifactPackage\">\
+                 <name content=\"b\"/><assuranceCasePackage xmi:idref=\"a\"/>\
+                 </sacm:AssuranceCasePackage></xmi:XMI>";
+    assert_at(
+        "a cycle",
+        input,
+        (1, 167),
+        "<assuranceCasePackage xmi:idref=\"b\"",
+    );
+    assert_at("a cycle", input, (1, 270), "xmi:type=");
+    let golden = [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"b\" \
+         xmi:type=\"sacm:ArtifactPackage\">",
+        "  <name content=\"b\" />",
+        "  <assuranceCasePackage xmi:id=\"a\">",
+        "    <name content=\"a\" />",
+        "    <assuranceCasePackage xmi:idref=\"b\" />",
+        "  </assuranceCasePackage>",
+        "</sacm:AssuranceCasePackage>",
+        "",
+    ]
+    .join("\n");
+    for mode in MODES {
+        let what = format!("a names the typed root b, and b names a, {mode:?}");
+        let output = read_ok(&what, mode, input);
+        assert_eq!(
+            diagnostics(&what, &output),
+            [
+                kept(
+                    mode,
+                    TYPED_ROOT,
+                    (1, 167),
+                    "a",
+                    &[
+                        ("element", "assuranceCasePackage"),
+                        ("target", "b"),
+                        ("attribute", "xmi:type"),
+                        ("value", "sacm:ArtifactPackage"),
+                        ("holder_class", "AssuranceCasePackage"),
+                        ("holder_id", "a"),
+                    ],
+                ),
+                kept(
+                    mode,
+                    ATTRIBUTE_KEPT,
+                    (1, 270),
+                    "b",
+                    &[
+                        ("attribute", "xmi:type"),
+                        ("holder_class", "AssuranceCasePackage"),
+                        ("holder_id", "b"),
+                    ],
+                ),
+            ],
+            "{ROW_020}: {what}: not proxy-of-typed-root, then b's attribute-kept, with no \
+             proxy-cycle"
+        );
+        let doc = output.document();
+        assert_eq!(root_ids(doc), ["b"], "{ROW_020}: {what}: roots()");
+        assert_eq!(
+            parent_of(&what, doc, "a").as_deref(),
+            Some("b"),
+            "{ROW_020}: {what}: a is not moved under b"
+        );
+        if mode == Mode::Tolerant {
+            assert_round_trip(
+                &what,
+                doc,
+                &ReadOptions::default().with_mode(Mode::Tolerant),
+                &golden,
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_compat_020_the_template_renders_and_serializes() {
+    let input = typed("", "xmi:type=\"sacm:ArtifactPackage\"");
+    let message = "the element \"argumentPackage\" is a proxy of the root \"args\", which keeps \
+                   the type attribute xmi:type=\"sacm:ArtifactPackage\" that only a root can \
+                   carry, so it is kept as written as preserved content of the \
+                   AssuranceCasePackage \"case\", which a tolerant write writes back and a \
+                   strict write refuses";
+    for mode in MODES {
+        let what = format!("(a), {mode:?}");
+        let output = read_ok(&what, mode, &input);
+        let Some(diagnostic) = output
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.template() == TYPED_ROOT)
+        else {
+            panic!(
+                "{ROW_020}: {what}: no {TYPED_ROOT}: {:?}",
+                diagnostics(&what, &output)
+            );
+        };
+        let arguments: Vec<(&str, bool)> = diagnostic
+            .arguments()
+            .iter()
+            .map(|argument| {
+                (
+                    argument.name(),
+                    matches!(argument.value(), ArgumentValue::Text(_)),
+                )
+            })
+            .collect();
+        assert_eq!(
+            arguments,
+            [
+                ("element", true),
+                ("target", true),
+                ("attribute", true),
+                ("value", true),
+                ("holder_class", true),
+                ("holder_id", true),
+            ],
+            "{ROW_020}: {what}: the Text arguments of {TYPED_ROOT}, in order"
+        );
+        assert_eq!(
+            (
+                diagnostic.code().as_str(),
+                diagnostic.severity(),
+                diagnostic.requirement_id(),
+                diagnostic.clause()
+            ),
+            (
+                "SACM-XMI-003",
+                kept_severity(mode),
+                "SACM23-XMI-030",
+                Some("7.10.1")
+            ),
+            "{ROW_020}: {what}: the code, severity, row and clause of {TYPED_ROOT}"
+        );
+        assert_eq!(
+            diagnostic.message(),
+            message,
+            "{ROW_020}: {what}: the message of {TYPED_ROOT}"
+        );
+
+        // The tolerant Warning as JSON, which reads back equal.
+        #[cfg(feature = "serde")]
+        if mode == Mode::Tolerant {
+            let expected = file(TYPED_ROOT_JSON);
+            let json = serde_json::to_string(diagnostic)
+                .unwrap_or_else(|error| panic!("{ROW_020}: {what}: does not serialize: {error}"));
+            assert_eq!(
+                format!("{json}\n"),
+                expected,
+                "{ROW_020}: {what}: the JSON of the Warning"
+            );
+            let back: Diagnostic = serde_json::from_str(&expected)
+                .unwrap_or_else(|error| panic!("{ROW_020}: {what}: does not read back: {error}"));
+            assert_eq!(
+                &back, diagnostic,
+                "{ROW_020}: {what}: the JSON does not read back equal"
+            );
+        }
     }
 }
