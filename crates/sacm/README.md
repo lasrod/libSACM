@@ -59,8 +59,7 @@ says what that covers and where it stops.
   is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
-  opens every well-formed file with SACM package roots (SACM 2.3, or, with a Warning, an
-  older SACM revision's or a SACM-like namespace) within its read limits (by default 32 MiB,
+  opens a well-formed file whose roots are all SACM packages (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, has an `XMI` element in a namespace other than XMI 2.5.1's or EMF's `http://www.omg.org/XMI`, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 with a byte order mark or ISO-8859-1, or passes the XML parser's capacity or its read limits (by default 32 MiB,
   depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an
   element, not counting one namespace declaration per prefix): what a strict read
   refuses, such as a value that is no literal or an untyped child under an abstract role, it keeps as
@@ -127,11 +126,8 @@ says what that covers and where it stops.
 The [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md)
 tracks every requirement: what is built, what is planned, and the tests behind each.
 
-Planned:
-
-- Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
-  was accepted.
-- More validation rules against the specification's constraints.
+Planned (M7): property-based round-trip and atomicity tests, fuzzing, coverage, semver
+checks, a public API review, examples on every major type and a user guide.
 
 ## Usage
 

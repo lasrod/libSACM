@@ -52,10 +52,11 @@
 //!
 //! # Modes
 //!
-//! Both take a [`Mode`] in their options (ADR 0022, ADR 0035).
-//! [`ReadOptions`] default to tolerant, so that an application opens any
-//! well-formed SACM file, and [`WriteOptions`] to strict, so that what it
-//! saves is schema-valid.
+//! Both take a [`Mode`] in their options (ADR 0022, ADR 0035). [`ReadOptions`]
+//! default to tolerant, so that an application opens a well-formed SACM file
+//! that a strict read refuses for a defect it can keep (the table below lists
+//! what a tolerant read still refuses), and [`WriteOptions`] to strict, so that
+//! what it saves is schema-valid.
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
@@ -1397,18 +1398,21 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   reference to no `xmi:id` it writes ([`WriteError::Invalid`]). It never
 ///   validates: a draft with an open model Error, such as a package with no
 ///   name, writes.
-/// - [`Tolerant`](Self::Tolerant) opens every well-formed file with SACM
-///   package roots within its [`Limits`]: in SACM 2.3, an older revision's
-///   or a SACM-like namespace (LIB-COMPAT-004). It also accepts recognised
-///   variations, the dialect EMF writes among them (its XMI namespace
-///   `http://www.omg.org/XMI` and its fragment paths, LIB-COMPAT-002), reads
-///   elements typed with classes the application declares subclasses of SACM
-///   2.3 classes ([`ReadOptions::with_subclass`], LIB-COMPAT-017), and
-///   keeps every construct a strict read refuses but a malformed or unsafe
-///   input, a repeated `xmi:id`, an encoding, a SACM 2.4 root, an `XMI`
-///   element in another XMI namespace and a limit, as preserved content; it
-///   reports each as a Warning, and never an Error. A tolerant write writes
-///   the document as it is held, preserved content included.
+/// - [`Tolerant`](Self::Tolerant) opens a well-formed file whose roots are all
+///   SACM packages, in SACM 2.3, an older revision's or a SACM-like namespace
+///   (LIB-COMPAT-004), unless it has a DOCTYPE, a SACM 2.4 root, an `XMI`
+///   element in a namespace other than XMI 2.5.1's or EMF's
+///   `http://www.omg.org/XMI`, a repeated `xmi:id` or an encoding it cannot
+///   decode, or passes the parser's capacity or its [`Limits`]. It also accepts
+///   recognised variations, the dialect EMF writes among them (its XMI
+///   namespace `http://www.omg.org/XMI` and its fragment paths,
+///   LIB-COMPAT-002), reads elements typed with classes the application
+///   declares subclasses of SACM 2.3 classes ([`ReadOptions::with_subclass`],
+///   LIB-COMPAT-017), and keeps every construct a strict read refuses but a
+///   malformed or unsafe input, a repeated `xmi:id`, an encoding, a SACM 2.4
+///   root, an `XMI` element in another XMI namespace and a limit, as preserved
+///   content; it reports each as a Warning, and never an Error. A tolerant
+///   write writes the document as it is held, preserved content included.
 ///
 /// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
 /// and [`WriteOptions`] to `Strict`. The two modes of a write write the same
@@ -1439,12 +1443,14 @@ pub enum Mode {
     /// read, and a write refuses a document that holds preserved content or
     /// whose output would not be schema-valid.
     Strict,
-    /// Opens every well-formed SACM file within its [`Limits`]: a read keeps
-    /// what a strict read refuses, with a Warning, reads a root in an older
-    /// SACM revision's or a SACM-like namespace as SACM 2.3, the dialect EMF
-    /// writes as XMI 2.5.1, and elements typed with classes the application
-    /// declares subclasses of SACM 2.3 classes as those classes, and a write
-    /// writes the document as it is held.
+    /// Opens a well-formed SACM file unless it is one of the inputs the
+    /// [`Mode`] docs list as refused (a DOCTYPE, a repeated `xmi:id`, an
+    /// encoding, a SACM 2.4 root, an `XMI` element in a namespace other than
+    /// XMI 2.5.1's or EMF's, a limit): a read keeps what a strict read refuses,
+    /// with a Warning, reads a root in an older SACM revision's or a SACM-like
+    /// namespace as SACM 2.3, the dialect EMF writes as XMI 2.5.1, and elements
+    /// typed with classes the application declares subclasses of SACM 2.3
+    /// classes as those classes, and a write writes the document as it is held.
     Tolerant,
 }
 

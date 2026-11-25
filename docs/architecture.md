@@ -87,8 +87,7 @@ Document ──► xmi::write           ──► Result<String, WriteError>    
   Content that is not SACM 2.3 where it stands is kept, as written, as preserved content
   of its element ([ADR 0033](adr/0033-preserved-content.md)), so a strict save can find
   and refuse it. A tolerant read, the default, keeps everything else a strict read
-  refuses the same way, with a Warning, so it opens every well-formed file with SACM 2.3
-  package roots; content on or under `xmi:XMI` is held by the document, outside its
+  refuses the same way, with a Warning, so it opens every well-formed file whose roots are SACM packages, except those LIB-COMPAT-001 lists (a DOCTYPE, a SACM 2.4 root, an `XMI` element in a namespace other than XMI 2.5.1's or EMF's, a repeated `xmi:id`, an encoding it cannot decode, the parser's capacity or the limits); content on or under `xmi:XMI` is held by the document, outside its
   elements ([ADR 0035](adr/0035-tolerant-read-and-schema-only-save.md)).
 - **Modes** ([ADR 0035](adr/0035-tolerant-read-and-schema-only-save.md)): a strict read
   refuses what it does not read; a tolerant read keeps it. A strict write checks schema
