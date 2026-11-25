@@ -444,7 +444,8 @@ pub use limits::{Limit, Limits};
 ///   does not conform inside, kept whole, so the property is not given;
 /// - text that is not all white space in element-only content;
 /// - a root's type attribute naming another class (the root is read as the
-///   kind its element name gives).
+///   kind its element name gives). An edit never makes such a root a child
+///   ([`EditError::KeptRootType`](crate::edit::EditError::KeptRootType)).
 ///
 /// Each construct gives one SACM-XMI-003 ([`Code::XMI_UNKNOWN_CONTENT`]),
 /// affecting the holder, at the attribute's name, the element's start tag
@@ -462,7 +463,12 @@ pub use limits::{Limit, Limits};
 /// tells a holder. The content keeps its place: a child its index among the
 /// holder's children, and an attribute its place after the typed ones, in
 /// input order. Namespace URIs, prefixes, local names, attribute values and
-/// the text inside an element are kept exactly; text in a holder is
+/// the text inside an element are kept exactly, with one exception. A kept
+/// type attribute's value is a `QName` (XMI 2.5.1 §9.5.2 rule 2g), so the
+/// holder also keeps the binding of the prefix it names, as XMI metadata
+/// does for its type. A value prefix `sacm` or `xmi` bound to another
+/// namespace, or no prefix under a default namespace, is replaced by the
+/// holder's `nsN` for that namespace (LIB-COMPAT-019). Text in a holder is
 /// trimmed of XML white space, and comments and processing instructions
 /// are dropped, as everywhere in the reader. A preserved id stays in the
 /// document's id space, though [`Document::get`] does not find it, and a
@@ -977,7 +983,10 @@ pub use limits::{Limit, Limits};
 ///   `uuid` and `label` in `http://www.omg.org/XMI`, as XMI 2.5.1's, with one
 ///   SACM-XMI-015 Warning per document at the first name in that namespace.
 ///   Any other name in it is kept as written (SACM-XMI-003), and an element
-///   carrying the same XMI attribute in both namespaces reads the first;
+///   carrying the same XMI attribute in both namespaces reads XMI 2.5.1's
+///   and keeps EMF's as written (LIB-COMPAT-019). An element that keeps a
+///   `type` in EMF's namespace or an `xsi:type` (only a root keeps one), and
+///   none in XMI 2.5.1's, is written with its own `xmi:type`;
 /// - a token of a reference end's attribute, the fragment of a
 ///   same-document `href` and an `ExpressionLangString`'s `expression` that
 ///   begin with `/` and equal no `xmi:id`, as the id of the element they

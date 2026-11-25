@@ -206,7 +206,8 @@
 //! | 2. under a parent: the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
 //! | 3. the parent's class can hold the element's kind; for the roots, the element is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] | SACM-CMD-005 |
 //! | 4. the parent is not the element and not inside it | [`EditError::ParentInSubtree`] | SACM-CMD-005 |
-//! | 5. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
+//! | 5. under a parent: the element keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
+//! | 6. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
 //!
 //! A copy captures its source elements when it is built: an id the source
 //! lacks is [`EditError::ElementNotFound`] from [`CopyElements::new`] or
@@ -222,7 +223,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
-//! | 2. each top, in list order: the parent's class can hold it; for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
+//! | 2. each top, in list order: the parent's class can hold it, and it keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
 //! | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
 //! | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
@@ -2191,6 +2192,41 @@ pub enum EditError {
         /// many other roots): the largest position allowed.
         children: usize,
     },
+    /// A [`MoveElement::new`] or a [`CopyElements::new`] would make a child of an
+    /// element that keeps a type attribute as preserved content (SACM-CMD-005,
+    /// LIB-COMPAT-019): an `xmi:type` or `xsi:type` that a read kept on a root
+    /// because it names another class than the root's element name (D-ROOT-NAME,
+    /// ADR 0033). On a child a type attribute gives the class (XMI 2.5.1 rule 2g),
+    /// so the element could not be written with both. Keep it a root, or move or
+    /// copy its children instead.
+    ///
+    /// ```
+    /// use sacm::edit::{self, EditError, MoveElement};
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile">
+    ///   <sacm:AssuranceCasePackage xmi:id="case"><name content="Case"/></sacm:AssuranceCasePackage>
+    ///   <sacm:ArgumentPackage xmi:type="p:Bundle" xmi:id="a"><name content="A"/></sacm:ArgumentPackage>
+    /// </xmi:XMI>"#;
+    /// let mut doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let error = edit::apply(&mut doc, MoveElement::new("a", "case")).unwrap_err();
+    /// assert!(matches!(error, EditError::KeptRootType { .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "element \"a\" keeps the type attribute xmi:type=\"p:Bundle\", which only a root can carry, so it cannot be a child"
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    KeptRootType {
+        /// The element's id; for a copy, its id in the source.
+        element: ElementId,
+        /// The kept type attribute's name as held, such as `xmi:type`.
+        attribute: String,
+        /// Its value exactly as held, such as `p:Bundle`.
+        value: String,
+    },
 }
 
 impl EditError {
@@ -2215,8 +2251,9 @@ impl EditError {
     /// [`PreviewExpired`](Self::PreviewExpired), SACM-CMD-006 for
     /// [`NotEmpty`](Self::NotEmpty), SACM-CMD-007 for
     /// [`CrossPackageReference`](Self::CrossPackageReference), SACM-CMD-005
-    /// for [`InvalidRoot`](Self::InvalidRoot) and
-    /// [`ParentInSubtree`](Self::ParentInSubtree), and SACM-CMD-009 for
+    /// for [`InvalidRoot`](Self::InvalidRoot),
+    /// [`ParentInSubtree`](Self::ParentInSubtree) and
+    /// [`KeptRootType`](Self::KeptRootType), and SACM-CMD-009 for
     /// [`PositionOutOfRange`](Self::PositionOutOfRange).
     #[must_use]
     pub fn code(&self) -> Code {
@@ -2229,7 +2266,8 @@ impl EditError {
             | Self::ChildNotFound { .. } => Code::CMD_TARGET_NOT_FOUND,
             Self::InvalidParent { .. }
             | Self::InvalidRoot { .. }
-            | Self::ParentInSubtree { .. } => Code::CMD_INVALID_PARENT,
+            | Self::ParentInSubtree { .. }
+            | Self::KeptRootType { .. } => Code::CMD_INVALID_PARENT,
             Self::InvalidId { .. } | Self::InvalidReference { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
             Self::TooFewReferences { .. } | Self::TooManyReferences { .. } => {
@@ -2436,6 +2474,16 @@ impl fmt::Display for EditError {
                 let noun = if *children == 1 { noun } else { plural };
                 write!(f, " {children} other {noun}")
             }
+            Self::KeptRootType {
+                element,
+                attribute,
+                value,
+            } => write!(
+                f,
+                "element {:?} keeps the type attribute {attribute}={value:?}, which only a root \
+                 can carry, so it cannot be a child",
+                element.as_str()
+            ),
         }
     }
 }

@@ -280,5 +280,12 @@
     "parent": null,
     "position": 1,
     "children": 0
+  },
+  {
+    "type": "KeptRootType",
+    "code": "SACM-CMD-005",
+    "element": "a",
+    "attribute": "xmi:type",
+    "value": "p:Bundle"
   }
 ]

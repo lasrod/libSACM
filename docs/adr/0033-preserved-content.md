@@ -1,6 +1,6 @@
 # 0033. Preserved content
 
-- Status: accepted (the maintainer, 2026-11-15); amended by [ADR 0042](0042-xmi-metadata-and-same-file-proxies.md) (XMI metadata is read, not preserved)
+- Status: accepted (the maintainer, 2026-11-15); amended by [ADR 0042](0042-xmi-metadata-and-same-file-proxies.md) (XMI metadata is read, not preserved) and by amendment 2 (2026-11-25, kept type attributes)
 - Date: 2026-11-15
 - Matrix rows: LIB-COMPAT-003, SACM23-XMI-008, LIB-API-011. It amends D-PRESERVE and
   D-ROOT-NAME and extends ADR 0015, ADR 0016, ADR 0017, ADR 0020, ADR 0021, ADR 0022 and
@@ -153,3 +153,19 @@ preserved.
 - **P8:** it now reads "checked before the schema check".
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-16).*
+
+## Amendment 2 (2026-11-25): kept type attributes (LIB-COMPAT-019, slice 0076)
+
+- **Position and form:** a holder, or the document for XMI metadata, also declares the
+  prefix that a kept type attribute's QName value names (`type` in XMI 2.5.1's or EMF's XMI namespace, or `xsi:type`). A prefix
+  `sacm` or `xmi` bound to another namespace, or no prefix under a default namespace, is
+  replaced in the value by the holder's `nsN` for that namespace. Other preserved values are
+  as before (LIB-COMPAT-013).
+- **Ids and edits:** "No other edit changes or refuses because of preserved content" gains
+  ", except that `MoveElement` and `CopyElements` refuse (`EditError::KeptRootType`,
+  SACM-CMD-005) to make a child of an element that keeps `type` in XMI 2.5.1's namespace or
+  `xsi:type`, which only a root can carry (the maintainer, 2026-11-25, slice 0076 Q1)". On a
+  child a type attribute gives the class (XMI 2.5.1 §9.5.2 rule 2g), so the element could
+  not be written with both.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-25, slice 0076 Q1).*

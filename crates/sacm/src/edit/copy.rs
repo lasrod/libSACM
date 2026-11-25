@@ -169,8 +169,9 @@ impl CopyElements {
         if snapshot.ids().is_empty() {
             return Ok(Plan::Unchanged);
         }
-        // 2. Each top, in list order, can be held by the parent, or is a
-        //    package for the roots.
+        // 2. Each top, in list order, can be held by the parent and keeps no
+        //    type attribute that only a root can carry (LIB-COMPAT-019), or
+        //    is a package for the roots.
         for top in snapshot.elements().filter(|element| element.is_top()) {
             match (&self.parent, parent_kind) {
                 (Some(parent), Some(parent_kind)) => {
@@ -179,6 +180,13 @@ impl CopyElements {
                             parent: parent.clone(),
                             parent_kind,
                             kind: top.kind(),
+                        });
+                    }
+                    if let Some(attr) = top.kept_type() {
+                        return Err(EditError::KeptRootType {
+                            element: top.id().clone(),
+                            attribute: attr.name.written(),
+                            value: attr.value.clone(),
                         });
                     }
                 }

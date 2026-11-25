@@ -5,7 +5,7 @@ use std::fmt;
 
 use super::containment::{Role, role};
 use super::{
-    AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, Href, LangString,
+    AbstractClass, AssertionDeclaration, Attr, ElementId, ElementKind, Flag, Href, LangString,
     MultiLangString, Preserved, Proxy, ReferenceEnd, Revision, Subclass,
 };
 
@@ -2407,6 +2407,12 @@ impl<'s> CapturedElement<'s> {
     /// Whether it is a top: not inside another captured element.
     pub(crate) fn is_top(self) -> bool {
         self.captured.parent.is_none()
+    }
+
+    /// The type attribute it keeps that only a root can carry, if any
+    /// ([`Preserved::kept_type`], LIB-COMPAT-019).
+    pub(crate) fn kept_type(self) -> Option<&'s Attr> {
+        self.captured.preserved.as_deref()?.kept_type()
     }
 
     /// The ids its end `end` holds, in order.

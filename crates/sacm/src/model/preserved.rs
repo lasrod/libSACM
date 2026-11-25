@@ -23,6 +23,16 @@ use super::{ElementId, ReferenceEnd};
 /// The XMI 2.5.1 namespace, of `xmi:uuid`, `xmi:label` and the XMI elements.
 pub(crate) const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
 
+/// The XMI namespace EMF writes (`ExtendedMetaData.XMI_URI`), which is no
+/// XMI version's (XMI 2.5.1 §7.5.3): a tolerant read reads the XMI element
+/// and the attributes `id`, `type`, `idref`, `version`, `uuid` and `label`
+/// in it as XMI 2.5.1's (LIB-COMPAT-002, ADR 0044 D1).
+pub(crate) const EMF_XMI_NS: &str = "http://www.omg.org/XMI";
+
+/// The XML Schema instance namespace, of `xsi:type` and `xsi:nil`, which are
+/// read but never written (ADR 0017 T1; SACM23-XMI-026).
+pub(crate) const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
+
 /// The preserved content of one element, its holder, or of the document
 /// outside its elements: attributes after the typed ones (for the document,
 /// on `xmi:XMI`), in input order, and children placed among its typed
@@ -36,9 +46,10 @@ pub(crate) struct Preserved {
     /// prefix are always `Some`.
     pub(crate) subclass: Option<QName>,
     /// The namespace bindings the holder's start tag declares for
-    /// `attributes` and `subclass`: each prefix they use, other than `xml`, and `sacm` and
-    /// `xmi` bound to the SACM 2.3 and XMI 2.5.1 namespaces, which the
-    /// document element declares. Sorted by prefix.
+    /// `attributes` and `subclass`: each prefix they use, and the prefix a
+    /// kept type attribute's value names (LIB-COMPAT-019), other than `xml`,
+    /// and `sacm` and `xmi` bound to the SACM 2.3 and XMI 2.5.1 namespaces,
+    /// which the document element declares. Sorted by prefix.
     pub(crate) namespaces: Vec<(String, String)>,
     /// The attributes, in input order.
     pub(crate) attributes: Vec<Attr>,
@@ -176,6 +187,33 @@ impl Preserved {
             .iter()
             .find(|attr| attr.name.namespace.as_deref() == Some(XMI_NS) && attr.name.local == local)
             .map(|attr| attr.value.as_str())
+    }
+
+    /// The type attribute it keeps that only a root can carry, if any: the
+    /// first, in input order, that is `type` in XMI 2.5.1's namespace or
+    /// `xsi:type` (LIB-COMPAT-019, D-ROOT-NAME). On a child a type attribute
+    /// gives the class (XMI 2.5.1 §9.5.2 rule 2g), so an element holding one
+    /// cannot be made a child.
+    pub(crate) fn kept_type(&self) -> Option<&Attr> {
+        self.attributes.iter().find(|attr| {
+            attr.name.local == "type"
+                && matches!(attr.name.namespace.as_deref(), Some(XMI_NS | XSI_NS))
+        })
+    }
+
+    /// Whether the holder must be written with its own `xmi:type`: it keeps
+    /// a `type` in EMF's XMI namespace or an `xsi:type` (only a root keeps
+    /// one), and none in XMI 2.5.1's. A read of what is written then reads
+    /// that `xmi:type` and keeps the other again, so the kept one is never
+    /// read as the holder's type, nor as a declared subclass (LIB-COMPAT-019,
+    /// ADR 0044 amendment 1).
+    pub(crate) fn needs_written_type(&self) -> bool {
+        let keeps_type_in = |namespace: &str| {
+            self.attributes.iter().any(|attr| {
+                attr.name.local == "type" && attr.name.namespace.as_deref() == Some(namespace)
+            })
+        };
+        (keeps_type_in(EMF_XMI_NS) || keeps_type_in(XSI_NS)) && !keeps_type_in(XMI_NS)
     }
 
     /// A copy without its `xmi:uuid`, or `None` if nothing else is left: what
