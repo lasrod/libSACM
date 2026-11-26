@@ -384,6 +384,23 @@ fn lib_tool_004_parse_refuses_what_it_does_not_model() {
     }
 }
 
+/// A package nested in a package is refused as nested, naming both, and not
+/// as an element of another kind.
+#[test]
+fn lib_tool_004_parse_refuses_a_nested_package_as_nested() {
+    let xml = base_with(
+        "<!-- more -->",
+        r#"<packagedElement xmi:type="uml:Package" xmi:id="inner" name="Inner"/>"#,
+    );
+    match parse(&xml) {
+        Ok(model) => panic!("{ROW}: a nested package parses: {model:?}"),
+        Err(message) => assert_eq!(
+            message, "the package Inner is nested in the package Sample; packages are not nested",
+            "{ROW}: the refusal of a nested package"
+        ),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 3 and 4: the pinned model and its corrections
 // ---------------------------------------------------------------------------
@@ -667,6 +684,178 @@ fn lib_tool_004_the_corrections_are_the_five_recorded_ones() {
         Err(message) => assert!(
             ids.iter().any(|id| message.contains(id)),
             "{ROW}: corrected() names the correction whose subject is absent, got {message:?}"
+        ),
+    }
+}
+
+/// The subjects of the five corrections, with the unnamed property
+/// `unnamed` of `ArgumentationElement`, the class `ArtifactAsset` if
+/// `artifact_asset`, and `resource` as the properties of `Resource`.
+fn subjects(unnamed: Property, artifact_asset: bool, resource: Vec<Property>) -> Metamodel {
+    let mut classes = vec![
+        class("ArtifactAssertedRelationship", false, None, vec![]),
+        class(
+            "Event",
+            false,
+            None,
+            vec![property("occurece", PropertyKind::Data, DATE, 0, Some(1))],
+        ),
+        class("Resource", false, None, resource),
+        class("ArgumentationElement", false, None, vec![unnamed]),
+    ];
+    if artifact_asset {
+        classes.insert(0, class("ArtifactAsset", true, None, vec![]));
+    }
+    Metamodel {
+        packages: vec![Package {
+            name: "Subjects".to_owned(),
+            classes,
+            enumerations: vec![],
+        }],
+    }
+}
+
+/// An unnamed Reference property of the Association `association`.
+fn unnamed_of(association: &str) -> Property {
+    let mut unnamed = property("", PropertyKind::Reference, "ArtifactAsset", 0, None);
+    unnamed.association = Some(association.to_owned());
+    unnamed
+}
+
+/// `corrected()` refuses a subject in a shape its correction cannot apply
+/// to, naming the correction and what is wrong: an unnamed property whose
+/// Association is unnamed too (D8), no `ArtifactAsset` (D19), and a
+/// `Resource` that already has `location` (D5). A `Resource` with other
+/// properties is corrected.
+#[test]
+fn lib_tool_004_corrected_refuses_a_subject_its_correction_cannot_apply_to() {
+    let other = || property("other", PropertyKind::Data, "String", 0, Some(1));
+    let located = || property("location", PropertyKind::Data, "String", 0, Some(1));
+    for (what, model, refusal) in [
+        (
+            "an unnamed property of an unnamed Association",
+            subjects(unnamed_of(""), true, vec![]),
+            "correction D8 (",
+        ),
+        (
+            "no ArtifactAsset",
+            subjects(unnamed_of("link"), false, vec![]),
+            "class ArtifactAsset is absent",
+        ),
+        (
+            "a Resource that already has location",
+            subjects(unnamed_of("link"), true, vec![other(), located()]),
+            "Resource already has location",
+        ),
+    ] {
+        match model.corrected() {
+            Ok(corrected) => {
+                panic!("{ROW}: corrected() of a model with {what} succeeds: {corrected:?}")
+            }
+            Err(message) => assert!(
+                message.contains(refusal),
+                "{ROW}: corrected() of a model with {what} says {refusal:?}, got {message:?}"
+            ),
+        }
+    }
+    match subjects(unnamed_of(""), true, vec![]).corrected() {
+        Err(message) => assert!(
+            message
+                .contains("an unnamed property of ArgumentationElement has no named Association"),
+            "{ROW}: the D8 refusal names the class, got {message:?}"
+        ),
+        Ok(corrected) => panic!("{ROW}: an unnamed Association is corrected: {corrected:?}"),
+    }
+    // Control: a Resource with another property gets `location`.
+    let corrected = subjects(unnamed_of("link"), true, vec![other()])
+        .corrected()
+        .unwrap_or_else(|e| panic!("{ROW}: a Resource with another property is refused: {e}"));
+    assert_eq!(
+        corrected.class("Resource").map(|c| c
+            .properties
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()),
+        Some(vec!["other", "location"]),
+        "{ROW}: D5 adds location after the Resource's own properties"
+    );
+}
+
+/// `ancestors` walks the superclasses nearest first, through a superclass
+/// the model does not hold, and stops before a class seen already, the
+/// class itself included.
+#[test]
+fn lib_tool_004_ancestors_stop_before_a_class_seen_already() {
+    let model = |classes: Vec<Class>| Metamodel {
+        packages: vec![Package {
+            name: "P".to_owned(),
+            classes,
+            enumerations: vec![],
+        }],
+    };
+    // First, as it ends whatever the stop: a class that is its own
+    // superclass has no ancestor.
+    let own = model(vec![class("A", false, Some("A"), vec![])]);
+    assert_eq!(
+        own.ancestors("A"),
+        Vec::<&str>::new(),
+        "{ROW}: the ancestors of A, its own superclass"
+    );
+    for (what, classes, expected) in [
+        (
+            "A, B, C",
+            vec![
+                class("A", false, Some("B"), vec![]),
+                class("B", false, Some("C"), vec![]),
+                class("C", false, None, vec![]),
+            ],
+            vec!["B", "C"],
+        ),
+        (
+            "A under the absent Nope",
+            vec![class("A", false, Some("Nope"), vec![])],
+            vec!["Nope"],
+        ),
+        (
+            "A and B each other's superclass",
+            vec![
+                class("A", false, Some("B"), vec![]),
+                class("B", false, Some("A"), vec![]),
+            ],
+            vec!["B"],
+        ),
+        (
+            "A under B and C, each other's superclass",
+            vec![
+                class("A", false, Some("B"), vec![]),
+                class("B", false, Some("C"), vec![]),
+                class("C", false, Some("B"), vec![]),
+            ],
+            vec!["B", "C"],
+        ),
+    ] {
+        assert_eq!(
+            model(classes).ancestors("A"),
+            expected,
+            "{ROW}: the ancestors of A in {what}"
+        );
+    }
+}
+
+/// `load` reports a model it cannot read as a read error naming the file,
+/// not as missing: here the model's path is a directory.
+#[test]
+fn lib_tool_004_load_reports_an_unreadable_model_as_a_read_error() {
+    let dir = TempDir::new("lib-tool-004-unreadable");
+    fs::create_dir(dir.path().join(MODEL_FILE))
+        .unwrap_or_else(|e| panic!("{ROW}: setup: create the directory {MODEL_FILE}: {e}"));
+    match load(dir.path()) {
+        Ok(_) => panic!("{ROW}: load of a directory named {MODEL_FILE} succeeds"),
+        Err(message) => assert!(
+            message.starts_with("read ")
+                && message.contains(MODEL_FILE)
+                && !message.contains("is missing"),
+            "{ROW}: load reports a read error naming {MODEL_FILE}, got {message:?}"
         ),
     }
 }

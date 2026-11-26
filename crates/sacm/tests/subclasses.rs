@@ -1775,6 +1775,28 @@ fn lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations() 
     }
 }
 
+/// A child whose XMI 2.5.1 type names a declared subclass is read as without
+/// declarations when it carries EMF's `type` too: kept whole, as an
+/// undeclared class is (verifier round 1, B1; the mirror of the case above,
+/// where the declared class is EMF's).
+#[test]
+fn lib_compat_017_a_declared_xmi_2_5_1_type_beside_an_emf_type_reads_as_without_declarations() {
+    let what = "a child typed p:Prop in XMI 2.5.1's namespace and sacm:Claim in EMF's";
+    let input = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+         xmlns:e=\"{EMF_NS}\" xmlns:p=\"urn:p\" xmi:id=\"a\"><argumentElement \
+         xmi:type=\"p:Prop\" e:type=\"sacm:Claim\" xmi:id=\"c1\"/></sacm:ArgumentPackage>"
+    );
+    let declared = ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim);
+    assert_reads_as_without(what, &input, &declared);
+    let output = read_with(what, &input, &declared);
+    assert!(
+        output.document().get("c1").is_none() && with_subclass(output.document()).is_empty(),
+        "{ROW}: {what}: c1 is read, or the read gives a subclass(): {}",
+        brief(output.diagnostics())
+    );
+}
+
 /// Only `type` in both XMI namespaces turns the declarations off: an element
 /// typed in XMI 2.5.1's namespace that carries another attribute in EMF's
 /// still reads as its declared subclass, as a child and as a root (added
