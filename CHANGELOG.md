@@ -31,7 +31,6 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - A tolerant read of a `version` in EMF's XMI namespace gives `SACM-XMI-011/emf-version-on-root`
   or `/emf-version-on-xmi-element`, not `/version-on-root` or `/version-on-xmi-element` as
   in 0.4.0 [SACM23-XMI-032].
-
 - `Diagnostic::requirement_id()` is documented as never empty. Only the crate builds a
   `Diagnostic`; the `test-support` constructors are for tests [LIB-DIAG-005].
 

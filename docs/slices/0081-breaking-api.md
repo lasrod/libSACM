@@ -1,8 +1,8 @@
 ---
 slice: 0081
 name: breaking-api
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-API-020, LIB-DIAG-004, LIB-DIAG-005, SACM23-XMI-032]
 mode: pr
 base: main (028c941)
@@ -63,3 +63,5 @@ API rows: the maintainer's decisions, 2026-11-26, on lasrod/libSACM#113 (B1, B2,
   roots.rs). Fix round: two controls and an `unheld_outside` extraction (builder),
   wording with the verifier's text (builder, lead), CHANGELOG Changed entry and the
   matrix source page (lead).
+- 2026-11-26 verification: PASS on a743d8b for all four rows ([record](../verification/0081-breaking-api.md)). Last wording fix (prose_arguments.rs module doc) with the verifier's text.
+- 2026-11-26 close: done.

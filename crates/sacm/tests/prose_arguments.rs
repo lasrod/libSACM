@@ -9,10 +9,13 @@
 //!   accessors, `Display`, equality and order of `ArgumentValue::Prose`, and
 //!   the `Display` of a prose `Argument` a refusal holds.
 //! - `lib_diag_004_each_prose_argument_a_refusal_reaches_is_prose` reads or
-//!   writes one input for each of the five prose arguments a refusal reaches
-//!   through the public API, and checks every argument by name and variant
-//!   and the whole `Display`, byte for byte as `message_templates.rs` pins
-//!   it. The other three, `error` of `SACM-SEC-002/unheld-*`, have no input
+//!   writes an input for each of the five prose arguments a refusal reaches
+//!   through the public API, and a second for `expected` of
+//!   `SACM-XML-001/unexpected-character`, which the parser gives as a
+//!   character or as a phrase. It checks every argument by name and variant
+//!   and the whole `Display`, byte for byte as `message_templates.rs` pins it
+//!   for the first input of each.
+//!   The other three, `error` of `SACM-SEC-002/unheld-*`, have no input
 //!   (`message_templates.rs`, `NO_INPUT`); unit tests in `xmi/roots.rs` check
 //!   the arguments that `unheld` and `unheld_outside` build.
 //! - With `serde`, `lib_diag_004_a_prose_argument_is_a_json_string_and_reads_back_as_prose`
