@@ -52,8 +52,8 @@ goal = "Tolerant reading of the EMF dialect, older SACM revisions, ISO-8859-1 an
 
 [[milestone]]
 id = "M7"
-title = "1.0 readiness"
-goal = "Property tests, fuzzing, coverage, mutation testing, semver checks, release process, complete documentation and guide, and undo/redo — the bar for a stable 1.0 API."
+title = "1.0 candidate, released as 0.5.0"
+goal = "The API and docs meant for 1.0, released as 0.5.0 so consumers can try them before 1.0 freezes them: the breaking changes and additions Assurance Forge asked for (lasrod/libSACM#113), a public API review, short and structured documentation everywhere with a user guide and primer, property tests, fuzzing, coverage and semver checks (the maintainer, 2026-11-26)."
 
 # ---------------------------------------------------------------------------
 # Areas
@@ -4029,8 +4029,9 @@ title = "Users can build codes and diagnostics"
 requirement = "A layer built on the crate (a GSN layer, say) can construct its own `Code` and `Diagnostic` values and report them beside the crate's own, without the `test-support` feature."
 source = "ADR 0011; ADR 0018; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
-status = "planned"
+status = "out-of-scope"
 depends_on = ["LIB-DIAG-001"]
+notes = "Retired 2026-11-26 (the maintainer, on lasrod/libSACM#113): Assurance Forge's GSN layer keeps its own diagnostic types and does not need to build the crate's. Building a `Diagnostic` becomes crate-internal instead (LIB-DIAG-005); making it public later is additive."
 
 [[row]]
 id = "LIB-EDIT-004"
@@ -6586,7 +6587,7 @@ status = "out-of-scope"
 notes = "D-SCOPE: the UML profile is a different interchange (UML models), not the SACM metamodel this crate implements."
 
 # ===========================================================================
-# M7 — 1.0 readiness
+# M7 — 1.0 candidate, released as 0.5.0
 # ===========================================================================
 
 [[row]]
@@ -6594,8 +6595,8 @@ id = "LIB-RT-004"
 area = "RT"
 milestone = "M7"
 title = "Property-based round-trip and atomicity tests"
-requirement = "Property tests generate arbitrary valid documents and edit sequences through the public API and assert that save → load is lossless, output is deterministic, and failed edits leave the document unchanged."
-source = "D-RT, D-ATOMIC"
+requirement = "Property tests generate arbitrary valid documents and edit sequences through the public API and assert that save → load is lossless, output is deterministic, and failed edits leave the document unchanged. They include the guarantee the `xmi::write` docs then state: a document from a strict read, after any accepted edits, writes strictly and reads back equal (`==`)."
+source = "D-RT, D-ATOMIC; lasrod/libSACM#113 D5"
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-RT-003", "LIB-EDIT-009"]
@@ -7320,8 +7321,8 @@ id = "LIB-API-005"
 area = "API"
 milestone = "M7"
 title = "Public API review"
-requirement = "The full public API is reviewed against the Rust API Guidelines checklist; findings are fixed or recorded as accepted deviations in an ADR before 1.0. The review settles these pre-1.0 questions from docs reviews: whether `edit::check` and `edit::preview` take a sealed borrow trait, so `check(&doc, &CreateClaim::new(..))` compiles (ADR 0019 amendment 3); whether a name id gets a distinct type rather than `ElementId`; and whether `CreateTaggedValue::new(parent, key)` takes its content through `with_content`."
-source = "Rust API Guidelines"
+requirement = "The full public API is reviewed against the Rust API Guidelines checklist; findings are fixed or recorded as accepted deviations in an ADR before 1.0. The review settles these pre-1.0 questions from docs reviews: whether `edit::check` and `edit::preview` take a sealed borrow trait, so `check(&doc, &CreateClaim::new(..))` compiles (ADR 0019 amendment 3); and whether a name id gets a distinct type rather than `ElementId`. Assurance Forge had no evidence either way on both (lasrod/libSACM#113)."
+source = "Rust API Guidelines; lasrod/libSACM#113"
 kind = "api"
 status = "planned"
 depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
@@ -7342,8 +7343,8 @@ id = "LIB-DOC-003"
 area = "DOC"
 milestone = "M7"
 title = "User guide"
-requirement = "A user guide walks through loading, inspecting, validating, editing and saving assurance cases, strict vs tolerant mode and diagnostics, with tested code."
-source = "Project goal (easy to use)"
+requirement = "A user guide walks through loading, inspecting, validating, editing and saving assurance cases, strict vs tolerant mode and diagnostics, with tested code. It includes editing one language's value of a name, description or tagged value in place, an expression value included. It follows the LIB-DOC-009 style guide."
+source = "Project goal (easy to use); lasrod/libSACM#113 D7"
 kind = "docs"
 status = "planned"
 depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
@@ -7816,8 +7817,8 @@ id = "LIB-API-013"
 area = "API"
 milestone = "M7"
 title = "API additions from docs reviews"
-requirement = "Additive public API that docs reviews asked for: `Operation::parent()`; a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use`; `MultiLangString` lookup by language; `PartialEq<str>` for `ElementId`; lookup of a tagged value by a plain key; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. Also: whether `ReadError` variants that name an element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) say when its id was generated (SACM23-XMI-020), so their `Display` can word it; an additive field, decided with its test."
-source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051)"
+requirement = "Additive public API that docs reviews and Assurance Forge (lasrod/libSACM#113 A1, A2, A4, A5, A7-A9) asked for: a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use` that covers the ids of names, contents and keys; `MultiLangString` lookup by language that returns the value's index, with a documented fallback order, and a way to replace one value in place; `From<&str>` for `MultiLangString`; `PartialEq<str>` for `ElementId`; lookup of a tagged value by a plain key, with a documented rule for which of the key's values it matches; `Mutation::created_id() -> Option<&ElementId>`; `BatchMutation::is_empty()`; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. `Operation::parent()` was dropped: no consumer asked for it. Also: whether `ReadError` variants that name an element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) say when its id was generated (SACM23-XMI-020), so their `Display` can word it; an additive field, decided with its test."
+source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051); lasrod/libSACM#113"
 kind = "api"
 status = "planned"
 depends_on = ["LIB-API-012"]
@@ -8707,7 +8708,7 @@ requirement = "An operation sets or clears the foreign class (`model::Subclass`)
 source = "LIB-COMPAT-017 (read and write only); M6 close audit"
 kind = "editing"
 status = "candidate"
-notes = "Model but not editing: subclasses are read, written, moved, copied and compared (LIB-COMPAT-017), but no operation creates or changes one. The maintainer's planned GSN layer is the consumer."
+notes = "Model but not editing: subclasses are read, written, moved, copied and compared (LIB-COMPAT-017), but no operation creates or changes one. Assurance Forge's GSN layer, the expected consumer, maps every GSN element onto a SACM 2.3 class and does not need it (lasrod/libSACM#113)."
 
 [[row]]
 id = "LIB-CLI-006"
@@ -8730,3 +8731,132 @@ source = "LIB-COMPAT-002 (paths in reference ends only); slice 0075a follow-up; 
 kind = "xmi"
 status = "candidate"
 notes = "No corpus file needs it; was a follow-up of slice 0075a."
+
+# ---------------------------------------------------------------------------
+# M7 additions, 2026-11-26: Assurance Forge feedback (lasrod/libSACM#113) and
+# the documentation rewrite. Decisions by the maintainer, 2026-11-26.
+# ---------------------------------------------------------------------------
+
+[[row]]
+id = "LIB-API-020"
+area = "API"
+milestone = "M7"
+title = "Reading defaults to strict, like writing"
+requirement = "`ReadOptions::default()` reads in `Mode::Strict`, as `WriteOptions::default()` writes. A caller that wants a tolerant read asks for it with `with_mode(Mode::Tolerant)`. ADR 0022 is amended, and the docs and CHANGELOG name the change."
+source = "lasrod/libSACM#113 B1; the maintainer, 2026-11-26; ADR 0022"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-COMPAT-002"]
+notes = "Breaking. A forgotten mode then never opens a non-conforming file. The CLI names its mode at every read, so it does not change."
+
+[[row]]
+id = "LIB-DIAG-004"
+area = "DIAG"
+milestone = "M7"
+title = "Prose arguments are marked as prose"
+requirement = "A diagnostic or refusal argument whose value is English prose (a parser error, a reason, a detail, a label) is an `ArgumentValue::Prose`, not `Text`, so a translating caller can tell it from a name, id or value. `as_text()` returns `None` for it. The diagnostics catalog lists which template arguments are prose."
+source = "lasrod/libSACM#113 B2, D6; the maintainer, 2026-11-26"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-API-017"]
+notes = "Breaking: those arguments are `Text` today. The English `Display` of every template is unchanged."
+
+[[row]]
+id = "LIB-DIAG-005"
+area = "DIAG"
+milestone = "M7"
+title = "Only the crate builds diagnostics"
+requirement = "`Diagnostic::new`, its `with_*` builders and `SourceLocation::new` are not public API, except under the `test-support` feature. Callers read diagnostics; a layer reports its own findings in its own types. `requirement_id()` is documented as never empty."
+source = "lasrod/libSACM#113 (unused API; D6); the maintainer, 2026-11-26"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-DIAG-001"]
+notes = "Breaking; replaces LIB-DIAG-003. A smaller API to freeze at 1.0; making construction public later is additive."
+
+[[row]]
+id = "LIB-DIAG-006"
+area = "DIAG"
+milestone = "M7"
+title = "A machine-readable catalog of codes and templates"
+requirement = "Every code and template, with its severity, argument names, argument kinds (prose included) and English text, is available as JSON that a consumer can use to generate translation keys and to fail its CI on a code it does not word. A test keeps it equal to the crate's own templates."
+source = "lasrod/libSACM#113 A10"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-API-017", "LIB-DIAG-004"]
+
+[[row]]
+id = "LIB-API-021"
+area = "API"
+milestone = "M7"
+title = "Ancestors and descendants"
+requirement = "An element's ancestors (nearest first, up to its root) and descendants (depth-first, in document order, each with its depth) can be listed without walking the tree by hand."
+source = "lasrod/libSACM#113 A3"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-API-012"]
+
+[[row]]
+id = "LIB-EDIT-023"
+area = "EDIT"
+milestone = "M7"
+title = "Set a tagged value by key"
+requirement = "One operation sets the content of an element's tagged value with a given plain key, and creates the tagged value if there is none. It is atomic and has JSON as for the other operations."
+source = "lasrod/libSACM#113 A2"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-API-013"]
+
+[[row]]
+id = "LIB-EDIT-024"
+area = "EDIT"
+milestone = "M7"
+title = "Preview a batch"
+requirement = "A batch can be previewed: the caller gets the `BatchMutation` it would produce, the full delete cascade included, and the document is unchanged."
+source = "lasrod/libSACM#113 A6"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-014", "LIB-EDIT-004"]
+
+[[row]]
+id = "LIB-RT-005"
+area = "RT"
+milestone = "M7"
+title = "Which elements differ between two documents"
+requirement = "A comparison of two documents can be summarised per id: the elements created, changed and deleted, so a caller that replaces a whole document can record exactly what changed."
+source = "lasrod/libSACM#113 A11"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-RT-002"]
+
+[[row]]
+id = "LIB-DOC-009"
+area = "DOC"
+milestone = "M7"
+title = "Short, structured documentation"
+requirement = "A short style guide governs user-facing docs. Each item leads with its point, keeps the most important information first, uses lists and tables instead of long sentences, does not restate signatures, and links sparingly. Rustdoc has no diagrams; Markdown docs may use Mermaid. Every user-facing document follows it: the crate root and every module's rustdoc, the READMEs, docs/architecture.md and the references in docs/sacm/. The crate root gives an overview and a table of entry points, and the functionality matrix stays the full inventory. Slice and verification records and accepted ADRs are history and stay as written. The `rust-library-craft` skill carries the rules, and the verifier checks them."
+source = "The maintainer, 2026-11-26 (the crate root's \"What works today\" is a wall of text; a blind pilot chose the direct draft)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-001"]
+
+[[row]]
+id = "LIB-DOC-010"
+area = "DOC"
+milestone = "M7"
+title = "The docs answer what Assurance Forge had to work out"
+requirement = "The item docs state these, each with an example where it helps: `referrers()` indexes every `ReferenceEnd`, `reasoning` included; `ElementId` implements `Borrow<str>`, so an id set can be queried with `&str`; exactly which ids `deleted_ids()` lists under each delete policy; how to tell that an edit changed nothing; and why a Claim with two descriptions gives SACM-MULT-001 (D-DESC-MULT)."
+source = "lasrod/libSACM#113 D1-D4 and Files and modes"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-009"]
+
+[[row]]
+id = "SACM23-XMI-032"
+area = "XMI"
+milestone = "M7"
+title = "EMF's version attribute is named as written"
+requirement = "SACM-XMI-011 has templates for a `version` attribute in EMF's XMI namespace that name it with the prefix the file uses, instead of calling it \"the xmi:version\". The existing templates keep their English byte for byte."
+source = "Slice 0076 verification (docs/follow-ups.md); LIB-API-017, LIB-API-018"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-011", "LIB-API-018"]
