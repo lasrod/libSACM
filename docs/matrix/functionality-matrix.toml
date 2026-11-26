@@ -5936,6 +5936,7 @@ tests = [
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_only_an_unqualified_target_is_open",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_idref_in_open_content_reserves_no_generated_id",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_target_under_a_difference_spelling_in_another_namespace_is_not_open",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_xmi_id_in_open_content_is_an_id_and_no_other_xmi_name_is",
 ]
 status = "verified"
 verification = "docs/verification/0075a-emf-dialect.md"

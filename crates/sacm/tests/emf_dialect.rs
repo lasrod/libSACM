@@ -1720,6 +1720,46 @@ fn lib_compat_002_a_duplicate_id_lists_no_emf_id_of_open_content() {
     }
 }
 
+/// In open content only XMI 2.5.1's names are XMI's, and there `xmi:id` is
+/// an id: one in an `xmi:Extension` inside preserved content that repeats a
+/// Claim's id is `DuplicateId` at both. Another XMI attribute there, such as
+/// `xmi:label`, is no id.
+#[test]
+fn lib_compat_002_an_xmi_id_in_open_content_is_an_id_and_no_other_xmi_name_is() {
+    let what = "xmi:id=\"c2\" in an xmi:Extension in a vendor element, and a Claim c2";
+    let note = "<v:note><xmi:Extension>";
+    let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\">";
+    let input = pinned_root(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+         {note}<a xmi:id=\"c2\"/></xmi:Extension></v:note></argumentElement>\n  \
+         {claim}<name content=\"c2\"/></argumentElement>"
+    ));
+    let first = position_of(&input, "<a xmi:id=");
+    let second = position_of(&input, claim);
+    for mode in MODES {
+        let error = refusal(what, &input, mode);
+        assert!(
+            matches!(error, ReadError::DuplicateId { .. }),
+            "{ROW}: {what}: a {mode:?} read is not DuplicateId: {error:?}"
+        );
+        assert_eq!(
+            error.locations(),
+            [first, second],
+            "{ROW}: {what}: a {mode:?} read: the locations of the repeated id"
+        );
+    }
+    // Control: an xmi:label of the same value there is no id.
+    let what = "xmi:label=\"c2\" in an xmi:Extension in a vendor element, and a Claim c2";
+    let input = input.replace("<a xmi:id=\"c2\"/>", "<a xmi:label=\"c2\"/>");
+    for mode in MODES {
+        let output = read_ok(what, &input, mode);
+        assert!(
+            output.document().get("c2").is_some(),
+            "{ROW}: {what}: a {mode:?} read has no Claim c2"
+        );
+    }
+}
+
 #[test]
 fn lib_compat_002_emf_ids_in_extensions_are_no_ids_in_either_mode() {
     // C2: the alias does not reach into an Extension's open content, so the
