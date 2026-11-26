@@ -1073,19 +1073,25 @@ mod tests {
             (
                 Unread::Unheld,
                 &template::SEC_002_UNHELD_OUTSIDE,
-                vec![Argument::text("error", "e")],
+                vec![Argument::prose("error", "e")],
                 "the content outside every element cannot be held in the document: e",
             ),
             (
                 Unread::Unheld,
                 &template::SEC_002_UNHELD_ROOT,
-                vec![Argument::text("element", "r"), Argument::text("error", "e")],
+                vec![
+                    Argument::text("element", "r"),
+                    Argument::prose("error", "e"),
+                ],
                 "the root element \"r\" cannot be held in the document: e",
             ),
             (
                 Unread::Unheld,
                 &template::SEC_002_UNHELD_ELEMENT,
-                vec![Argument::text("element", "c"), Argument::text("error", "e")],
+                vec![
+                    Argument::text("element", "c"),
+                    Argument::prose("error", "e"),
+                ],
                 "the element \"c\" cannot be held in the document: e",
             ),
         ];

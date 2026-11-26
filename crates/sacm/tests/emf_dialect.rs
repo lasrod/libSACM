@@ -354,7 +354,12 @@ fn lib_compat_002_the_emf_fixture_reads_tolerantly_and_writes_its_golden_strict_
             ("SACM-XMI-004", "info", "SACM-XMI-004/generated-id", 5),
             ("SACM-XMI-008", "warning", "SACM-XMI-008/other-revision", 1),
             ("SACM-XMI-010", "warning", "SACM-XMI-010/xsi-type", 3),
-            ("SACM-XMI-011", "info", "SACM-XMI-011/version-on-root", 1),
+            (
+                "SACM-XMI-011",
+                "info",
+                "SACM-XMI-011/emf-version-on-root",
+                1
+            ),
             (
                 "SACM-XMI-013",
                 "warning",
@@ -378,7 +383,7 @@ fn lib_compat_002_the_emf_fixture_reads_tolerantly_and_writes_its_golden_strict_
         "{ROW}: G1: the location of SACM-XMI-008"
     );
     assert_eq!(
-        only("G1", found, "SACM-XMI-011/version-on-root").location(),
+        only("G1", found, "SACM-XMI-011/emf-version-on-root").location(),
         Some(loc(3, 37)),
         "{ROW}: G1: the location of SACM-XMI-011"
     );
@@ -908,7 +913,7 @@ fn lib_compat_002_an_emf_xmi_wrapper_holds_the_roots_and_root_paths_name_them() 
         "{ROW}: {what}: /1 and / do not name the roots"
     );
     let found = output.diagnostics();
-    let version = only(what, found, "SACM-XMI-011/version-on-xmi-element");
+    let version = only(what, found, "SACM-XMI-011/emf-version-on-xmi-element");
     assert_eq!(
         version.severity(),
         Severity::Info,
@@ -933,7 +938,7 @@ fn lib_compat_002_an_emf_xmi_wrapper_holds_the_roots_and_root_paths_name_them() 
             (
                 "SACM-XMI-011",
                 "info",
-                "SACM-XMI-011/version-on-xmi-element",
+                "SACM-XMI-011/emf-version-on-xmi-element",
                 1
             ),
             (

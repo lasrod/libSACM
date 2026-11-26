@@ -63,9 +63,12 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// The document of a fixture read tolerantly, as `roundtrip` reads it.
 fn document(name: &str) -> sacm::model::Document {
-    xmi::read(&fixture(name), &ReadOptions::default())
-        .unwrap_or_else(|error| panic!("{ROW}: setup: {name} is not readable: {error}"))
-        .into_document()
+    xmi::read(
+        &fixture(name),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    )
+    .unwrap_or_else(|error| panic!("{ROW}: setup: {name} is not readable: {error}"))
+    .into_document()
 }
 
 /// A fresh path for an `-o` file: in its own directory under

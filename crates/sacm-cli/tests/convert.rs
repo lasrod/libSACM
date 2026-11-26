@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sacm::diagnostic::Severity;
-use sacm::xmi::{self, ReadError, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteError, WriteOptions};
 
 const ROW: &str = "LIB-CLI-004";
 
@@ -92,8 +92,11 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// The tolerant read of a fixture, as `convert` reads it.
 fn read(name: &str) -> xmi::ReadOutput {
-    xmi::read(&fixture(name), &ReadOptions::default())
-        .unwrap_or_else(|error| panic!("{ROW}: setup: {name} is not readable tolerantly: {error}"))
+    xmi::read(
+        &fixture(name),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    )
+    .unwrap_or_else(|error| panic!("{ROW}: setup: {name} is not readable tolerantly: {error}"))
 }
 
 /// The `Display` lines of the read diagnostics of `output` that are Warnings

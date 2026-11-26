@@ -18,6 +18,11 @@
 //! Documents are written in tolerant mode: most are nameless, which a strict
 //! write refuses (LIB-COMPAT-007), and the tests check the output form.
 //!
+//! SACM23-XMI-032: a `version` in EMF's XMI namespace `http://www.omg.org/XMI`,
+//! which only a tolerant read reaches, is named as written (its own
+//! SACM-XMI-011 templates); one in the XMI 2.5.1 namespace keeps its
+//! templates and English, whatever its prefix.
+//!
 //! Not checked here: SACM23-XMI-024 item 2's "the only difference from the
 //! previous golden is that ` xmi:version="2.0"` is gone". That is a property
 //! of the change to the golden files, checked by diff when they were changed;
@@ -26,11 +31,11 @@
 //! the attribute out of them.
 
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::diagnostic::{Argument, ArgumentValue, Code, Diagnostic, Severity, SourceLocation};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString, SacmElement,
 };
-use sacm::xmi::{self, Mode, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-024";
 
@@ -976,4 +981,328 @@ fn sacm23_xmi_024_the_reader_preserves_xmi_version_on_a_child_at_the_attribute_n
             assert_child_version_preserved(&what, &input, expected, holder);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// SACM23-XMI-032: EMF's version attribute is named as written
+// ---------------------------------------------------------------------------
+
+const XMI_032: &str = "SACM23-XMI-032";
+
+/// EMF's XMI namespace (LIB-COMPAT-002, ADR 0044 D1).
+const EMF_XMI_NS: &str = "http://www.omg.org/XMI";
+
+/// The English after the attribute and its holder of the two SACM-XMI-011
+/// templates of a `version` in EMF's XMI namespace.
+const EMF_VERSION_TAIL: &str = "is in the namespace \"http://www.omg.org/XMI\" and is ignored: \
+                                the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), \
+                                and write does not write it";
+
+/// Arguments by name and value.
+type Arguments = Vec<(&'static str, ArgumentValue)>;
+
+/// A location as its line and column.
+type At = Option<(u32, u32)>;
+
+/// A diagnostic as everything the tests here pin: its code, severity, row,
+/// clause, affected ids, location, template, arguments and message.
+#[derive(Debug, PartialEq, Eq)]
+struct Seen {
+    code: Code,
+    severity: Severity,
+    row: String,
+    clause: Option<String>,
+    affected: Vec<String>,
+    location: At,
+    template: &'static str,
+    arguments: Arguments,
+    message: String,
+}
+
+fn seen(found: &Diagnostic) -> Seen {
+    Seen {
+        code: found.code(),
+        severity: found.severity(),
+        row: found.requirement_id().to_owned(),
+        clause: found.clause().map(str::to_owned),
+        affected: found
+            .affected()
+            .iter()
+            .map(|id| id.as_str().to_owned())
+            .collect(),
+        location: found.location().map(|at| (at.line(), at.column())),
+        template: found.template(),
+        arguments: found
+            .arguments()
+            .iter()
+            .map(|argument| (argument.name(), argument.value().clone()))
+            .collect(),
+        message: found.message().to_owned(),
+    }
+}
+
+/// Text arguments, in order.
+fn texts(pairs: &[(&'static str, &str)]) -> Arguments {
+    pairs
+        .iter()
+        .map(|&(name, value)| (name, ArgumentValue::Text(value.to_owned())))
+        .collect()
+}
+
+/// The 1-based column of the first `needle` on the one line of `input`.
+fn column_of(input: &str, needle: &str) -> u32 {
+    let Some(offset) = input.find(needle) else {
+        panic!("{XMI_032}: setup: no {needle:?} in {input}");
+    };
+    let column = input[..offset].chars().count() + 1;
+    u32::try_from(column).unwrap_or_else(|_| panic!("{XMI_032}: setup: a column past u32"))
+}
+
+/// Reads `input` in `mode`, which the test expects to be read.
+fn read_in(mode: Mode, input: &str) -> ReadOutput {
+    match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+        Ok(output) => output,
+        Err(error) => panic!("{XMI_032}: a {mode:?} read refuses {input}: {error}"),
+    }
+}
+
+/// The diagnostics of `output` with `code`.
+fn seen_of(output: &ReadOutput, code: Code) -> Vec<Seen> {
+    output
+        .diagnostics()
+        .iter()
+        .filter(|found| found.code() == code)
+        .map(seen)
+        .collect()
+}
+
+/// R: a root ArgumentPackage `a` with `emf:version="2.0"`, `emf` bound to
+/// EMF's XMI namespace.
+fn emf_versioned_root() -> String {
+    format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+         xmlns:emf=\"{EMF_XMI_NS}\" xmi:id=\"a\" emf:version=\"2.0\"><name content=\"a\"/>\
+         </sacm:ArgumentPackage>"
+    )
+}
+
+/// W: an `XMI` wrapper with `version="2.0"`, its prefix `prefix` bound to
+/// EMF's XMI namespace throughout, holding the packages `a` and `b`.
+fn emf_versioned_wrapper(prefix: &str) -> String {
+    format!(
+        "<{prefix}:XMI xmlns:{prefix}=\"{EMF_XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" \
+         {prefix}:version=\"2.0\"><sacm:ArgumentPackage {prefix}:id=\"a\"><name content=\"a\"/>\
+         </sacm:ArgumentPackage><sacm:ArgumentPackage {prefix}:id=\"b\"><name content=\"b\"/>\
+         </sacm:ArgumentPackage></{prefix}:XMI>"
+    )
+}
+
+#[test]
+fn sacm23_xmi_032_an_emf_version_on_a_root_is_named_with_its_prefix() {
+    let input = emf_versioned_root();
+    let at = Some((1, column_of(&input, "emf:version=")));
+    let output = read_in(Mode::Tolerant, &input);
+    assert_eq!(
+        output.diagnostics().len(),
+        2,
+        "{XMI_032}: a tolerant read of R does not give exactly two diagnostics: {:?}",
+        output.diagnostics()
+    );
+    assert_eq!(
+        seen_of(&output, Code::XMI_VERSION_IGNORED),
+        [Seen {
+            code: Code::XMI_VERSION_IGNORED,
+            severity: Severity::Info,
+            row: "LIB-COMPAT-001".to_owned(),
+            clause: Some("7.5.3".to_owned()),
+            affected: vec!["a".to_owned()],
+            location: at,
+            template: "SACM-XMI-011/emf-version-on-root",
+            arguments: texts(&[
+                ("attribute", "emf:version"),
+                ("value", "2.0"),
+                ("class", "ArgumentPackage"),
+                ("id", "a"),
+            ]),
+            message: format!(
+                "the emf:version \"2.0\" of the ArgumentPackage \"a\" {EMF_VERSION_TAIL}"
+            ),
+        }],
+        "{XMI_032}: the SACM-XMI-011 of emf:version on a root"
+    );
+    let namespace: Vec<(&str, Arguments, At)> = seen_of(&output, Code::XMI_WRAPPER_NAMESPACE)
+        .into_iter()
+        .map(|found| (found.template, found.arguments, found.location))
+        .collect();
+    assert_eq!(
+        namespace,
+        [(
+            "SACM-XMI-015/emf-xmi-namespace-read",
+            texts(&[("name", "emf:version")]),
+            at
+        )],
+        "{XMI_032}: the SACM-XMI-015 of emf:version on a root"
+    );
+    let written = match xmi::write(output.document(), &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{XMI_032}: a strict write of R's document is refused: {error}"),
+    };
+    assert_eq!(
+        written.matches("version=").count(),
+        1,
+        "{XMI_032}: a strict write of R's document writes a version besides the XML          declaration's: {written}"
+    );
+}
+
+#[test]
+fn sacm23_xmi_032_an_emf_version_on_the_xmi_element_is_named_with_its_prefix() {
+    let input = emf_versioned_wrapper("xmi");
+    let version_at = Some((1, column_of(&input, "xmi:version=")));
+    let output = read_in(Mode::Tolerant, &input);
+    let namespace_args = texts(&[("name", "xmi:XMI")]);
+    let version_args = texts(&[("attribute", "xmi:version"), ("value", "2.0")]);
+    let mut found: Vec<(Code, &str, Arguments, At)> = output
+        .diagnostics()
+        .iter()
+        .map(seen)
+        .map(|found| (found.code, found.template, found.arguments, found.location))
+        .collect();
+    found.sort_by_key(|found| found.1);
+    assert_eq!(
+        found,
+        [
+            (
+                Code::XMI_VERSION_IGNORED,
+                "SACM-XMI-011/emf-version-on-xmi-element",
+                version_args.clone(),
+                version_at,
+            ),
+            (
+                Code::XMI_WRAPPER_NAMESPACE,
+                "SACM-XMI-015/emf-xmi-namespace-read",
+                namespace_args,
+                Some((1, 1)),
+            ),
+        ],
+        "{XMI_032}: a tolerant read of W does not give exactly SACM-XMI-015 at xmi:XMI and \
+         SACM-XMI-011/emf-version-on-xmi-element"
+    );
+    assert_eq!(
+        seen_of(&output, Code::XMI_VERSION_IGNORED),
+        [Seen {
+            code: Code::XMI_VERSION_IGNORED,
+            severity: Severity::Info,
+            row: "LIB-COMPAT-001".to_owned(),
+            clause: Some("7.5.3".to_owned()),
+            affected: Vec::new(),
+            location: version_at,
+            template: "SACM-XMI-011/emf-version-on-xmi-element",
+            arguments: version_args,
+            message: format!("the xmi:version \"2.0\" of the XMI element {EMF_VERSION_TAIL}"),
+        }],
+        "{XMI_032}: the SACM-XMI-011 of xmi:version on an EMF xmi:XMI element"
+    );
+
+    // The prefix `e` throughout: the attribute is named as written.
+    let input = emf_versioned_wrapper("e");
+    let output = read_in(Mode::Tolerant, &input);
+    let version: Vec<(&str, Arguments, String)> = seen_of(&output, Code::XMI_VERSION_IGNORED)
+        .into_iter()
+        .map(|found| (found.template, found.arguments, found.message))
+        .collect();
+    assert_eq!(
+        version,
+        [(
+            "SACM-XMI-011/emf-version-on-xmi-element",
+            texts(&[("attribute", "e:version"), ("value", "2.0")]),
+            format!("the e:version \"2.0\" of the XMI element {EMF_VERSION_TAIL}"),
+        )],
+        "{XMI_032}: e:version on an EMF e:XMI element is not named as written"
+    );
+}
+
+#[test]
+fn sacm23_xmi_032_a_version_in_the_xmi_2_5_1_namespace_keeps_its_templates_and_english() {
+    let inputs = [
+        (
+            "xmi:version",
+            format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:version=\"2.5.1\">\
+                 <name content=\"a\"/></sacm:ArgumentPackage>"
+            ),
+        ),
+        (
+            "x:version",
+            format!(
+                "<sacm:ArgumentPackage{NS} xmlns:x=\"{XMI_NS}\" xmi:id=\"a\" x:version=\"2.5.1\">\
+                 <name content=\"a\"/></sacm:ArgumentPackage>"
+            ),
+        ),
+    ];
+    for (what, input) in &inputs {
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            let output = read_in(mode, input);
+            assert_eq!(
+                seen_of(&output, Code::XMI_VERSION_IGNORED),
+                [Seen {
+                    code: Code::XMI_VERSION_IGNORED,
+                    severity: Severity::Info,
+                    row: "LIB-COMPAT-001".to_owned(),
+                    clause: Some("7.5.3".to_owned()),
+                    affected: vec!["a".to_owned()],
+                    location: Some((1, column_of(input, &format!("{what}=")))),
+                    template: "SACM-XMI-011/version-on-root",
+                    arguments: texts(&[
+                        ("value", "2.5.1"),
+                        ("class", "ArgumentPackage"),
+                        ("id", "a"),
+                    ]),
+                    message: "the xmi:version \"2.5.1\" of the ArgumentPackage \"a\" is ignored: \
+                              the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and \
+                              write does not write it"
+                        .to_owned(),
+                }],
+                "{XMI_032}: {what} in the XMI 2.5.1 namespace, read in {mode:?} mode, does not \
+                 keep SACM-XMI-011/version-on-root and its English"
+            );
+        }
+    }
+}
+
+#[test]
+fn sacm23_xmi_032_a_strict_read_still_refuses_an_emf_version() {
+    let input = emf_versioned_root();
+    let error = match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Strict),
+    ) {
+        Ok(output) => panic!(
+            "{XMI_032}: a strict read of R is not refused: {:?}",
+            output.diagnostics()
+        ),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, ReadError::Unsupported { .. }),
+        "{XMI_032}: a strict read of R is not Unsupported: {error:?}"
+    );
+    assert_eq!(
+        (error.code(), error.template()),
+        (
+            Code::XMI_WRAPPER_NAMESPACE,
+            "SACM-XMI-015/emf-xmi-namespace"
+        ),
+        "{XMI_032}: a strict read of R has another code or template"
+    );
+    let name: Vec<&ArgumentValue> = error
+        .arguments()
+        .iter()
+        .filter(|argument| argument.name() == "name")
+        .map(Argument::value)
+        .collect();
+    assert_eq!(
+        name,
+        [&ArgumentValue::Text("emf:version".to_owned())],
+        "{XMI_032}: a strict read of R does not name emf:version"
+    );
 }

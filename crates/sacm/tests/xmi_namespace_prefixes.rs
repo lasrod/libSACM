@@ -4,9 +4,8 @@
 //! XMI 2.5.1 §7.2, rule 1h; XML Schema 1.0 Part 1 §3.15.3, Part 2 §4.3.6;
 //! ADR 0016 D2, D6).
 //!
-//! Every input is an inline string. `read` is called with
-//! `ReadOptions::default()`, and a refusal is read in strict mode
-//! (ADR 0035).
+//! Every input is an inline string. `read` is called in tolerant mode, and
+//! a refusal is read in strict mode (ADR 0035).
 //!
 //! "The same document" (item 1) is compared on a projection of the document:
 //! the roots in order with their ids and kinds; every element's id, kind,
@@ -107,10 +106,10 @@ const WRAPPED_A_VERSION: &str = concat!(
 /// How long one `read` may take; see the SACM23-XMI-001 tests.
 const DEADLINE: Duration = Duration::from_secs(5);
 
-/// `xmi::read` with the default options, on a worker thread. Fails the test
+/// `xmi::read` in tolerant mode, on a worker thread. Fails the test
 /// when the read panics or does not return within [`DEADLINE`].
 fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
-    read_with(input, ReadOptions::default())
+    read_with(input, ReadOptions::default().with_mode(Mode::Tolerant))
 }
 
 /// `xmi::read` with `options`, on a worker thread, as [`read`].
@@ -549,7 +548,10 @@ fn assert_outside_sacm_at(
         display,
         "{ROW}: {what}: the Display of the refusal"
     );
-    let tolerant = match read_with(input.as_bytes(), ReadOptions::default()) {
+    let tolerant = match read_with(
+        input.as_bytes(),
+        ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => panic!(
             "{ROW}: {what}: a tolerant read returned a document, with {:?}",
             output.diagnostics()

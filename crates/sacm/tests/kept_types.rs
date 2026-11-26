@@ -1565,30 +1565,54 @@ fn lib_compat_019_an_owned_part_with_an_id_in_both_xmi_namespaces_is_checked_by_
 /// order, is read as the version and ignored, both of them, with one
 /// SACM-XMI-011 Info each, and nothing is kept: the write carries neither,
 /// reads back `==` and writes again byte-identical (D-XMI-VERSION, ADR 0044
-/// amendment 1; verifier round 1, B1).
+/// amendment 1; verifier round 1, B1). The one in EMF's namespace has its
+/// own templates, which name it as written (SACM23-XMI-032).
 #[test]
 fn lib_compat_019_a_version_in_both_xmi_namespaces_is_read_and_ignored_twice() {
     const ON_ROOT: &str = "SACM-XMI-011/version-on-root";
     const ON_XMI: &str = "SACM-XMI-011/version-on-xmi-element";
+    const EMF_ON_ROOT: &str = "SACM-XMI-011/emf-version-on-root";
+    const EMF_ON_XMI: &str = "SACM-XMI-011/emf-version-on-xmi-element";
     let h = h();
     let emf = format!("xmlns:emf=\"{EMF_NS}\"");
     let on_root = |input: &str, attribute: &str, value: &str| {
-        expected(
-            Severity::Info,
-            ON_ROOT,
-            loc(1, column_of(input, &format!("{attribute}="))),
-            &["a"],
-            &[("value", value), ("class", "ArgumentPackage"), ("id", "a")],
-        )
+        let at = loc(1, column_of(input, &format!("{attribute}=")));
+        if attribute.starts_with("emf:") {
+            expected(
+                Severity::Info,
+                EMF_ON_ROOT,
+                at,
+                &["a"],
+                &[
+                    ("attribute", attribute),
+                    ("value", value),
+                    ("class", "ArgumentPackage"),
+                    ("id", "a"),
+                ],
+            )
+        } else {
+            expected(
+                Severity::Info,
+                ON_ROOT,
+                at,
+                &["a"],
+                &[("value", value), ("class", "ArgumentPackage"), ("id", "a")],
+            )
+        }
     };
     let on_xmi = |input: &str, attribute: &str, value: &str| {
-        expected(
-            Severity::Info,
-            ON_XMI,
-            loc(1, column_of(input, &format!("{attribute}="))),
-            &[],
-            &[("value", value)],
-        )
+        let at = loc(1, column_of(input, &format!("{attribute}=")));
+        if attribute.starts_with("emf:") {
+            expected(
+                Severity::Info,
+                EMF_ON_XMI,
+                at,
+                &[],
+                &[("attribute", attribute), ("value", value)],
+            )
+        } else {
+            expected(Severity::Info, ON_XMI, at, &[], &[("value", value)])
+        }
     };
     let wrapper_golden = lines(&[
         DECLARATION,
@@ -1668,10 +1692,12 @@ fn lib_compat_019_an_unprefixed_type_value_names_a_declared_subclass_in_the_defa
     const SUBCLASS_KEPT: &str = "SACM-XMI-003/subclass-type-kept";
     let h = h();
     let r2 = r2();
-    let bundle =
-        ReadOptions::default().with_subclass("urn:d", "Bundle", ElementKind::ArgumentPackage);
-    let empty_bundle =
-        ReadOptions::default().with_subclass("", "Bundle", ElementKind::ArgumentPackage);
+    let bundle = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass("urn:d", "Bundle", ElementKind::ArgumentPackage);
+    let empty_bundle = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass("", "Bundle", ElementKind::ArgumentPackage);
     let subclass_of = |document: &Document, id: &str| {
         document
             .get(id)
@@ -1763,8 +1789,12 @@ fn lib_compat_019_an_unprefixed_type_value_names_a_declared_subclass_in_the_defa
     // (e) to (g) A child: in the default namespace it is no role element; in
     // no namespace its unprefixed type is in none and names no subclass. Each
     // is kept whole, as without the declarations.
-    let proposition = ReadOptions::default().with_subclass("urn:d", "Prop", ElementKind::Claim);
-    let empty_proposition = ReadOptions::default().with_subclass("", "Prop", ElementKind::Claim);
+    let proposition = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass("urn:d", "Prop", ElementKind::Claim);
+    let empty_proposition = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass("", "Prop", ElementKind::Claim);
     for (what, input, declared) in [
         (
             "(e) a child under the declared default namespace",

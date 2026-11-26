@@ -9,6 +9,29 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Breaking
+
+- `ReadOptions::default()` reads in strict mode, as `WriteOptions::default()` writes. Ask
+  for a tolerant read with `with_mode(Mode::Tolerant)` [LIB-API-020].
+- The arguments that hold English prose are `ArgumentValue::Prose`, not `Text`: `error` of
+  `SACM-SEC-002/unheld-*`, `expected` of `SACM-XML-001/declaration-character` and
+  `/unexpected-character`, `encoding` of `SACM-XML-002/byte-order-mark` and
+  `/detected-encoding`, and `attribute` of `SACM-XML-003/unrepresentable-character`. Their
+  JSON and every `Display` are unchanged [LIB-DIAG-004].
+- A `Diagnostic` read with serde refuses an empty `requirement_id` [LIB-DIAG-005].
+
+### Added
+
+- `ArgumentValue::Prose` and `ArgumentValue::as_prose` [LIB-DIAG-004].
+- The templates `SACM-XMI-011/emf-version-on-root` and `/emf-version-on-xmi-element`. A
+  tolerant read gives them for a `version` in EMF's XMI namespace, named as the file writes
+  it, in place of `/version-on-root` and `/version-on-xmi-element` [SACM23-XMI-032].
+
+### Changed
+
+- `Diagnostic::requirement_id()` is documented as never empty. Only the crate builds a
+  `Diagnostic`; the `test-support` constructors are for tests [LIB-DIAG-005].
+
 ## [0.4.0] - 2026-11-26
 
 ### Breaking

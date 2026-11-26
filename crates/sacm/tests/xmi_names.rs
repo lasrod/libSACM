@@ -4,7 +4,7 @@
 //! ADR 0013, ADR 0017 (the writer) and ADR 0021 (the reader).
 //!
 //! Documents are built with the `test-support` feature's `Document::insert`,
-//! or read from inline input, and read with the default options. They are
+//! or read from inline input, and read in tolerant mode. They are
 //! written in tolerant mode: many are nameless, which a strict write refuses
 //! (LIB-COMPAT-007), and these tests check the output form, not the save mode.
 //! A read reports no diagnostic, except SACM-XMI-010 for an `xsi:type` and
@@ -250,10 +250,10 @@ fn write_err(row: &str, doc: &Document) -> WriteError {
     }
 }
 
-/// `xmi::read` with the default options, on a worker thread. Fails the test
+/// `xmi::read` in tolerant mode, on a worker thread. Fails the test
 /// when the read panics or does not return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
-    read_with(row, input, ReadOptions::default())
+    read_with(row, input, ReadOptions::default().with_mode(Mode::Tolerant))
 }
 
 /// `xmi::read` with `options`, on a worker thread, as [`read`].

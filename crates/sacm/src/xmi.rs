@@ -53,10 +53,11 @@
 //! # Modes
 //!
 //! Both take a [`Mode`] in their options (ADR 0022, ADR 0035). [`ReadOptions`]
-//! default to tolerant, so that an application opens a well-formed SACM file
-//! that a strict read refuses for a defect it can keep (the table below lists
-//! what a tolerant read still refuses), and [`WriteOptions`] to strict, so that
-//! what it saves is schema-valid.
+//! and [`WriteOptions`] both default to strict: a read refuses what it cannot
+//! read conformantly, and a write writes only schema-valid output. Ask for
+//! [`Mode::Tolerant`] to open a well-formed SACM file that a strict read
+//! refuses for a defect it can keep (the table below lists what a tolerant
+//! read still refuses).
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
@@ -77,13 +78,13 @@
 //! use sacm::diagnostic::{Code, Severity};
 //! use sacm::edit::{self, SetAssertionDeclaration};
 //! use sacm::model::AssertionDeclaration;
-//! use sacm::{validation, xmi::{self, ReadOptions, WriteOptions}};
+//! use sacm::{validation, xmi::{self, Mode, ReadOptions, WriteOptions}};
 //!
 //! let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 //!     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
 //!   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="Assumed"/>
 //! </sacm:ArgumentPackage>"#;
-//! let output = xmi::read(input, &ReadOptions::default())?;          // tolerant: it opens
+//! let output = xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant))?; // tolerant: it opens
 //! let found = &output.diagnostics()[0];
 //! assert_eq!((found.code(), found.severity()), (Code::ENUM_INVALID_LITERAL, Severity::Warning));
 //! let mut document = output.into_document();
@@ -494,14 +495,14 @@ pub use limits::{Limit, Limits};
 ///
 /// ```
 /// use sacm::diagnostic::{Code, Severity};
-/// use sacm::xmi::{self, ReadOptions};
+/// use sacm::xmi::{self, Mode, ReadOptions};
 ///
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:vendor" xmi:id="p">
 ///   <name content="P"/>
 ///   <v:layout x="10" y="20"/>
 /// </sacm:ArgumentPackage>"#;
-/// let output = xmi::read(input, &ReadOptions::default())?;
+/// let output = xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant))?;
 /// let found = &output.diagnostics()[0];
 /// assert_eq!((found.code(), found.severity()), (Code::XMI_UNKNOWN_CONTENT, Severity::Warning));
 /// assert_eq!(found.location().map(|at| (at.line(), at.column())), Some((4, 3)));
@@ -960,7 +961,7 @@ pub use limits::{Limit, Limits};
 ///
 /// let older = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/2.2/Argumentation"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"/>"#;
-/// let output = xmi::read(older, &ReadOptions::default())?;
+/// let output = xmi::read(older, &ReadOptions::default().with_mode(Mode::Tolerant))?;
 /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_OTHER_REVISION);
 /// let text = xmi::write(output.document(), &WriteOptions::default())
 ///     .expect("an empty package writes");
@@ -1019,7 +1020,7 @@ pub use limits::{Limit, Limits};
 ///   <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1"
 ///       source="//@argumentElement.1" target="//@argumentElement.0"><name content="By test"/></argumentElement>
 /// </sacm:ArgumentPackage>"#;
-/// let output = xmi::read(emf, &ReadOptions::default())?;
+/// let output = xmi::read(emf, &ReadOptions::default().with_mode(Mode::Tolerant))?;
 /// let inference = output.document().get("i1").ok_or("not read")?;
 /// assert_eq!((inference.sources()[0].as_str(), inference.targets()[0].as_str()), ("c2", "c1"));
 /// let codes: Vec<Code> = output.diagnostics().iter().map(|d| d.code()).collect();
@@ -1212,7 +1213,7 @@ pub use limits::{Limit, Limits};
 /// use sacm::model::{AssertionDeclaration, ElementKind};
 /// use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 ///
-/// let options = ReadOptions::default();
+/// let options = ReadOptions::default().with_mode(Mode::Tolerant);
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments"/>"#;
 /// let output = xmi::read(input, &options)?;
@@ -1414,25 +1415,25 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   content; it reports each as a Warning, and never an Error. A tolerant
 ///   write writes the document as it is held, preserved content included.
 ///
-/// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
-/// and [`WriteOptions`] to `Strict`. The two modes of a write write the same
+/// `Mode` has no default of its own; [`ReadOptions`] and [`WriteOptions`]
+/// both default to `Strict`. The two modes of a write write the same
 /// bytes for a document both write. Later releases may add variants, so
 /// match it with a fallback arm.
 ///
 /// ```
 /// use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 ///
-/// assert_eq!(ReadOptions::default().mode(), Mode::Tolerant);
+/// assert_eq!(ReadOptions::default().mode(), Mode::Strict);
 /// assert_eq!(WriteOptions::default().mode(), Mode::Strict);
-/// let strict = ReadOptions::default().with_mode(Mode::Strict);
-/// assert_eq!(strict.mode(), Mode::Strict);
+/// let tolerant = ReadOptions::default().with_mode(Mode::Tolerant);
+/// assert_eq!(tolerant.mode(), Mode::Tolerant);
 ///
 /// // A package with no name, a model Error, writes in both modes.
 /// let draft = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="draft"/>"#;
-/// let document = xmi::read(draft, &strict)?.into_document();
-/// let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
-/// assert_eq!(xmi::write(&document, &WriteOptions::default())?, xmi::write(&document, &tolerant)?);
+/// let document = xmi::read(draft, &ReadOptions::default())?.into_document();
+/// let tolerant_write = WriteOptions::default().with_mode(Mode::Tolerant);
+/// assert_eq!(xmi::write(&document, &WriteOptions::default())?, xmi::write(&document, &tolerant_write)?);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1454,7 +1455,7 @@ pub enum Mode {
     Tolerant,
 }
 
-/// How [`read`] reads a document: in which [`Mode`], tolerant by default,
+/// How [`read`] reads a document: in which [`Mode`], strict by default,
 /// under which [`Limits`], the defaults by default (LIB-SEC-003), and which
 /// classes outside SACM 2.3 the application declares subclasses of SACM 2.3
 /// classes, none by default ([`with_subclass`](Self::with_subclass),
@@ -1468,7 +1469,7 @@ pub enum Mode {
 ///
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments"/>"#;
-/// let output = xmi::read(input, &ReadOptions::default().with_mode(Mode::Strict))?;
+/// let output = xmi::read(input, &ReadOptions::default())?;
 /// assert_eq!(output.mode(), Mode::Strict);
 /// # Ok::<(), xmi::ReadError>(())
 /// ```
@@ -1486,11 +1487,11 @@ pub struct ReadOptions {
 }
 
 impl Default for ReadOptions {
-    /// Reads in [`Mode::Tolerant`], under the default [`Limits`], with no
+    /// Reads in [`Mode::Strict`], under the default [`Limits`], with no
     /// declared subclass.
     fn default() -> Self {
         Self {
-            mode: Mode::Tolerant,
+            mode: Mode::Strict,
             limits: Limits::default(),
             subclasses: BTreeMap::new(),
         }
@@ -1548,8 +1549,9 @@ impl ReadOptions {
     /// declaration never applies to a proxy, nor to an element that carries a
     /// type in both XMI namespaces, nor to a type in the root's SACM
     /// namespaces or in SACM 2.3's, and an empty `namespace` matches no type.
-    /// A strict read ignores every declaration. A later declaration of the
-    /// same class replaces this one.
+    /// A strict read ignores every declaration. Ask for a tolerant read with
+    /// [`with_mode`](Self::with_mode). A later declaration of the same class
+    /// replaces this one.
     ///
     /// SACM 2.3's own extension mechanism is the `TaggedValue` (§8.12); a
     /// file typed with foreign classes is not SACM 2.3 XMI (XMI 2.5.1
@@ -1558,7 +1560,7 @@ impl ReadOptions {
     ///
     /// ```
     /// use sacm::model::ElementKind;
-    /// use sacm::xmi::{self, ReadOptions};
+    /// use sacm::xmi::{self, Mode, ReadOptions};
     ///
     /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
     ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile"
@@ -1566,6 +1568,7 @@ impl ReadOptions {
     ///   <argumentElement xmi:type="p:Proposition" xmi:id="c1"/>
     /// </sacm:ArgumentPackage>"#;
     /// let options = ReadOptions::default()
+    ///     .with_mode(Mode::Tolerant)
     ///     .with_subclass("urn:example:profile", "Proposition", ElementKind::Claim);
     /// let output = xmi::read(input, &options)?;
     /// let claim = output.document().get("c1").expect("c1 is read");
@@ -1699,7 +1702,7 @@ impl ReadOutput {
     /// let strict = xmi::read(input, &ReadOptions::default().with_mode(Mode::Strict))?;
     /// assert!(strict.has_errors()); // SACM-XMI-010, an Error
     ///
-    /// let tolerant = xmi::read(input, &ReadOptions::default())?;
+    /// let tolerant = xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant))?;
     /// assert!(!tolerant.has_errors()); // the same finding, as a Warning
     /// assert_eq!(tolerant.diagnostics().len(), 1);
     /// # Ok::<(), xmi::ReadError>(())
@@ -2195,7 +2198,7 @@ pub enum ReadError {
     /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((2, 73)));
     ///
     /// // A tolerant read reads it as `<name content="Arguments"/>`, with a Warning.
-    /// let output = xmi::read(input, &ReadOptions::default())?;
+    /// let output = xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant))?;
     /// let name = output.document().get("arguments").and_then(|root| root.name());
     /// assert_eq!(name.and_then(|name| name.content()), Some("Arguments"));
     /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_LEGACY_SHAPE);
@@ -3266,7 +3269,7 @@ impl WriteError {
             &template::XML_003_UNREPRESENTABLE_CHARACTER,
             vec![
                 Argument::text("element", element.as_str()),
-                Argument::text("attribute", attribute.to_string()),
+                Argument::prose("attribute", attribute.to_string()),
                 Argument::count("code_point", u64::from(u32::from(character))),
             ],
         );

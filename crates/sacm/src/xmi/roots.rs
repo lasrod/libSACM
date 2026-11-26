@@ -964,7 +964,7 @@ pub(super) fn read(
                 Unread::Unheld,
                 Details::new(
                     &template::SEC_002_UNHELD_OUTSIDE,
-                    vec![Argument::text("error", error)],
+                    vec![Argument::prose("error", error)],
                 ),
             )
         })?;
@@ -1330,17 +1330,33 @@ impl Findings<'_, '_> {
         self.push_at(diagnostic, declared.at)
     }
 
-    /// Reports the `xmi:version` `attribute`, in the message of `template`
-    /// made from its value and `arguments`, which affects the root `id`, or
-    /// nothing on the XMI element (SACM-XMI-011; XMI 2.5.1 §7.5.3).
+    /// Reports the `version` `attribute` in an XMI namespace of the root
+    /// `id`, or of the XMI element if `id` is `None`, in a message made from
+    /// its value and `arguments`; it affects the root, or nothing on the XMI
+    /// element (SACM-XMI-011; XMI 2.5.1 §7.5.3). One in EMF's namespace is
+    /// named as written (SACM23-XMI-032); one in XMI 2.5.1's is the
+    /// `xmi:version`.
     fn xmi_version(
         &mut self,
         attribute: &Attribute<'_, '_>,
-        template: &'static Template,
         arguments: Vec<Argument>,
         id: Option<&str>,
     ) -> Result<(), ReadError> {
-        let mut all = vec![Argument::text("value", attribute.value())];
+        let value = Argument::text("value", attribute.value());
+        let (template, mut all) = if attribute.namespace() == Some(EMF_XMI_NS) {
+            let written = Argument::text("attribute", attribute_written(self.text, attribute));
+            let template = match id {
+                Some(_) => &template::XMI_011_EMF_VERSION_ON_ROOT,
+                None => &template::XMI_011_EMF_VERSION_ON_XMI_ELEMENT,
+            };
+            (template, vec![written, value])
+        } else {
+            let template = match id {
+                Some(_) => &template::XMI_011_VERSION_ON_ROOT,
+                None => &template::XMI_011_VERSION_ON_XMI_ELEMENT,
+            };
+            (template, vec![value])
+        };
         all.extend(arguments);
         let diagnostic = Diagnostic::emit(template, Severity::Info, MODES_ROW, all)
             .set_clause("7.5.3")
@@ -1922,12 +1938,7 @@ fn read_wrapper<'a>(
         // A `version` in both XMI namespaces is read and ignored, both of
         // them ([`is_version`]).
         if is_version(&attribute) {
-            found.xmi_version(
-                &attribute,
-                &template::XMI_011_VERSION_ON_XMI_ELEMENT,
-                Vec::new(),
-                None,
-            )?;
+            found.xmi_version(&attribute, Vec::new(), None)?;
             continue;
         }
         if is_wrapper_metadata(text, wrapper, &attribute) {
@@ -4677,9 +4688,12 @@ fn unheld(element: &Pending, error: &str) -> Details {
     } else {
         &template::SEC_002_UNHELD_ELEMENT
     };
-    text_details(
+    Details::new(
         template,
-        &[("element", element.written.as_str()), ("error", error)],
+        vec![
+            Argument::text("element", element.written.as_str()),
+            Argument::prose("error", error),
+        ],
     )
 }
 
@@ -4867,8 +4881,7 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
             continue;
         }
         if is_version(&attribute) {
-            let version = &template::XMI_011_VERSION_ON_ROOT;
-            found.xmi_version(&attribute, version, named(kind, id_text), Some(id_text))?;
+            found.xmi_version(&attribute, named(kind, id_text), Some(id_text))?;
             continue;
         }
         if is_unqualified(&attribute, "name") {
@@ -7169,7 +7182,7 @@ mod tests {
         let arguments = |element: &str| {
             vec![
                 Argument::text("element", element),
-                Argument::text("error", "e"),
+                Argument::prose("error", "e"),
             ]
         };
         let root = pending_of(
@@ -7231,6 +7244,11 @@ mod tests {
     /// Options that read in strict mode.
     fn strict() -> ReadOptions {
         ReadOptions::default().with_mode(Mode::Strict)
+    }
+
+    /// Options that read in tolerant mode.
+    fn tolerant_options() -> ReadOptions {
+        ReadOptions::default().with_mode(Mode::Tolerant)
     }
 
     /// The locations of the diagnostics of `content` in the root `p`, read.
@@ -7493,7 +7511,7 @@ mod tests {
     /// return one, report no Error, and write back to a document that reads
     /// equal and writes the same bytes again (ADR 0035 D1).
     fn kept(input: &str) -> (Vec<Finding>, Document) {
-        let output = match read(input.as_bytes(), &ReadOptions::default()) {
+        let output = match read(input.as_bytes(), &tolerant_options()) {
             Ok(output) => output,
             Err(error) => panic!("refused: {error:?}\n{input}"),
         };
@@ -7516,7 +7534,7 @@ mod tests {
         let document = output.into_document();
         let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
         let text = write(&document, &tolerant).unwrap_or_else(|error| panic!("{error:?}"));
-        let back = read(text.as_bytes(), &ReadOptions::default())
+        let back = read(text.as_bytes(), &tolerant_options())
             .unwrap_or_else(|error| panic!("{error:?}\n{text}"))
             .into_document();
         assert!(back == document, "{text}");
@@ -7852,7 +7870,7 @@ mod tests {
     #[test]
     fn a_kept_message_names_the_holder_and_the_row() {
         let message = |input: &str| -> String {
-            let output = read(input.as_bytes(), &ReadOptions::default());
+            let output = read(input.as_bytes(), &tolerant_options());
             output.map_or_else(
                 |error| panic!("{error:?}"),
                 |output| output.diagnostics()[0].message().to_owned(),
@@ -7881,7 +7899,7 @@ mod tests {
         // A defect kept in an element or on `xmi:XMI` is LIB-COMPAT-003's,
         // clause 7.3.3.
         let first = |input: &str| {
-            let output = read(input.as_bytes(), &ReadOptions::default());
+            let output = read(input.as_bytes(), &tolerant_options());
             output.map_or_else(
                 |error| panic!("{error:?}"),
                 |output| {
@@ -7931,7 +7949,7 @@ mod tests {
                      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arts\">\
                      <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\" date=\"2024\" \
                      occurence=\"2021\"/></sacm:ArtifactPackage>";
-        let Ok(output) = read(input.as_bytes(), &ReadOptions::default()) else {
+        let Ok(output) = read(input.as_bytes(), &tolerant_options()) else {
             panic!("a tolerant read refuses an Event with a date and an occurence");
         };
         let codes: Vec<&str> = output
@@ -8245,7 +8263,7 @@ mod tests {
 
     /// The document of a tolerant read of `input`, which must succeed.
     fn tolerant_read(input: &str) -> Document {
-        match read(input.as_bytes(), &ReadOptions::default()) {
+        match read(input.as_bytes(), &tolerant_options()) {
             Ok(output) => output.into_document(),
             Err(error) => panic!("{error}"),
         }

@@ -81,9 +81,12 @@ const GOLDEN: &str = concat!(
 
 // --- Reading ----------------------------------------------------------------
 
-/// Reads `input` with the default options.
+/// Reads `input` in tolerant mode.
 fn read(input: &str) -> Result<xmi::ReadOutput, ReadError> {
-    xmi::read(input.as_bytes(), &ReadOptions::default())
+    xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    )
 }
 
 /// Reads `input` in strict mode, which refuses what a tolerant read keeps

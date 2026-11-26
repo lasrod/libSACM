@@ -77,6 +77,11 @@ fn details_of(template: &'static Template, name: &'static str, value: &str) -> D
     Details::new(template, vec![Argument::text(name, value)])
 }
 
+/// The details of `template` with the one Prose argument `name` = `value`.
+fn prose_of(template: &'static Template, name: &'static str, value: &str) -> Details {
+    Details::new(template, vec![Argument::prose(name, value)])
+}
+
 /// The text of `input`, if it is UTF-8 (or ASCII, if declared so), UTF-16
 /// with a byte order mark, or ISO-8859-1 without a mark, its XML declaration
 /// is well-formed, and it declares no encoding the reader does not support.
@@ -92,7 +97,7 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
             return Err(unsupported_at(
                 SourceLocation::at(1, 1),
                 Unread::Encoding,
-                details_of(&template::XML_002_BYTE_ORDER_MARK, "encoding", encoding),
+                prose_of(&template::XML_002_BYTE_ORDER_MARK, "encoding", encoding),
             ));
         }
         None => {
@@ -100,7 +105,7 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
                 return Err(unsupported_at(
                     SourceLocation::at(1, 1),
                     Unread::Encoding,
-                    details_of(&template::XML_002_DETECTED_ENCODING, "encoding", encoding),
+                    prose_of(&template::XML_002_DETECTED_ENCODING, "encoding", encoding),
                 ));
             }
             let (text, error) = decode_utf8(input);
@@ -599,7 +604,7 @@ impl<'a> Cursor<'a, '_> {
         malformed(
             self.text,
             self.offset,
-            details_of(
+            prose_of(
                 &template::XML_001_DECLARATION_CHARACTER,
                 "expected",
                 expected,
@@ -1100,14 +1105,14 @@ fn reason(error: &roxmltree::Error) -> Details {
             &template::XML_001_NON_XML_CHARACTER,
             vec![Argument::count("code_point", u64::from(u32::from(*c)))],
         ),
-        E::InvalidChar(expected, _, _) => details_of(
+        E::InvalidChar(expected, _, _) => prose_of(
             &template::XML_001_UNEXPECTED_CHARACTER,
             "expected",
             &format!("{:?}", char::from(*expected).to_string()),
         ),
         // roxmltree's descriptions are fixed English phrases that
         // single-quote characters, as in "'>'".
-        E::InvalidChar2(expected, _, _) => details_of(
+        E::InvalidChar2(expected, _, _) => prose_of(
             &template::XML_001_UNEXPECTED_CHARACTER,
             "expected",
             &expected

@@ -21,6 +21,8 @@
 //!   template's order (LIB-API-019; ADR 0030 amendment 5, which relaxes R11).
 //! - The `Invalid` value of `write-errors.json` carries its diagnostic's
 //!   template and arguments.
+//! - LIB-DIAG-005: a record with an empty `requirement_id` is refused, after
+//!   its keys and their types and before its template and arguments.
 //!
 #![cfg(feature = "serde")]
 
@@ -640,5 +642,84 @@ fn lib_api_018_the_invalid_write_error_s_diagnostics_carry_their_templates() {
         (diagnostic.template(), named(diagnostic)),
         ("SACM-REF-001/dangling", expected),
         "{ROW}: the Invalid value read back carries its diagnostic's template and arguments"
+    );
+}
+
+// --- LIB-DIAG-005: requirement_id() is never empty -----------------------------------
+
+/// The refusal of `json` as a `Diagnostic`, which must be refused as data.
+fn diag_005_refusal(what: &str, json: &str) -> String {
+    match serde_json::from_str::<Diagnostic>(json) {
+        Ok(value) => panic!("LIB-DIAG-005: {what}: {json} was read as {value:?}"),
+        Err(error) => {
+            assert!(
+                error.is_data(),
+                "LIB-DIAG-005: {what}: {json} is refused as malformed JSON, not as data: {error}"
+            );
+            error.to_string()
+        }
+    }
+}
+
+/// A Diagnostic record with an empty `requirement_id` is refused: after its
+/// keys and their types are checked, and before its template and arguments.
+#[test]
+fn lib_diag_005_a_diagnostic_record_with_an_empty_requirement_id_is_refused() {
+    let row = r#""requirement_id":"SACM23-VAL-011""#;
+    let valid = TOO_MANY.replacen(row, r#""requirement_id":"SACM23-VAL-003""#, 1);
+    assert_ne!(valid, TOO_MANY, "LIB-DIAG-005: setup: no requirement_id");
+    match serde_json::from_str::<Diagnostic>(&valid) {
+        Ok(read) => assert_eq!(
+            read.requirement_id(),
+            "SACM23-VAL-003",
+            "LIB-DIAG-005: the record reads with another requirement_id"
+        ),
+        Err(error) => panic!("LIB-DIAG-005: the record with SACM23-VAL-003 is refused: {error}"),
+    }
+    let empty = TOO_MANY.replacen(row, r#""requirement_id":"""#, 1);
+    let reason = "the requirement_id is empty";
+    let refusal = diag_005_refusal("an empty requirement_id", &empty);
+    assert!(
+        refusal.contains(reason),
+        "LIB-DIAG-005: the refusal {refusal} of an empty requirement_id does not say {reason:?}"
+    );
+    // The 0.1.0 form, without template and arguments, too.
+    let bare = BARE.replacen(
+        r#""requirement_id":"SACM23-VAL-018""#,
+        r#""requirement_id":"""#,
+        1,
+    );
+    assert_ne!(bare, BARE, "LIB-DIAG-005: setup: no requirement_id in BARE");
+    let refusal = diag_005_refusal("an empty requirement_id in the 0.1.0 form", &bare);
+    assert!(
+        refusal.contains(reason),
+        "LIB-DIAG-005: the refusal {refusal} of an empty requirement_id in the 0.1.0 form does \
+         not say {reason:?}"
+    );
+    // Before the template: an unknown template as well is refused for the
+    // requirement_id.
+    let unknown = empty.replacen(
+        r#""template":"SACM-MULT-001/too-many""#,
+        r#""template":"SACM-MULT-001/no-such-form""#,
+        1,
+    );
+    assert_ne!(unknown, empty, "LIB-DIAG-005: setup: no template");
+    let refusal = diag_005_refusal("an empty requirement_id and an unknown template", &unknown);
+    assert!(
+        refusal.contains(reason) && !refusal.contains("is unknown"),
+        "LIB-DIAG-005: an empty requirement_id is not refused before the template: {refusal}"
+    );
+    // After the keys and types: a message of the wrong type as well is
+    // refused for the message.
+    let typed = empty.replacen(
+        r#""message":"Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])""#,
+        r#""message":1"#,
+        1,
+    );
+    assert_ne!(typed, empty, "LIB-DIAG-005: setup: no message");
+    let refusal = diag_005_refusal("an empty requirement_id and a numeric message", &typed);
+    assert!(
+        refusal.contains("invalid type") && !refusal.contains(reason),
+        "LIB-DIAG-005: an empty requirement_id is refused before the types are: {refusal}"
     );
 }

@@ -511,7 +511,10 @@ mod api {
         for (entry, input, code) in kept_entries() {
             let error = strict_unsupported(entry, input.as_bytes());
             assert_eq!(error.code(), code, "{ROW}: {entry}: the strict code()");
-            let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+            let output = match xmi::read(
+                input.as_bytes(),
+                &ReadOptions::default().with_mode(Mode::Tolerant),
+            ) {
                 Ok(output) => output,
                 Err(error) => panic!("{ROW}: {entry}: a tolerant read refuses it: {error}"),
             };
@@ -567,13 +570,14 @@ mod api {
         ];
         for (entry, input, code) in cases {
             let strict = strict_unsupported(entry, &input);
-            let tolerant = match xmi::read(&input, &ReadOptions::default()) {
-                Ok(output) => panic!(
-                    "{ROW}: {entry}: a tolerant read accepts it, with {:?}",
-                    output.diagnostics()
-                ),
-                Err(error) => error,
-            };
+            let tolerant =
+                match xmi::read(&input, &ReadOptions::default().with_mode(Mode::Tolerant)) {
+                    Ok(output) => panic!(
+                        "{ROW}: {entry}: a tolerant read accepts it, with {:?}",
+                        output.diagnostics()
+                    ),
+                    Err(error) => error,
+                };
             assert_eq!(
                 (strict.code().as_str(), tolerant.code().as_str()),
                 (code, code),
@@ -645,7 +649,10 @@ mod api {
                 error.to_string().ends_with(TOLERATED),
                 "{ROW_004}: {entry}: the strict Display does not end with {TOLERATED:?}: {error}"
             );
-            let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+            let output = match xmi::read(
+                input.as_bytes(),
+                &ReadOptions::default().with_mode(Mode::Tolerant),
+            ) {
                 Ok(output) => output,
                 Err(error) => panic!("{ROW_004}: {entry}: a tolerant read refuses it: {error}"),
             };
@@ -679,7 +686,10 @@ mod api {
         // with no row and the label of a limit.
         let input = root_in("http://www.omg.org/spec/SACM/2.4");
         let strict = strict_unsupported("Sacm24", input.as_bytes());
-        let tolerant = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        let tolerant = match xmi::read(
+            input.as_bytes(),
+            &ReadOptions::default().with_mode(Mode::Tolerant),
+        ) {
             Ok(output) => panic!(
                 "{ROW_004}: Sacm24: a tolerant read accepts it, with {:?}",
                 output.diagnostics()
@@ -715,7 +725,10 @@ mod api {
     }
 
     fn tolerant_document(input: &str) -> Document {
-        match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        match xmi::read(
+            input.as_bytes(),
+            &ReadOptions::default().with_mode(Mode::Tolerant),
+        ) {
             Ok(output) => output.into_document(),
             Err(error) => panic!("{ROW}: setup: a tolerant read refuses {input}: {error}"),
         }

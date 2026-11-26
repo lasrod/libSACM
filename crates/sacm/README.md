@@ -58,7 +58,7 @@ says what that covers and where it stops.
   another file (`LangString::expression_href`). Content that
   is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
-  SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
+  SACM-XMI-003 (`SacmElement::has_preserved_content`). Reading is strict by default. A tolerant read
   opens a well-formed file whose roots are all SACM packages (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, has an `XMI` element in a namespace other than XMI 2.5.1's or EMF's `http://www.omg.org/XMI`, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 with a byte order mark or ISO-8859-1, or passes the XML parser's capacity or its read limits (by default 32 MiB,
   depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an
   element, not counting one namespace declaration per prefix): what a strict read
@@ -197,8 +197,8 @@ that holds preserved content, as `WriteError::PreservedContent`. It never valida
 draft with an open model Error, such as an element with no name, saves strictly. Call
 `validation::validate` for model checks.
 
-Which `xmi::Mode` to use: read in tolerant mode, the default, to open files from other
-tools: it keeps what a strict read refuses, with a Warning. A strict read refuses what it
+Which `xmi::Mode` to use: reads and writes are strict by default. Read in tolerant mode,
+`with_mode(Mode::Tolerant)`, to open files from other tools: it keeps what a strict read refuses, with a Warning. A strict read refuses what it
 does not read, and reports the variations it recognises as Errors instead of Warnings.
 Neither mode validates what it reads. To check that a file conforms, read it in strict
 mode, run `validation::validate`, and test both lists with `diagnostic::has_errors`: a

@@ -156,3 +156,18 @@ The maintainer decided on 2026-11-15 (LIB-COMPAT-008, SACM23-XMI-026, LIB-COMPAT
 - **Amendment 1:** its refusal of an untyped child under an abstract role is strict only.
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-16).*
+
+## Amendment 3 (2026-11-26): reading defaults to strict (LIB-API-020)
+
+- `ReadOptions::default()` reads in `Mode::Strict`, as `WriteOptions::default()` writes.
+  This replaces "`ReadOptions` defaults to `Tolerant`". A tolerant read is asked for with
+  `with_mode(Mode::Tolerant)`.
+- **Why:** a read that forgets its mode then refuses a non-conforming file instead of
+  opening it with Warnings. Since 0.4.0 a tolerant read also opens older SACM revisions,
+  EMF's dialect and SACM-like namespaces, so the gap between the modes has grown
+  (lasrod/libSACM#113 B1). Changing the default after 1.0 would silently change what
+  callers accept.
+- The CLI names its mode at every read, so its defaults (ADR 0023) do not change.
+- M5 no longer matches C++: its `LoadOptions` defaults to `Tolerant` (`io/options.h`).
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-26).*

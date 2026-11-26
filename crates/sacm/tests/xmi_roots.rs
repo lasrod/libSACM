@@ -4,7 +4,7 @@
 //! refusals (LIB-SEC-002).
 //!
 //! Every input is an inline byte string, except the files under
-//! `tests/data/sacm23/xmi/`. `read` is called with `ReadOptions::default()`.
+//! `tests/data/sacm23/xmi/`. `read` is called in tolerant mode.
 //!
 //! "The same document as the bare form" is compared on a projection of the
 //! document (roots in order; every element's id, kind, parent, children and
@@ -98,11 +98,11 @@ const CLAIM_ROOT: &str = concat!(
 /// fails its test instead of stalling the run (as in xtask's scanner tests).
 const DEADLINE: Duration = Duration::from_secs(5);
 
-/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// `xmi::read` in tolerant mode, on a worker thread. Fails the test,
 /// with a message that starts with `row`, when the read panics or does not
 /// return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
-    read_with(row, input, ReadOptions::default())
+    read_with(row, input, ReadOptions::default().with_mode(Mode::Tolerant))
 }
 
 /// `xmi::read` with `options`, on a worker thread, as [`read`].
@@ -1181,7 +1181,11 @@ fn sacm23_xmi_001_a_package_name_outside_a_sacm_namespace_is_invalid_root() {
             format!("the root element \"{name}\" {reason} at {location}"),
             "{row}: the Display of the refusal of {input}"
         );
-        let tolerant = match read_with(row, input.as_bytes(), ReadOptions::default()) {
+        let tolerant = match read_with(
+            row,
+            input.as_bytes(),
+            ReadOptions::default().with_mode(Mode::Tolerant),
+        ) {
             Ok(output) => panic!(
                 "{row}: a tolerant read accepts {input}, with {:?}",
                 output.diagnostics()

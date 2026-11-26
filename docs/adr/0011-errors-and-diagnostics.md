@@ -108,3 +108,12 @@ raised by review on PR #21, and it makes the one-line rule above hold for every 
 - **Operations:** "one error enum per operation" still applies to operations (read,
   write, edit).
 - **First instance:** `model::ParseAssertionDeclarationError` (SACM23-ARG-003).
+
+## Amendment 3 (2026-11-26): only the crate builds diagnostics
+
+X9 now reads: `Code` is a newtype, and only the crate builds a `Diagnostic` (LIB-DIAG-005;
+LIB-DIAG-003 is retired). The constructors are public only under `test-support`, for tests.
+`requirement_id()` is never empty. Assurance Forge's GSN layer reports its own findings in
+its own types and does not need to build the crate's (lasrod/libSACM#113).
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-26).*
