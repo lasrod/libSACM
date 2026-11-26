@@ -94,6 +94,7 @@ const J3: &str = concat!(
 /// `AssertedInference`.
 fn options() -> ReadOptions {
     ReadOptions::default()
+        .with_mode(Mode::Tolerant)
         .with_subclass(P, "Bundle", ElementKind::ArgumentPackage)
         .with_subclass(P, "Proposition", ElementKind::Claim)
         .with_subclass(P, "Step", ElementKind::AssertedInference)
@@ -598,10 +599,14 @@ fn lib_compat_017_a_strict_read_ignores_the_declarations() {
 
 #[test]
 fn lib_compat_017_without_a_declaration_the_element_is_kept_whole() {
-    let output = read_with("G3 default", &fixture(G3), &ReadOptions::default());
+    let output = read_with(
+        "G3 default",
+        &fixture(G3),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    );
     let [kept] = output.diagnostics() else {
         panic!(
-            "{ROW}: G3: a tolerant read with default options does not report exactly one \
+            "{ROW}: G3: a tolerant read with no declaration does not report exactly one \
              diagnostic: {}",
             brief(output.diagnostics())
         );
@@ -623,7 +628,7 @@ fn lib_compat_017_without_a_declaration_the_element_is_kept_whole() {
                 ("holder_id", "case")
             ]),
         ),
-        "{ROW}: G3: the one Warning of a tolerant read with default options"
+        "{ROW}: G3: the one Warning of a tolerant read with no declaration"
     );
     let ids: Vec<&str> = output
         .document()
@@ -677,8 +682,9 @@ fn lib_compat_017_a_strict_write_refuses_a_subclass_element_as_preserved_content
 fn lib_compat_017_a_class_its_role_does_not_admit_or_a_proxy_is_kept_whole() {
     // (a) Declared an ArtifactPackage, which an argumentElement does not admit.
     let what = "(a) a kind the role does not admit";
-    let declared =
-        ReadOptions::default().with_subclass(P, "Proposition", ElementKind::ArtifactPackage);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(P, "Proposition", ElementKind::ArtifactPackage);
     let input = doc(&child("xmi:type=\"p:Proposition\""));
     let output = read_with(what, &input, &declared);
     let [kept] = output.diagnostics() else {
@@ -712,7 +718,11 @@ fn lib_compat_017_a_class_its_role_does_not_admit_or_a_proxy_is_kept_whole() {
     ] {
         let input = doc(proxy);
         let declared = read_with(what, &input, &options());
-        let plain = read_with(what, &input, &ReadOptions::default());
+        let plain = read_with(
+            what,
+            &input,
+            &ReadOptions::default().with_mode(Mode::Tolerant),
+        );
         assert!(
             declared.document() == plain.document(),
             "{ROW}: {what}: the read with the declarations is not == the read without: {:?}",
@@ -750,8 +760,9 @@ fn lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_
  {
     // (a) A SACM 2.3 class.
     let what = "(a) a SACM 2.3 class";
-    let declared =
-        ReadOptions::default().with_subclass(SACM_NS, "Claim", ElementKind::ArgumentReasoning);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(SACM_NS, "Claim", ElementKind::ArgumentReasoning);
     let input = doc(&child("xmi:type=\"sacm:Claim\""));
     let output = read_with(what, &input, &declared);
     let c1 = element(what, output.document(), "c1");
@@ -769,7 +780,9 @@ fn lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_
 
     // (b) A type in SACM 2.3's namespace that names no class.
     let what = "(b) a family type naming no class";
-    let declared = ReadOptions::default().with_subclass(SACM_NS, "Goal", ElementKind::Claim);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(SACM_NS, "Goal", ElementKind::Claim);
     let input = doc(&child("xmi:type=\"sacm:Goal\""));
     let output = read_with(what, &input, &declared);
     let [kept] = output.diagnostics() else {
@@ -790,6 +803,7 @@ fn lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_
     // (c) An older revision's family, and SACM 2.3's, under a SACM 2.2 root.
     let what = "(c) an older revision's family";
     let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
         .with_subclass(
             "http://omg.sacm/2.2/argumentation",
             "Goal",
@@ -918,10 +932,14 @@ fn lib_compat_017_declarations_never_apply_to_a_sacm_namespace_and_a_root_keeps_
 }
 
 /// Asserts that the tolerant read of `input` with `declared` equals the one
-/// with default options, in document and diagnostics.
+/// with tolerant options and no declaration, in document and diagnostics.
 fn assert_reads_as_without(what: &str, input: &str, declared: &ReadOptions) {
     let with = read_with(what, input, declared);
-    let without = read_with(what, input, &ReadOptions::default());
+    let without = read_with(
+        what,
+        input,
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    );
     assert!(
         with.document() == without.document(),
         "{ROW}: {what}: the read with the declarations is not == the read without: {:?}",
@@ -1353,7 +1371,12 @@ fn lib_compat_017_an_emf_file_with_subclass_types_reads_resolves_its_paths_and_w
             ("SACM-XMI-004", "info", "SACM-XMI-004/generated-id", 5),
             ("SACM-XMI-008", "warning", "SACM-XMI-008/other-revision", 1),
             ("SACM-XMI-010", "warning", "SACM-XMI-010/xsi-type", 4),
-            ("SACM-XMI-011", "info", "SACM-XMI-011/version-on-root", 1),
+            (
+                "SACM-XMI-011",
+                "info",
+                "SACM-XMI-011/emf-version-on-root",
+                1
+            ),
             (
                 "SACM-XMI-013",
                 "warning",
@@ -1384,7 +1407,7 @@ fn lib_compat_017_an_emf_file_with_subclass_types_reads_resolves_its_paths_and_w
             &[(3, 1), (5, 3), (7, 5), (10, 5), (13, 5)][..],
         ),
         ("SACM-XMI-008/other-revision", &[(3, 1)][..]),
-        ("SACM-XMI-011/version-on-root", &[(3, 37)][..]),
+        ("SACM-XMI-011/emf-version-on-root", &[(3, 37)][..]),
         ("SACM-XMI-015/emf-xmi-namespace-read", &[(3, 37)][..]),
         (
             "SACM-XMI-013/package-role-read",
@@ -1643,8 +1666,9 @@ fn lib_compat_017_a_type_names_a_subclass_by_its_prefix_or_the_default_namespace
 
     // (a) The prefix xmi bound to XMI 2.5.1, on a root: no second binding.
     let what = "(a) the prefix xmi";
-    let declared =
-        ReadOptions::default().with_subclass(XMI_NS, "Bundle", ElementKind::ArgumentPackage);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(XMI_NS, "Bundle", ElementKind::ArgumentPackage);
     let output = read_with(what, &root_with("xmi:Bundle"), &declared);
     let root = element(what, output.document(), "a");
     assert_eq!(
@@ -1664,8 +1688,9 @@ fn lib_compat_017_a_type_names_a_subclass_by_its_prefix_or_the_default_namespace
     // (b) The prefix xml: the type is kept as an attribute, as without a
     // declaration.
     let what = "(b) the prefix xml";
-    let declared =
-        ReadOptions::default().with_subclass(XML_NS, "Bundle", ElementKind::ArgumentPackage);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(XML_NS, "Bundle", ElementKind::ArgumentPackage);
     assert_reads_as_without(what, &root_with("xml:Bundle"), &declared);
 
     // (c) The prefix xmlns, and (d) a prefix bound to an empty namespace:
@@ -1755,12 +1780,16 @@ fn lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations() 
         (
             "a child typed in both XMI namespaces",
             child_input,
-            ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim),
+            ReadOptions::default()
+                .with_mode(Mode::Tolerant)
+                .with_subclass("urn:p", "Prop", ElementKind::Claim),
         ),
         (
             "a root typed in both XMI namespaces",
             root_input,
-            ReadOptions::default().with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
+            ReadOptions::default()
+                .with_mode(Mode::Tolerant)
+                .with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
         ),
     ] {
         // (i) The read with the declaration is the read without it.
@@ -1787,7 +1816,9 @@ fn lib_compat_017_a_declared_xmi_2_5_1_type_beside_an_emf_type_reads_as_without_
          xmlns:e=\"{EMF_NS}\" xmlns:p=\"urn:p\" xmi:id=\"a\"><argumentElement \
          xmi:type=\"p:Prop\" e:type=\"sacm:Claim\" xmi:id=\"c1\"/></sacm:ArgumentPackage>"
     );
-    let declared = ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim);
+    let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass("urn:p", "Prop", ElementKind::Claim);
     assert_reads_as_without(what, &input, &declared);
     let output = read_with(what, &input, &declared);
     assert!(
@@ -1816,14 +1847,18 @@ fn lib_compat_017_a_type_in_one_xmi_namespace_beside_another_xmi_attribute_reads
         (
             "a child typed in XMI 2.5.1's namespace beside an EMF attribute",
             child_input,
-            ReadOptions::default().with_subclass("urn:p", "Prop", ElementKind::Claim),
+            ReadOptions::default()
+                .with_mode(Mode::Tolerant)
+                .with_subclass("urn:p", "Prop", ElementKind::Claim),
             "c1",
             "Prop",
         ),
         (
             "a root typed in XMI 2.5.1's namespace beside an EMF attribute",
             root_input,
-            ReadOptions::default().with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
+            ReadOptions::default()
+                .with_mode(Mode::Tolerant)
+                .with_subclass("urn:p", "Bundle", ElementKind::ArgumentPackage),
             "a",
             "Bundle",
         ),
@@ -1861,7 +1896,13 @@ fn lib_compat_017_a_subclass_counts_its_namespace_text_against_the_size_limit() 
         u64::try_from(input.len()).unwrap_or_else(|_| panic!("{ROW}: setup: the input's size")),
     );
     // Without the declaration, the element is kept whole within the limit.
-    let plain = read_with(what, &input, &ReadOptions::default().with_limits(limits));
+    let plain = read_with(
+        what,
+        &input,
+        &ReadOptions::default()
+            .with_mode(Mode::Tolerant)
+            .with_limits(limits),
+    );
     assert!(
         plain.document().get("c1").is_none(),
         "{ROW}: {what}: without a declaration, c1 is read"
@@ -1869,6 +1910,7 @@ fn lib_compat_017_a_subclass_counts_its_namespace_text_against_the_size_limit() 
     // With it, the URI and the binding (prefix + URI + 10) of the class pass
     // the limit at the type.
     let declared = ReadOptions::default()
+        .with_mode(Mode::Tolerant)
         .with_subclass(long.as_str(), "Proposition", ElementKind::Claim)
         .with_limits(limits);
     let error = refusal_with(what, &input, &declared);

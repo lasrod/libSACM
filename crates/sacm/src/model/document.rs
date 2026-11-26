@@ -1626,14 +1626,14 @@ impl Document {
     /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
     ///
     /// ```
-    /// use sacm::xmi::{self, ReadOptions};
+    /// use sacm::xmi::{self, Mode, ReadOptions};
     ///
     /// let input = br#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
     ///     xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
     ///   <xmi:foo exporter="tool"/>
     ///   <sacm:ArgumentPackage xmi:id="p"><name content="P"/></sacm:ArgumentPackage>
     /// </xmi:XMI>"#;
-    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let document = xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant))?.into_document();
     /// assert!(document.has_preserved_content());
     /// // No element holds it: the document does, outside its elements.
     /// assert!(document.elements().all(|element| !element.has_preserved_content()));
@@ -4141,7 +4141,7 @@ impl<'a> SacmElement<'a> {
     ///
     /// ```
     /// use sacm::model::ElementKind;
-    /// use sacm::xmi::{self, ReadOptions};
+    /// use sacm::xmi::{self, Mode, ReadOptions};
     ///
     /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
     ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile"
@@ -4150,6 +4150,7 @@ impl<'a> SacmElement<'a> {
     ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2"/>
     /// </sacm:ArgumentPackage>"#;
     /// let options = ReadOptions::default()
+    ///     .with_mode(Mode::Tolerant)
     ///     .with_subclass("urn:example:profile", "Proposition", ElementKind::Claim);
     /// let document = xmi::read(input, &options)?.into_document();
     /// let c1 = document.get("c1").expect("c1 is read");

@@ -508,6 +508,7 @@ fn lib_compat_015_the_files_table_lists_every_corpus_file_in_order() {
 
 /// The declarations an application would give for the GSN classes of files
 /// 12 and 13 (LIB-COMPAT-017): test data, as an application's would be.
+/// In tolerant mode, which reads the declarations.
 fn gsn_options() -> ReadOptions {
     [
         ("Module", ElementKind::ArgumentPackage),
@@ -522,9 +523,10 @@ fn gsn_options() -> ReadOptions {
         ("InContextOf", ElementKind::AssertedContext),
     ]
     .into_iter()
-    .fold(ReadOptions::default(), |options, (name, kind)| {
-        options.with_subclass(GSN, name, kind)
-    })
+    .fold(
+        ReadOptions::default().with_mode(Mode::Tolerant),
+        |options, (name, kind)| options.with_subclass(GSN, name, kind),
+    )
 }
 
 /// The bytes of the corpus file `name` in `dir`.
@@ -555,7 +557,8 @@ fn count_of(found: &[Diagnostic], template: &str) -> usize {
 struct Claimed {
     /// The corpus file.
     name: &'static str,
-    /// Whether it is read with [`gsn_options`], else with default options.
+    /// Whether it is read with [`gsn_options`], else in tolerant mode with no
+    /// declaration.
     gsn: bool,
     /// The `count` of its one SACM-XMI-017 `paths-read`, or `None` for no
     /// SACM-XMI-017.
@@ -623,7 +626,7 @@ fn lib_compat_005_the_files_of_three_tool_families_read_and_write_back_without_l
         let options = if file.gsn {
             gsn_options()
         } else {
-            ReadOptions::default()
+            ReadOptions::default().with_mode(Mode::Tolerant)
         };
         let output = claimed_read(&dir, name, &options);
         let found = output.diagnostics();

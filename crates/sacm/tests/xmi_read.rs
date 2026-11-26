@@ -2,8 +2,8 @@
 //! `ReadOptions`, `ReadOutput` and `ReadError` (LIB-SEC-001, LIB-SEC-002,
 //! LIB-API-009; ADR 0005, ADR 0015).
 //!
-//! Every input is an inline byte string. `read` is called with
-//! `ReadOptions::default()`, which reads in tolerant mode (LIB-COMPAT-001).
+//! Every input is an inline byte string. `read` is called in tolerant mode,
+//! `ReadOptions::default().with_mode(Mode::Tolerant)` (LIB-COMPAT-001).
 //!
 //! Not checked here:
 //! - LIB-SEC-002 item 6's `#[non_exhaustive]` on `ReadError`: a test cannot
@@ -16,8 +16,7 @@
 //! - LIB-SEC-001 item 3's "attribute value": XML does not allow a literal `<`
 //!   in an attribute value, so a well-formed document can only carry
 //!   `<!DOCTYPE` there escaped, as `&lt;!DOCTYPE`. The test uses that form.
-//! - "In every mode" (LIB-SEC-001): the tests here use the default, tolerant,
-//!   mode; `load_and_save_modes.rs` (LIB-COMPAT-001) reads a DOCTYPE, an
+//! - "In every mode" (LIB-SEC-001): the tests here use tolerant mode; `load_and_save_modes.rs` (LIB-COMPAT-001) reads a DOCTYPE, an
 //!   external entity and malformed input in both modes and checks that the
 //!   refusals are the same.
 //!
@@ -116,11 +115,11 @@ fn deeper(options: ReadOptions, depth: usize) -> ReadOptions {
     options.with_limits(sacm::xmi::Limits::default().with_max_depth(depth))
 }
 
-/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// `xmi::read` in tolerant mode, on a worker thread. Fails the test,
 /// with a message that starts with `row`, when the read panics or does not
 /// return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
-    read_with(row, input, ReadOptions::default())
+    read_with(row, input, ReadOptions::default().with_mode(Mode::Tolerant))
 }
 
 /// `xmi::read` with `options`, on a worker thread, as [`read`].
@@ -1074,7 +1073,7 @@ fn lib_sec_002_deep_nesting_returns_without_recursion() {
         .stack_size(2 * MIB)
         .spawn(move || {
             // The depth limit is raised past the nesting, so the parser walks it.
-            let options = deeper(ReadOptions::default(), DEPTH);
+            let options = deeper(ReadOptions::default().with_mode(Mode::Tolerant), DEPTH);
             let results = (
                 xmi::read(&well_formed, &options).is_ok(),
                 xmi::read(&unclosed, &options),
@@ -1352,7 +1351,10 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         matches!(strict, Err(ReadError::LegacyShape { .. })),
         "{row}: a strict read of the sample is not LegacyShape: {strict:?}"
     );
-    let tolerant = match xmi::read(SAMPLE.as_bytes(), &ReadOptions::default()) {
+    let tolerant = match xmi::read(
+        SAMPLE.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output,
         Err(error) => panic!("{row}: a tolerant read refuses the sample: {error:?}"),
     };

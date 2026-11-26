@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! NAME = CODE_CONSTANT, Carrier, "<CODE>/<form>",
-//!     [Text("name"), Count("name")],
+//!     [Text("name"), Count("name"), Prose("name")],
 //!     "the English pattern, with {name}, {name:?} and {name:04X}";
 //! ```
 //!
@@ -70,6 +70,8 @@ pub(crate) enum Kind {
     Text,
     /// [`ArgumentValue::Count`].
     Count,
+    /// [`ArgumentValue::Prose`].
+    Prose,
 }
 
 /// Defines each template as a static, and lists them all in [`TEMPLATES`],
@@ -134,25 +136,25 @@ templates! {
         [Count("max")],
         "an element has more attributes than the limit of {max}";
     SEC_002_UNHELD_OUTSIDE = PARSER_LIMIT, Unread, "SACM-SEC-002/unheld-outside",
-        [Text("error")],
+        [Prose("error")],
         "the content outside every element cannot be held in the document: {error}";
     SEC_002_UNHELD_ROOT = PARSER_LIMIT, Unread, "SACM-SEC-002/unheld-root",
-        [Text("element"), Text("error")],
+        [Text("element"), Prose("error")],
         "the root element {element:?} cannot be held in the document: {error}";
     SEC_002_UNHELD_ELEMENT = PARSER_LIMIT, Unread, "SACM-SEC-002/unheld-element",
-        [Text("element"), Text("error")],
+        [Text("element"), Prose("error")],
         "the element {element:?} cannot be held in the document: {error}";
     XML_002_BYTE_ORDER_MARK = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/byte-order-mark",
-        [Text("encoding")],
+        [Prose("encoding")],
         "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read";
     XML_002_DETECTED_ENCODING = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/detected-encoding",
-        [Text("encoding")],
+        [Prose("encoding")],
         "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read";
     XML_002_DECLARED_ENCODING = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/declared-encoding",
         [Text("encoding")],
         "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read";
     XML_003_UNREPRESENTABLE_CHARACTER = XML_UNREPRESENTABLE_CHARACTER, Write("UnrepresentableCharacter"), "SACM-XML-003/unrepresentable-character",
-        [Text("element"), Text("attribute"), Count("code_point")],
+        [Text("element"), Prose("attribute"), Count("code_point")],
         "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent";
     XMI_001_NOT_A_PACKAGE = XMI_INVALID_ROOT, Read("InvalidRoot"), "SACM-XMI-001/not-a-package",
         [Text("element")],
@@ -308,7 +310,7 @@ templates! {
         [Text("name")],
         "the pseudo-attribute {name:?} does not follow white space in the XML declaration";
     XML_001_DECLARATION_CHARACTER = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/declaration-character",
-        [Text("expected")],
+        [Prose("expected")],
         "an unexpected character in the XML declaration where {expected} was expected";
     XML_001_DECLARATION_END = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/declaration-end",
         [],
@@ -395,7 +397,7 @@ templates! {
         [Count("code_point")],
         "the character U+{code_point:04X} is not allowed in XML";
     XML_001_UNEXPECTED_CHARACTER = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/unexpected-character",
-        [Text("expected")],
+        [Prose("expected")],
         "an unexpected character where {expected} was expected";
     XML_001_EXPECTED_STRING = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/expected-string",
         [Text("expected")],
@@ -576,6 +578,12 @@ templates! {
     XMI_011_VERSION_ON_ROOT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-root",
         [Text("value"), Text("class"), Text("id")],
         "the xmi:version {value:?} of the {class} {id:?} is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
+    XMI_011_EMF_VERSION_ON_XMI_ELEMENT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/emf-version-on-xmi-element",
+        [Text("attribute"), Text("value")],
+        "the {attribute} {value:?} of the XMI element is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
+    XMI_011_EMF_VERSION_ON_ROOT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/emf-version-on-root",
+        [Text("attribute"), Text("value"), Text("class"), Text("id")],
+        "the {attribute} {value:?} of the {class} {id:?} is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
     XMI_015_EMF_XMI_NAMESPACE_READ = XMI_WRAPPER_NAMESPACE, Diagnostic, "SACM-XMI-015/emf-xmi-namespace-read",
         [Text("name")],
         "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\", so the XMI names of the document in it are read as XMI 2.5.1's, which write writes";
@@ -753,9 +761,9 @@ pub(crate) fn find(id: &str) -> Option<&'static Template> {
 }
 
 /// The variable part of a message: `template`'s pattern with each
-/// placeholder written from the argument it names. `{n}` writes a Text as it
-/// is and a Count in decimal, `{n:?}` a Text Debug-quoted, and `{n:04X}` a
-/// Count as at least four uppercase hex digits. A placeholder that names no
+/// placeholder written from the argument it names. `{n}` writes a Text or
+/// Prose as it is and a Count in decimal, `{n:?}` a Text Debug-quoted, and
+/// `{n:04X}` a Count as at least four uppercase hex digits. A placeholder that names no
 /// argument, or an argument of the other kind, is written back as written,
 /// and so is a `{` that no `}` closes; the renderer never panics.
 pub(crate) fn render(template: &Template, arguments: &[Argument]) -> String {
@@ -775,7 +783,9 @@ pub(crate) fn render(template: &Template, arguments: &[Argument]) -> String {
             .map(|argument| &argument.value);
         // Writing to a `String` cannot fail.
         let _ = match (value, format) {
-            (Some(ArgumentValue::Text(text)), "") => out.write_str(text),
+            (Some(ArgumentValue::Text(text) | ArgumentValue::Prose(text)), "") => {
+                out.write_str(text)
+            }
             (Some(ArgumentValue::Text(text)), "?") => write!(out, "{text:?}"),
             (Some(ArgumentValue::Count(count)), "") => write!(out, "{count}"),
             (Some(ArgumentValue::Count(count)), "04X") => write!(out, "{count:04X}"),
@@ -889,13 +899,14 @@ mod tests {
         // 0044); slice 0075b added one diagnostic template (LIB-COMPAT-017;
         // ADR 0044 D4); slice 0077 added one refusal template (LIB-SEC-007;
         // ADR 0041 amendment 2); slice 0079 added one diagnostic template
-        // (LIB-COMPAT-020).
-        assert_eq!(count, 214, "LIB-API-017: the number of templates");
+        // (LIB-COMPAT-020); slice 0081 added two diagnostic templates
+        // (SACM23-XMI-032).
+        assert_eq!(count, 216, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 111, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 113, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));
@@ -949,11 +960,11 @@ mod tests {
                 else {
                     panic!("LIB-API-017: {id}: {{{name}}} names no declared argument");
                 };
-                // `{n}` takes Text or a Count in decimal, `{n:?}` Text,
-                // `{n:04X}` a Count.
+                // `{n}` takes Text, Prose or a Count in decimal, `{n:?}`
+                // Text, `{n:04X}` a Count.
                 let fits = matches!(
                     (format, kind),
-                    ("" | "?", Kind::Text) | ("" | "04X", Kind::Count)
+                    ("" | "?", Kind::Text) | ("" | "04X", Kind::Count) | ("", Kind::Prose)
                 );
                 assert!(
                     fits,
@@ -1025,6 +1036,15 @@ mod tests {
             arguments: &[("a", Kind::Text), ("n", Kind::Count)],
             pattern: "{a} {a:?} {n} U+{n:04X} {missing} {a:04X} {n:?} {b",
         };
+        // `{p}` writes Prose as it is; `{p:?}` and `{p:04X}` take no Prose
+        // and are written back as written (LIB-DIAG-004).
+        static PROSE: Template = Template {
+            id: "SACM-XML-001/prose-sample",
+            code: crate::diagnostic::Code::XML_MALFORMED,
+            carrier: Carrier::Read("Malformed"),
+            arguments: &[("p", Kind::Prose)],
+            pattern: "{p} {p:?} {p:04X}",
+        };
         let arguments = [Argument::text("a", "x\"y"), Argument::count("n", 10)];
         assert_eq!(
             render(&SAMPLE, &arguments),
@@ -1037,6 +1057,11 @@ mod tests {
                 &[Argument::text("a", ""), Argument::count("n", 0x1_0FFFF)]
             ),
             " \"\" 1114111 U+10FFFF {missing} {a:04X} {n:?} {b"
+        );
+        assert_eq!(
+            render(&PROSE, &[Argument::prose("p", "\"=\"")]),
+            "\"=\" {p:?} {p:04X}",
+            "LIB-DIAG-004: the renderer writes Prose as it is"
         );
         let large = Argument::count_of("n", usize::MAX);
         assert_eq!(

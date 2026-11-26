@@ -163,3 +163,11 @@ LIB-API-019; the maintainer's decision at M4's close. It relaxes R11.
 - This is additive: every record that read before reads the same.
 
 *Amendment 5 status: accepted (the maintainer, 2026-11-18). Built by LIB-API-019; until then R11's order rule holds.*
+
+## Amendment 6 (2026-11-26): prose arguments; a non-empty requirement id
+LIB-DIAG-004 and LIB-DIAG-005; the maintainer's decisions on lasrod/libSACM#113.
+- **Prose.** An argument the catalog marks `(prose)` is `ArgumentValue::Prose`. It is written as a JSON string (R8) and read as Prose by its template's kind, so the JSON shape does not change.
+- **R11 gains a rule:** a Diagnostic record with an empty `requirement_id` is refused, after its keys and types and before its template.
+- **Withdrawn:** the consequence "Once users can build their own diagnostic codes (LIB-DIAG-003) …". LIB-DIAG-003 is retired; only the crate builds diagnostics (LIB-DIAG-005).
+
+*Amendment 6 status: accepted (the maintainer, 2026-11-26).*

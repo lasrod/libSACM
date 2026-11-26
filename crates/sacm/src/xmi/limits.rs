@@ -388,12 +388,15 @@ impl<'t> Budget<'t> {
 }
 
 /// The text of `diagnostic` that counts against the budget: the bytes of its
-/// text arguments and of its affected ids.
+/// Text and Prose arguments and of its affected ids.
 fn text_bytes(diagnostic: &Diagnostic) -> u64 {
     let arguments = diagnostic
         .arguments()
         .iter()
-        .filter_map(|argument| argument.value().as_text())
+        .filter_map(|argument| {
+            let value = argument.value();
+            value.as_text().or_else(|| value.as_prose())
+        })
         .map(str::len);
     let affected = diagnostic.affected().iter().map(|id| id.as_str().len());
     let length = arguments
@@ -843,6 +846,15 @@ mod tests {
             vec![Argument::count("max", 123_456)],
         );
         assert_eq!(super::text_bytes(&counted), 0);
+        // A prose argument is text (LIB-DIAG-004); no diagnostic template
+        // has one yet, so this one is built by hand.
+        let prose = Diagnostic::emit(
+            &template::SEC_002_UNHELD_OUTSIDE,
+            Severity::Error,
+            "LIB-SEC-002",
+            vec![Argument::prose("error", "four")],
+        );
+        assert_eq!(super::text_bytes(&prose), 4);
         // The budget refuses at the first count that passes the limit.
         let text = "<a/>";
         let budget = super::Budget::new(text, &Limits::default().with_max_input_bytes(12));

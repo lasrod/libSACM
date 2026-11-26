@@ -81,9 +81,12 @@ const GOLDEN: &str = concat!(
 
 // --- Reading ----------------------------------------------------------------
 
-/// Reads `input` with the default options.
+/// Reads `input` in tolerant mode.
 fn read(input: &str) -> Result<xmi::ReadOutput, ReadError> {
-    xmi::read(input.as_bytes(), &ReadOptions::default())
+    xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    )
 }
 
 /// Reads `input` in strict mode, which refuses what a tolerant read keeps
@@ -102,7 +105,7 @@ fn read_ok(what: &str, input: &str) -> Document {
 
 /// Reads `input`, which the test expects to be read with exactly one
 /// SACM-XMI-010 per id in `xsi_typed`, in order: the element whose
-/// `xsi:type` is reported, a Warning in the default tolerant mode
+/// `xsi:type` is reported, a Warning in tolerant mode
 /// (LIB-COMPAT-001).
 fn read_ok_reporting(what: &str, input: &str, xsi_typed: &[&str]) -> Document {
     match read(input) {
@@ -499,7 +502,7 @@ fn sacm23_xmi_017_each_literal_on_a_claim_reads_to_that_literal_with_xmi_type_an
                         ));
                     }
                     // An `xsi:type` is one SACM-XMI-010 on the Claim, a
-                    // Warning in the default tolerant mode (LIB-COMPAT-001).
+                    // Warning in tolerant mode (LIB-COMPAT-001).
                     let reported: Vec<(Code, Severity, Vec<&str>)> = output
                         .diagnostics()
                         .iter()

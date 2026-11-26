@@ -130,9 +130,12 @@ fn id(value: &str) -> ElementId {
     ElementId::from(value)
 }
 
-/// Reads `input` with the default (tolerant) options.
+/// Reads `input` in tolerant mode.
 fn read(what: &str, input: &str) -> Document {
-    match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+    match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: setup: {what} does not read: {error}"),
     }

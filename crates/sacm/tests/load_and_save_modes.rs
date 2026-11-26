@@ -1,9 +1,10 @@
 //! Tests for the load and save modes (LIB-COMPAT-001, LIB-COMPAT-007; ADR 0022;
 //! D-STRICT, D-SEV).
 //!
-//! - LIB-COMPAT-001: `ReadOptions` carries an `xmi::Mode`, tolerant by
-//!   default, and `ReadOutput::mode()` reports it. Both modes read the same
-//!   documents from the inputs both read, and refuse alike a DOCTYPE,
+//! - LIB-COMPAT-001: `ReadOptions` carries an `xmi::Mode`, strict by
+//!   default (LIB-API-020), and `ReadOutput::mode()` reports it. Both
+//!   modes read the same documents from the inputs both read, and refuse
+//!   alike a DOCTYPE,
 //!   malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId` and the
 //!   limits; what else a strict read refuses, a tolerant read keeps as
 //!   preserved content with a Warning (ADR 0035 D1; `tolerant_read.rs`).
@@ -475,13 +476,8 @@ fn golden_names(row: &str) -> Vec<String> {
 fn assert_mode_traits<T: Clone + Copy + Debug + PartialEq + Eq + Hash + Send + Sync + 'static>() {}
 
 #[test]
-fn lib_compat_001_read_options_default_to_tolerant_and_with_mode_sets_the_mode() {
+fn lib_compat_001_read_options_with_mode_sets_the_mode() {
     assert_mode_traits::<Mode>();
-    assert_eq!(
-        ReadOptions::default().mode(),
-        Mode::Tolerant,
-        "{COMPAT_001}: ReadOptions::default() is not tolerant"
-    );
     assert_eq!(
         ReadOptions::default().with_mode(Mode::Strict).mode(),
         Mode::Strict,
@@ -499,16 +495,6 @@ fn lib_compat_001_read_options_default_to_tolerant_and_with_mode_sets_the_mode()
             .mode(),
         Mode::Tolerant,
         "{COMPAT_001}: a later with_mode does not replace an earlier one"
-    );
-    assert_ne!(
-        ReadOptions::default().with_mode(Mode::Strict),
-        ReadOptions::default(),
-        "{COMPAT_001}: strict read options compare equal to the default ones"
-    );
-    assert_eq!(
-        ReadOptions::default().with_mode(Mode::Tolerant),
-        ReadOptions::default(),
-        "{COMPAT_001}: tolerant read options are not the default ones"
     );
     assert_ne!(
         Mode::Strict,
@@ -541,14 +527,161 @@ fn lib_compat_001_read_output_reports_the_mode_it_was_read_in() {
             "{COMPAT_001}: an input with xsi:type read in {mode:?} mode reports another mode"
         );
     }
-    let default = match xmi::read(plain.as_bytes(), &ReadOptions::default()) {
-        Ok(output) => output,
-        Err(error) => panic!("{COMPAT_001}: the plain input is refused: {error}"),
-    };
+}
+
+// ===========================================================================
+// LIB-API-020: reading defaults to strict, as writing does
+// ===========================================================================
+
+const API_020: &str = "LIB-API-020";
+
+/// Reads `input` with `ReadOptions::default()`.
+fn read_default(input: &str) -> Result<ReadOutput, ReadError> {
+    xmi::read(input.as_bytes(), &ReadOptions::default())
+}
+
+/// The codes and severities of `diagnostics`, in order.
+fn coded_severities(diagnostics: &[Diagnostic]) -> Vec<(Code, Severity)> {
+    diagnostics
+        .iter()
+        .map(|found| (found.code(), found.severity()))
+        .collect()
+}
+
+#[test]
+fn lib_api_020_read_options_default_to_strict_as_write_options_do() {
+    let default = ReadOptions::default();
     assert_eq!(
         default.mode(),
-        Mode::Tolerant,
-        "{COMPAT_001}: a read with the default options does not report tolerant"
+        Mode::Strict,
+        "{API_020}: ReadOptions::default() does not read in strict mode"
+    );
+    assert_eq!(
+        default.mode(),
+        WriteOptions::default().mode(),
+        "{API_020}: ReadOptions::default() and WriteOptions::default() have different modes"
+    );
+    assert_eq!(
+        default,
+        ReadOptions::default().with_mode(Mode::Strict),
+        "{API_020}: ReadOptions::default() is not with_mode(Mode::Strict)"
+    );
+    assert_ne!(
+        default,
+        ReadOptions::default().with_mode(Mode::Tolerant),
+        "{API_020}: ReadOptions::default() equals with_mode(Mode::Tolerant)"
+    );
+    assert_eq!(
+        ReadOptions::default()
+            .with_limits(xmi::Limits::default().with_max_depth(8))
+            .mode(),
+        Mode::Strict,
+        "{API_020}: with_limits on the default options does not keep strict"
+    );
+    assert_eq!(
+        ReadOptions::default()
+            .with_subclass("urn:example:profile", "Proposition", ElementKind::Claim)
+            .mode(),
+        Mode::Strict,
+        "{API_020}: with_subclass on the default options does not keep strict"
+    );
+    let plain = named_ap("");
+    let output = match read_default(&plain) {
+        Ok(output) => output,
+        Err(error) => panic!("{API_020}: a default read refuses the conforming {plain}: {error}"),
+    };
+    assert_eq!(
+        output.diagnostics(),
+        [],
+        "{API_020}: setup: the conforming input has diagnostics"
+    );
+    assert_eq!(
+        output.mode(),
+        Mode::Strict,
+        "{API_020}: a default read of conforming input does not report strict"
+    );
+}
+
+#[test]
+fn lib_api_020_a_default_read_refuses_what_only_a_tolerant_read_opens() {
+    // (a) An assertionDeclaration literal SACM 2.3 does not define.
+    let assumed = named_ap(&named_claim("c1", " assertionDeclaration=\"Assumed\""));
+    let tolerant = read_ok(API_020, "Assumed", Mode::Tolerant, &assumed);
+    assert_eq!(
+        coded_severities(tolerant.diagnostics()),
+        [(Code::ENUM_INVALID_LITERAL, Severity::Warning)],
+        "{API_020}: setup: a tolerant read of Assumed is not one SACM-ENUM-001 Warning"
+    );
+    match read_default(&assumed) {
+        Err(error @ ReadError::InvalidLiteral { .. }) => assert_eq!(
+            error.code(),
+            Code::ENUM_INVALID_LITERAL,
+            "{API_020}: the default read's refusal of Assumed has another code"
+        ),
+        other => panic!(
+            "{API_020}: a default read of Assumed is not InvalidLiteral (SACM-ENUM-001): {other:?}"
+        ),
+    }
+
+    // (b) A root in SACM 2.2's Argumentation namespace.
+    let sacm_2_2 = "<sacm:ArgumentPackage \
+                    xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/Argumentation\" \
+                    xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\
+                    <name content=\"p\"/></sacm:ArgumentPackage>";
+    let tolerant = read_ok(API_020, "a SACM 2.2 root", Mode::Tolerant, sacm_2_2);
+    assert!(
+        tolerant
+            .diagnostics()
+            .iter()
+            .any(|found| found.code() == Code::XMI_OTHER_REVISION),
+        "{API_020}: setup: a tolerant read of a SACM 2.2 root gives no SACM-XMI-008: {:?}",
+        tolerant.diagnostics()
+    );
+    match read_default(sacm_2_2) {
+        Err(error @ ReadError::Unsupported { .. }) => assert_eq!(
+            error.code(),
+            Code::XMI_OTHER_REVISION,
+            "{API_020}: the default read's refusal of a SACM 2.2 root has another code"
+        ),
+        other => panic!(
+            "{API_020}: a default read of a SACM 2.2 root is not Unsupported (SACM-XMI-008): \
+             {other:?}"
+        ),
+    }
+
+    // (c) A version attribute in EMF's XMI namespace.
+    let emf_version = format!(
+        "<sacm:ArgumentPackage{NS} xmlns:emf=\"http://www.omg.org/XMI\" xmi:id=\"a\" \
+         emf:version=\"2.0\"><name content=\"a\"/></sacm:ArgumentPackage>"
+    );
+    read_ok(API_020, "emf:version", Mode::Tolerant, &emf_version);
+    match read_default(&emf_version) {
+        Err(error @ ReadError::Unsupported { .. }) => assert_eq!(
+            error.code(),
+            Code::XMI_WRAPPER_NAMESPACE,
+            "{API_020}: the default read's refusal of emf:version has another code"
+        ),
+        other => panic!(
+            "{API_020}: a default read of emf:version is not Unsupported (SACM-XMI-015): \
+             {other:?}"
+        ),
+    }
+
+    // An xsi:type is an Error in a default read, as in a strict one.
+    let typed =
+        format!("<sacm:ArgumentPackage{NS_XSI} xmi:id=\"a\" xsi:type=\"sacm:ArgumentPackage\"/>");
+    let output = match read_default(&typed) {
+        Ok(output) => output,
+        Err(error) => panic!("{API_020}: a default read refuses xsi:type: {error}"),
+    };
+    assert!(
+        output.has_errors(),
+        "{API_020}: a default read of xsi:type has no Error"
+    );
+    assert_eq!(
+        coded_severities(output.diagnostics()),
+        [(Code::XMI_XSI_TYPE, Severity::Error)],
+        "{API_020}: a default read of xsi:type is not one SACM-XMI-010 Error"
     );
 }
 

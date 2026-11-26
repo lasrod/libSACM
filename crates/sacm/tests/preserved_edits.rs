@@ -1774,7 +1774,10 @@ fn lib_compat_003_a_rebound_sacm_prefix_is_kept_under_ns1() {
         ) else {
             panic!("{ROW}: {what}: setup: a strict read accepted it");
         };
-        let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        let output = match xmi::read(
+            input.as_bytes(),
+            &ReadOptions::default().with_mode(Mode::Tolerant),
+        ) {
             Ok(output) => output,
             Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
         };
@@ -1835,7 +1838,10 @@ fn lib_compat_003_two_rebound_prefixes_on_one_holder_take_ns1_and_ns2() {
          xmlns:xmi=\"urn:b\" x:type=\"s:Claim\" x:id=\"c1\" sacm:p=\"1\" xmi:q=\"2\">\
          <name content=\"c1\"/></argumentElement>"
     ));
-    let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+    let output = match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output,
         Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
     };

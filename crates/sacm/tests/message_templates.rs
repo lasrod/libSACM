@@ -83,6 +83,12 @@
 //! (ADR 0041 D6). Their `Display`s here are the new ones; the input of
 //! `SACM-XMI-002/other-namespace` is a SACM-like namespace, and that of
 //! `SACM-XML-002/declared-encoding` declares ISO-8859-2.
+//!
+//! Slice 0081 makes five arguments here prose (LIB-DIAG-004): `encoding` of
+//! `SACM-XML-002/byte-order-mark` and `/detected-encoding`, `expected` of
+//! `SACM-XML-001/declaration-character` and `/unexpected-character`, and
+//! `attribute` of `SACM-XML-003/unrepresentable-character`. A prose
+//! argument is neither Text nor a Count, and its `Display` is unchanged.
 
 use std::fmt::Write as _;
 
@@ -173,10 +179,17 @@ const NO_INPUT: [(&str, &str); 11] = [
 enum Value {
     Text(&'static str),
     Count(u64),
+    /// English prose that the crate or its XML parser wrote (LIB-DIAG-004).
+    Prose(&'static str),
 }
 
 fn t(text: &'static str) -> Value {
     Value::Text(text)
+}
+
+/// A prose argument (LIB-DIAG-004): the catalog marks it `(prose)`.
+fn p(text: &'static str) -> Value {
+    Value::Prose(text)
 }
 
 fn n(count: u64) -> Value {
@@ -274,7 +287,10 @@ fn utf16le(text: &str, mark: bool) -> Vec<u8> {
 
 /// The document a tolerant read of `input` returns.
 fn tolerant_document(input: &str) -> Document {
-    match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+    match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: setup: a tolerant read refuses {input}: {error}"),
     }
@@ -325,14 +341,14 @@ fn cases() -> Vec<Case> {
                 bytes.extend("<r/>".chars().flat_map(|c| u32::from(c).to_be_bytes()));
                 bytes
             },
-            &[("encoding", t("UTF-32 (big-endian)"))],
+            &[("encoding", p("UTF-32 (big-endian)"))],
             "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read",
             "the reader cannot represent the input at line 1, column 1: the input starts with a UTF-32 (big-endian) byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read (a limit of this version)",
         ),
         read(
             "SACM-XML-002/detected-encoding",
             utf16le("<?xml version=\"1.0\" encoding=\"UTF-16LE\"?><r/>", false),
-            &[("encoding", t("UTF-16 (little-endian)"))],
+            &[("encoding", p("UTF-16 (little-endian)"))],
             "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read",
             "the reader cannot represent the input at line 1, column 1: the input is encoded in UTF-16 (little-endian), and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read (a limit of this version)",
         ),
@@ -360,7 +376,7 @@ fn cases() -> Vec<Case> {
             unrepresentable_name(),
             &[
                 ("element", t("arguments")),
-                ("attribute", t("name's content")),
+                ("attribute", p("name's content")),
                 ("code_point", n(1)),
             ],
             "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent",
@@ -809,7 +825,7 @@ fn cases() -> Vec<Case> {
         read(
             "SACM-XML-001/declaration-character",
             "<?xml ?><r/>",
-            &[("expected", t("\"version\""))],
+            &[("expected", p("\"version\""))],
             "an unexpected character in the XML declaration where {expected} was expected",
             "the input is not well-formed XML at line 1, column 7: an unexpected character in the XML declaration where \"version\" was expected",
         ),
@@ -991,7 +1007,7 @@ fn cases() -> Vec<Case> {
         read(
             "SACM-XML-001/unexpected-character",
             "<r a/>",
-            &[("expected", t("\"=\""))],
+            &[("expected", p("\"=\""))],
             "an unexpected character where {expected} was expected",
             "the input is not well-formed XML at line 1, column 5: an unexpected character where \"=\" was expected",
         ),
@@ -1231,8 +1247,8 @@ fn placeholders(english: &str) -> Vec<(&str, &str)> {
     out
 }
 
-/// `english` with each placeholder replaced by its argument: Text as it is
-/// for `{n}`, Debug-quoted for `{n:?}`, a Count as at least four uppercase
+/// `english` with each placeholder replaced by its argument: Text or Prose
+/// as it is for `{n}`, Text Debug-quoted for `{n:?}`, a Count as at least four uppercase
 /// hex digits for `{n:04X}` and in decimal for `{n}`.
 fn render(template: &str, english: &str, arguments: &[(&str, Value)]) -> String {
     let mut out = String::new();
@@ -1249,7 +1265,7 @@ fn render(template: &str, english: &str, arguments: &[(&str, Value)]) -> String 
             panic!("{ROW}: {template}: the placeholder {name:?} names no argument");
         };
         match (format, value) {
-            ("", Value::Text(text)) => out.push_str(text),
+            ("", Value::Text(text) | Value::Prose(text)) => out.push_str(text),
             (":?", Value::Text(text)) => {
                 let _ = write!(out, "{text:?}");
             }
@@ -1311,7 +1327,7 @@ fn check_row(case: &Case) {
         };
         let fits = matches!(
             (format, value),
-            ("" | ":?", Value::Text(_)) | ("" | ":04X", Value::Count(_))
+            ("" | ":?", Value::Text(_)) | ("" | ":04X", Value::Count(_)) | ("", Value::Prose(_))
         );
         assert!(
             fits,
@@ -1413,7 +1429,10 @@ fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
 #[test]
 fn lib_api_017_text_in_the_value_of_a_name_is_reported_with_its_template_s_english() {
     let input = named_package("<name><value>A</value></name>");
-    let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+    let output = match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output,
         Err(error) => panic!("{ROW}: a tolerant read refuses {input}: {error}"),
     };
@@ -1463,7 +1482,9 @@ mod api {
     use super::{Case, ROW, Refusal, Value, cases, code_of, refusal};
     use sacm::diagnostic::{Argument, ArgumentValue};
 
-    /// The expected arguments of `case`, as the API states them.
+    /// The expected arguments of `case`, as the API states them: each Text
+    /// an `ArgumentValue::Text`, each Count an `ArgumentValue::Count`, and
+    /// each Prose an `ArgumentValue::Prose` (LIB-DIAG-004).
     fn expected(case: &Case) -> Vec<(&'static str, ArgumentValue)> {
         case.arguments
             .iter()
@@ -1471,6 +1492,7 @@ mod api {
                 let value = match value {
                     Value::Text(text) => ArgumentValue::Text(text.to_owned()),
                     Value::Count(count) => ArgumentValue::Count(count),
+                    Value::Prose(text) => ArgumentValue::Prose(text.to_owned()),
                 };
                 (name, value)
             })

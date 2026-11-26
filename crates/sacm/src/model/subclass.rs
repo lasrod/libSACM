@@ -14,7 +14,7 @@
 ///
 /// ```
 /// use sacm::model::ElementKind;
-/// use sacm::xmi::{self, ReadOptions};
+/// use sacm::xmi::{self, Mode, ReadOptions};
 ///
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:p="urn:example:profile"
@@ -22,6 +22,7 @@
 ///   <argumentElement xmi:type="p:Step" xmi:id="i1"/>
 /// </sacm:ArgumentPackage>"#;
 /// let options = ReadOptions::default()
+///     .with_mode(Mode::Tolerant)
 ///     .with_subclass("urn:example:profile", "Step", ElementKind::AssertedInference);
 /// let document = xmi::read(input, &options)?.into_document();
 /// let class = document.get("i1").and_then(|element| element.subclass());

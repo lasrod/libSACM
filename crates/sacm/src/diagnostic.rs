@@ -22,8 +22,8 @@
 //!
 //! Diagnostics are read, not built: only this crate creates them. The
 //! `test-support` feature makes the constructors and `with_*` builders
-//! public so that tests can build diagnostics. They are not stable API, even
-//! though docs.rs shows them. With the `serde` feature a diagnostic also
+//! public for tests; they are not stable API, and docs.rs does not show
+//! them. With the `serde` feature a diagnostic also
 //! serializes, and reads back in the stable form of ADR 0030. A
 //! deserialized `Diagnostic`, `Mutation` or `EditError` is a record:
 //! [`has_errors`] reads a deserialized diagnostic's severity as given, and
@@ -814,10 +814,10 @@ impl<'de> serde::Deserialize<'de> for Code {
     }
 }
 
-/// The value of one message argument: text, or a count.
+/// The value of one message argument: text, a count, or English prose.
 ///
-/// Values order Text before Count, then by value. Later releases may add
-/// kinds, so match it with a fallback arm.
+/// Values order Text, then Count, then Prose, then by value. Later releases
+/// may add kinds, so match it with a fallback arm.
 ///
 /// ```
 /// use sacm::diagnostic::ArgumentValue;
@@ -825,6 +825,8 @@ impl<'de> serde::Deserialize<'de> for Code {
 /// let value = ArgumentValue::Text("Claim".to_owned());
 /// assert_eq!((value.as_text(), value.as_count()), (Some("Claim"), None));
 /// assert_eq!(ArgumentValue::Count(2).to_string(), "2");
+/// let prose = ArgumentValue::Prose("a quote".to_owned());
+/// assert_eq!((prose.as_text(), prose.as_prose()), (None, Some("a quote")));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -835,15 +837,19 @@ pub enum ArgumentValue {
     /// A count or a number, such as how often a value is given, or a code
     /// point.
     Count(u64),
+    /// English prose, such as a parser error. An application that words
+    /// messages in another language words it itself; the catalog lists which
+    /// arguments are prose.
+    Prose(String),
 }
 
 impl ArgumentValue {
-    /// The text, if this is `Text`.
+    /// The text, if this is `Text`. `None` for `Prose`.
     #[must_use]
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(text) => Some(text),
-            Self::Count(_) => None,
+            Self::Count(_) | Self::Prose(_) => None,
         }
     }
 
@@ -852,16 +858,25 @@ impl ArgumentValue {
     pub fn as_count(&self) -> Option<u64> {
         match self {
             Self::Count(count) => Some(*count),
-            Self::Text(_) => None,
+            Self::Text(_) | Self::Prose(_) => None,
+        }
+    }
+
+    /// The prose, if this is `Prose`.
+    #[must_use]
+    pub fn as_prose(&self) -> Option<&str> {
+        match self {
+            Self::Prose(prose) => Some(prose),
+            Self::Text(_) | Self::Count(_) => None,
         }
     }
 }
 
 impl fmt::Display for ArgumentValue {
-    /// Writes Text unchanged and a Count in decimal.
+    /// Writes Text and Prose unchanged and a Count in decimal.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Text(text) => f.write_str(text),
+            Self::Text(text) | Self::Prose(text) => f.write_str(text),
             Self::Count(count) => write!(f, "{count}"),
         }
     }
@@ -912,6 +927,15 @@ impl Argument {
         }
     }
 
+    /// The Prose argument `name`: English that the crate or its XML parser
+    /// wrote.
+    pub(crate) fn prose(name: &'static str, value: impl Into<String>) -> Self {
+        Self {
+            name,
+            value: ArgumentValue::Prose(value.into()),
+        }
+    }
+
     /// The Count argument `name`.
     pub(crate) fn count(name: &'static str, value: u64) -> Self {
         Self {
@@ -927,10 +951,12 @@ impl Argument {
 }
 
 impl fmt::Display for Argument {
-    /// Writes `name="text"`, the text Debug-quoted, or `name=count`.
+    /// Writes `name="text"`, the text or prose Debug-quoted, or `name=count`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.value {
-            ArgumentValue::Text(text) => write!(f, "{}={text:?}", self.name),
+            ArgumentValue::Text(text) | ArgumentValue::Prose(text) => {
+                write!(f, "{}={text:?}", self.name)
+            }
             ArgumentValue::Count(count) => write!(f, "{}={count}", self.name),
         }
     }
@@ -1032,8 +1058,8 @@ impl fmt::Debug for Details {
 }
 
 /// The arguments of a message as serialized: a JSON object whose keys are
-/// the argument names, each Text a string and each Count a non-negative
-/// integer (ADR 0030 amendment 3, R8). It is written in the template's order
+/// the argument names, each Text or Prose a string and each Count a
+/// non-negative integer (ADR 0030 amendment 3, R8). It is written in the template's order
 /// and read in any order, each name once (amendment 5).
 #[cfg(feature = "serde")]
 pub(crate) struct ArgumentsRecord(Vec<(String, ArgumentValue)>);
@@ -1059,7 +1085,9 @@ impl serde::Serialize for ArgumentsRecord {
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
         for (name, value) in &self.0 {
             match value {
-                ArgumentValue::Text(text) => map.serialize_entry(name, text)?,
+                ArgumentValue::Text(text) | ArgumentValue::Prose(text) => {
+                    map.serialize_entry(name, text)?;
+                }
                 ArgumentValue::Count(count) => map.serialize_entry(name, count)?,
             }
         }
@@ -1068,7 +1096,8 @@ impl serde::Serialize for ArgumentsRecord {
 }
 
 /// One argument value as read: a string is Text, a non-negative integer a
-/// Count, and anything else is refused.
+/// Count, and anything else is refused. A string for a Prose argument is
+/// read as Prose once its template is known ([`arguments_from_record`]).
 #[cfg(feature = "serde")]
 struct ArgumentValueRecord(ArgumentValue);
 
@@ -1221,16 +1250,17 @@ fn arguments_from_record(
             ));
         };
         let (_, value) = given.swap_remove(position);
-        let fits = matches!(
-            (&value, kind),
-            (ArgumentValue::Text(_), template::Kind::Text)
-                | (ArgumentValue::Count(_), template::Kind::Count)
-        );
-        if !fits {
-            return Err(format!(
-                "the argument {declared:?} is not of the kind {kind:?}"
-            ));
-        }
+        // A string reads as Text; the template says whether it is prose.
+        let value = match (value, kind) {
+            (value @ ArgumentValue::Text(_), template::Kind::Text)
+            | (value @ ArgumentValue::Count(_), template::Kind::Count) => value,
+            (ArgumentValue::Text(text), template::Kind::Prose) => ArgumentValue::Prose(text),
+            _ => {
+                return Err(format!(
+                    "the argument {declared:?} is not of the kind {kind:?}"
+                ));
+            }
+        };
         read.push(Argument {
             name: declared,
             value,
@@ -1409,8 +1439,8 @@ impl fmt::Display for SourceLocation {
 /// 6. severity, `Info < Warning < Error`;
 /// 7. message;
 /// 8. template id;
-/// 9. arguments, argument by argument (by name, then value; Text before
-///    Count), a shorter list that is a prefix sorting first.
+/// 9. arguments, argument by argument (by name, then value; Text, then
+///    Count, then Prose), a shorter list that is a prefix sorting first.
 ///
 /// Text keys (code, requirement id, clause, message, template, and each
 /// affected id) compare as `str`: byte-wise lexicographic, so clause `"10"`
@@ -1439,7 +1469,8 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     /// A diagnostic with no clause, no affected ids and no location. Its
-    /// template is its code's text, and it has no arguments.
+    /// template is its code's text, and it has no arguments. Give a matrix
+    /// row id: [`requirement_id`](Self::requirement_id) is never empty.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
     /// feature.
@@ -1553,7 +1584,7 @@ impl Diagnostic {
     }
 
     /// The id of the [functionality matrix][matrix] row the diagnostic
-    /// enforces, such as `SACM23-VAL-003`.
+    /// enforces, such as `SACM23-VAL-003`. Never empty.
     ///
     /// [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
     #[must_use]
@@ -1655,7 +1686,8 @@ impl serde::Serialize for Diagnostic {
 /// A diagnostic as read: every key but `code`, `severity`,
 /// `requirement_id` and `message` may be left out, and an unknown one is
 /// refused. `template` and `arguments` left out are `None`; `null` for
-/// either is refused.
+/// either is refused. An empty `requirement_id` is refused after the keys
+/// and their types, before the template and arguments.
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1703,6 +1735,9 @@ impl<'de> serde::Deserialize<'de> for Diagnostic {
             template,
             arguments,
         } = DiagnosticRecord::deserialize(deserializer)?;
+        if requirement_id.is_empty() {
+            return Err(serde::de::Error::custom("the requirement_id is empty"));
+        }
         let details = diagnostic_details_from_record(code, template, arguments)
             .map_err(serde::de::Error::custom)?;
         Ok(Self {

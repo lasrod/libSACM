@@ -47,6 +47,8 @@ The assurance-forge C++ library has `sacm::validation::validate(const Document&)
 - Rules can be added without any API change.
 - Tools and a later GSN layer call `validate` and filter or merge its result. They cannot
   yet build their own `Diagnostic`s (ADR 0011 X9); revisit that when the GSN layer starts.
+  Answered 2026-11-26: the GSN layer keeps its own types, and only the crate builds a
+  `Diagnostic` (ADR 0011 amendment 3).
 - Once strict save is the default (LIB-COMPAT-007), writing a nameless document will be
   refused rather than written. That row must call out the change.
 

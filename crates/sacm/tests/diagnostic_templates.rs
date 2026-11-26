@@ -2,8 +2,10 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 110 in all: 38 that `validate` gives and 72
-//! that a tolerant or a strict read, or a strict write, gives (slice 0075b
+//! `## Message templates` table, 113 in all: 38 that `validate` gives and 75
+//! that a tolerant or a strict read, or a strict write, gives (slice 0081
+//! adds `SACM-XMI-011/emf-version-on-xmi-element` and `/emf-version-on-root`,
+//! SACM23-XMI-032; slice 0075b
 //! adds `SACM-XMI-003/subclass-type-kept`, which a tolerant read with a
 //! subclass declaration gives, LIB-COMPAT-017, ADR 0044 D4; slice 0073b
 //! removes the four kept forms of SACM-XMI-007, whose links SACM23-XMI-029
@@ -69,8 +71,9 @@ const NS: &str = concat!(
 /// ADR 0040 amendment 1), and slice 0075a adds three for the EMF dialect
 /// (LIB-COMPAT-002; ADR 0044), and slice 0075b one for a declared subclass
 /// (LIB-COMPAT-017; ADR 0044 D4), and slice 0079 one for a proxy of a root
-/// that keeps a type attribute (LIB-COMPAT-020; ADR 0042 amendment 1).
-const DIAGNOSTIC_TEMPLATES: usize = 111;
+/// that keeps a type attribute (LIB-COMPAT-020; ADR 0042 amendment 1), and
+/// slice 0081 two for a `version` in EMF's XMI namespace (SACM23-XMI-032).
+const DIAGNOSTIC_TEMPLATES: usize = 113;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -1020,11 +1023,13 @@ fn reader_cases() -> Vec<Case> {
 /// The options of a [`Step::Declared`] read: tolerant, with the class
 /// `Proposition` of `urn:example:profile` declared a subclass of Claim.
 fn declared() -> ReadOptions {
-    ReadOptions::default().with_subclass(
-        "urn:example:profile",
-        "Proposition",
-        sacm::model::ElementKind::Claim,
-    )
+    ReadOptions::default()
+        .with_mode(Mode::Tolerant)
+        .with_subclass(
+            "urn:example:profile",
+            "Proposition",
+            sacm::model::ElementKind::Claim,
+        )
 }
 
 /// The template of slice 0075b (LIB-COMPAT-017; ADR 0044 D3, D4): an element
@@ -1051,14 +1056,10 @@ fn subclass_cases() -> Vec<Case> {
 
 /// The three templates of slice 0075a (LIB-COMPAT-002; ADR 0044 D1, D2): the
 /// XMI namespace EMF writes, read as XMI 2.5.1's, and its fragment paths,
-/// all read or some kept.
+/// all read or some kept; and the two of slice 0081 (SACM23-XMI-032): a
+/// `version` in that namespace on the `xmi:XMI` element or a root.
 fn emf_cases() -> Vec<Case> {
-    let emf = |body: &str| {
-        format!(
-            "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"http://www.omg.org/XMI\" \
-             xmi:id=\"p\"><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
-        )
-    };
+    let emf = |body: &str| emf_root("", body);
     let paths = |source: &str| {
         package(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c0\"/>\
@@ -1095,7 +1096,44 @@ fn emf_cases() -> Vec<Case> {
             "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each that names an element of the document is read as that element's id, which write writes, and those that name none ({kept}) are kept as written",
             "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define (2 in all, the first \"//@argumentElement.0\"); each that names an element of the document is read as that element's id, which write writes, and those that name none (1) are kept as written",
         ),
+        // Slice 0081 (SACM23-XMI-032): a `version` in EMF's XMI namespace,
+        // named with the prefix the file uses.
+        case(
+            "SACM-XMI-011/emf-version-on-xmi-element",
+            tolerant(format!(
+                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:sacm=\"{SACM_NS}\" \
+                 xmi:version=\"2.0\"><sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/>\
+                 </sacm:ArgumentPackage></xmi:XMI>"
+            )),
+            (INFO, "LIB-COMPAT-001", Some("7.5.3")),
+            &[("attribute", t("xmi:version")), ("value", t("2.0"))],
+            "the {attribute} {value:?} of the XMI element is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+            "the xmi:version \"2.0\" of the XMI element is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+        ),
+        case(
+            "SACM-XMI-011/emf-version-on-root",
+            tolerant(emf_root(" xmi:version=\"2.0\"", "")),
+            (INFO, "LIB-COMPAT-001", Some("7.5.3")),
+            &[
+                ("attribute", t("xmi:version")),
+                ("value", t("2.0")),
+                ("class", t("ArgumentPackage")),
+                ("id", t("p")),
+            ],
+            "the {attribute} {value:?} of the {class} {id:?} is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+            "the xmi:version \"2.0\" of the ArgumentPackage \"p\" is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+        ),
     ]
+}
+
+/// A root ArgumentPackage `p` with the prefix `xmi` bound to EMF's namespace
+/// `http://www.omg.org/XMI`, with the extra attributes `attributes`, holding
+/// `body` after its name.
+fn emf_root(attributes: &str, body: &str) -> String {
+    format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"http://www.omg.org/XMI\" \
+         xmi:id=\"p\"{attributes}><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
+    )
 }
 
 /// The `xmi:XMI` wrapper holding the AssuranceCasePackage `case`, which holds
@@ -2382,7 +2420,10 @@ fn sites() -> Vec<Case> {
 
 /// The document a tolerant read of `input` returns.
 fn tolerant_document(template: &str, input: &str) -> Document {
-    match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+    match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: {template}: setup: a tolerant read refuses {input}: {error}"),
     }

@@ -26,9 +26,11 @@
 //!   `| Template | Carrier | Arguments | English |`, lists exactly the
 //!   crate's templates, sorted by id: per template its id in a code span, its
 //!   carrier (`Diagnostic`, `ReadError::<Variant>` or
-//!   `WriteError::<Variant>`), its arguments as `` `name` `` for Text and
-//!   `` `name` (count) `` for Count, separated by `, ` (`—` for none), and its
-//!   English in a code span, with `|` written `\|`.
+//!   `WriteError::<Variant>`), its arguments as `` `name` `` for Text,
+//!   `` `name` (count) `` for Count and `` `name` (prose) `` for Prose
+//!   (LIB-DIAG-004), separated by `, ` (`—` for none), and its English in a
+//!   code span, with `|` written `\|`. In the source an argument is
+//!   `Text("name")`, `Count("name")` or `Prose("name")`.
 //! - (b) Every template const is named, outside comments, literals and
 //!   `#[cfg(test)]` items, in another file of `crates/sacm/src`: no template
 //!   is left unused.
@@ -37,6 +39,14 @@
 //!   file of `crates/sacm/src` but `diagnostic.rs` names `Diagnostic::new(`
 //!   or `Diagnostic::create(`, and `diagnostic.rs` has no `fn create(`. Each
 //!   occurrence is one `[built-without-template]` problem.
+//! - (d) Only the crate builds diagnostics (LIB-DIAG-005): in
+//!   `diagnostic.rs`, outside comments, literals and `#[cfg(test)]` items,
+//!   every `pub fn` or `pub const fn` that returns `Self` or `Option<Self>`
+//!   has `#[cfg(feature = "test-support")]` among its attributes. Each one
+//!   without is one `[public-constructor]` problem.
+//!
+//! The prose arguments of the crate's templates (LIB-DIAG-004) are exactly
+//! the eight of the slice 0081 design, [`PROSE_ARGUMENTS`].
 //!
 //! As in `interim_refusals.rs`, each check is a function that returns the
 //! problems it finds, each starting with a stable code in brackets. The
@@ -99,8 +109,29 @@ const ROW_018: &str = "LIB-API-018";
 /// (LIB-COMPAT-002, ADR 0044); slice 0075b adds
 /// `SACM-XMI-003/subclass-type-kept`, which gives 72 (LIB-COMPAT-017, ADR
 /// 0044 D4); slice 0079 adds `SACM-XMI-003/proxy-of-typed-root`, which
-/// gives 73 from the reader (LIB-COMPAT-020, ADR 0042 amendment 1).
-const DIAGNOSTIC_TEMPLATES: usize = 111;
+/// gives 73 from the reader (LIB-COMPAT-020, ADR 0042 amendment 1); slice
+/// 0081 adds `SACM-XMI-011/emf-version-on-xmi-element` and
+/// `/emf-version-on-root`, which gives 75 (SACM23-XMI-032).
+const DIAGNOSTIC_TEMPLATES: usize = 113;
+
+/// The row of the prose arguments (slice 0081).
+const ROW_DIAG_004: &str = "LIB-DIAG-004";
+
+/// The row of the constructor check (slice 0081).
+const ROW_DIAG_005: &str = "LIB-DIAG-005";
+
+/// The prose arguments, each its template and argument name (LIB-DIAG-004,
+/// acceptance 2): English that the crate or its XML parser wrote.
+const PROSE_ARGUMENTS: [(&str, &str); 8] = [
+    ("SACM-SEC-002/unheld-element", "error"),
+    ("SACM-SEC-002/unheld-outside", "error"),
+    ("SACM-SEC-002/unheld-root", "error"),
+    ("SACM-XML-001/declaration-character", "expected"),
+    ("SACM-XML-001/unexpected-character", "expected"),
+    ("SACM-XML-002/byte-order-mark", "encoding"),
+    ("SACM-XML-002/detected-encoding", "encoding"),
+    ("SACM-XML-003/unrepresentable-character", "attribute"),
+];
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -396,6 +427,8 @@ fn closing(skeleton: &[u8], open: usize) -> usize {
 enum Kind {
     Text,
     Count,
+    /// English prose (LIB-DIAG-004).
+    Prose,
 }
 
 /// One template.
@@ -473,7 +506,7 @@ fn carrier_of(token: &str) -> Option<String> {
     None
 }
 
-/// The arguments of a source entry, `[Text("a"), Count("b")]`.
+/// The arguments of a source entry, `[Text("a"), Count("b"), Prose("c")]`.
 fn source_arguments(token: &str) -> Option<Vec<(String, Kind)>> {
     let inner = token.strip_prefix('[')?.strip_suffix(']')?;
     let (_, skeleton) = masks(inner);
@@ -482,6 +515,8 @@ fn source_arguments(token: &str) -> Option<Vec<(String, Kind)>> {
         .map(|part| {
             let (kind, rest) = if let Some(rest) = part.strip_prefix("Text(") {
                 (Kind::Text, rest)
+            } else if let Some(rest) = part.strip_prefix("Prose(") {
+                (Kind::Prose, rest)
             } else {
                 (Kind::Count, part.strip_prefix("Count(")?)
             };
@@ -610,16 +645,20 @@ fn code_span(cell: &str) -> Option<&str> {
     cell.strip_prefix('`')?.strip_suffix('`')
 }
 
-/// The arguments of a catalog row: `` `a`, `b` (count) ``, or `—`.
+/// The arguments of a catalog row: `` `a`, `b` (count), `c` (prose) ``, or
+/// `—`.
 fn catalog_arguments(cell: &str) -> Option<Vec<(String, Kind)>> {
     if matches!(cell, "" | "—" | "-") {
         return Some(Vec::new());
     }
     cell.split(", ")
         .map(|item| {
-            let (name, kind) = match item.strip_suffix(" (count)") {
-                Some(name) => (name, Kind::Count),
-                None => (item, Kind::Text),
+            let (name, kind) = if let Some(name) = item.strip_suffix(" (count)") {
+                (name, Kind::Count)
+            } else if let Some(name) = item.strip_suffix(" (prose)") {
+                (name, Kind::Prose)
+            } else {
+                (item, Kind::Text)
             };
             Some((code_span(name)?.to_owned(), kind))
         })
@@ -894,6 +933,78 @@ fn construction_problems(files: &BTreeMap<String, String>) -> Vec<String> {
         }
     }
     problems
+}
+
+/// The public constructors of `source`, a `diagnostic.rs`: outside comments,
+/// literals and `#[cfg(test)]` items, each `pub fn` or `pub const fn` that
+/// returns `Self` or `Option<Self>`, by its name and whether its attributes
+/// hold `#[cfg(feature = "test-support")]`.
+fn public_constructors(source: &str) -> Vec<(String, bool)> {
+    const GATE: &str = "#[cfg(feature=\"test-support\")]";
+    let code = code_outside_tests(source);
+    let (_, skeleton) = masks(&code);
+    let skeleton_text = String::from_utf8_lossy(&skeleton).into_owned();
+    let compact = |text: &str| -> String { text.split_whitespace().collect() };
+    let mut found = Vec::new();
+    for token in ["pub fn ", "pub const fn "] {
+        for (at, _) in skeleton_text.match_indices(token) {
+            if follows_a_name(&skeleton, at) {
+                continue;
+            }
+            let after = at + token.len();
+            let name: String = skeleton_text[after..]
+                .bytes()
+                .take_while(|&byte| is_ident_byte(byte))
+                .map(char::from)
+                .collect();
+            let Some(open) = skeleton[after..]
+                .iter()
+                .position(|&byte| byte == b'(')
+                .map(|offset| after + offset)
+            else {
+                continue;
+            };
+            let close = closing(&skeleton, open);
+            let signature_end = skeleton[close..]
+                .iter()
+                .position(|&byte| matches!(byte, b'{' | b';'))
+                .map_or(skeleton.len(), |offset| close + offset);
+            let returns: String = skeleton_text[close..signature_end]
+                .split_whitespace()
+                .take_while(|word| *word != "where")
+                .collect();
+            if !matches!(returns.as_str(), "->Self" | "->Option<Self>") {
+                continue;
+            }
+            // The attributes and docs since the previous item or brace.
+            let block_start = skeleton[..at]
+                .iter()
+                .rposition(|&byte| matches!(byte, b';' | b'{' | b'}'))
+                .map_or(0, |offset| offset + 1);
+            let gated = compact(&code[block_start..at]).contains(GATE);
+            found.push((name, gated));
+        }
+    }
+    found
+}
+
+/// Check (d): every public constructor of `source`, a `diagnostic.rs`, is
+/// gated by `test-support`. Each one that is not is one
+/// `[public-constructor]` problem.
+fn public_constructor_problems(source: &str) -> Vec<String> {
+    public_constructors(source)
+        .into_iter()
+        .filter(|(_, gated)| !gated)
+        .map(|(name, _)| {
+            problem(
+                "public-constructor",
+                format!(
+                    "{SACM_SRC}/{DIAGNOSTIC_SOURCE}: `pub fn {name}` returns Self without \
+                     #[cfg(feature = \"test-support\")]: only the crate builds diagnostics"
+                ),
+            )
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1443,4 +1554,262 @@ fn lib_api_017_unused_check_reports_a_template_named_in_no_other_file() {
         &unused_problems(&files),
         &["no-template-file"],
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DIAG-004: prose arguments
+// ---------------------------------------------------------------------------
+
+/// The prose arguments of `templates`, each its template id and argument
+/// name, sorted.
+fn prose_of(templates: &[Template]) -> BTreeSet<(String, String)> {
+    templates
+        .iter()
+        .flat_map(|template| {
+            template
+                .arguments
+                .iter()
+                .filter(|(_, kind)| *kind == Kind::Prose)
+                .map(|(name, _)| (template.id.clone(), name.clone()))
+        })
+        .collect()
+}
+
+#[test]
+fn lib_diag_004_the_prose_arguments_are_exactly_those_of_the_design() {
+    let expected: BTreeSet<(String, String)> = PROSE_ARGUMENTS
+        .iter()
+        .map(|&(template, name)| (template.to_owned(), name.to_owned()))
+        .collect();
+    let files = sacm_sources();
+    let Some(source) = files.get(TEMPLATES) else {
+        panic!("{ROW_DIAG_004}: {SACM_SRC}/{TEMPLATES} does not exist");
+    };
+    let (declared, problems) = source_templates(source);
+    assert!(problems.is_empty(), "{ROW_DIAG_004}: {problems:#?}");
+    assert_eq!(
+        prose_of(&declared),
+        expected,
+        "{ROW_DIAG_004}: {SACM_SRC}/{TEMPLATES} does not declare exactly the eight prose \
+         arguments"
+    );
+    let (listed, problems) = catalog_templates(&read(CATALOG));
+    assert!(problems.is_empty(), "{ROW_DIAG_004}: {problems:#?}");
+    assert_eq!(
+        prose_of(&listed),
+        expected,
+        "{ROW_DIAG_004}: {CATALOG} does not mark exactly the eight prose arguments (prose)"
+    );
+    // No diagnostic template has a prose argument.
+    let diagnostic_prose: Vec<&str> = declared
+        .iter()
+        .filter(|template| template.carrier == "Diagnostic")
+        .filter(|template| {
+            template
+                .arguments
+                .iter()
+                .any(|(_, kind)| *kind == Kind::Prose)
+        })
+        .map(|template| template.id.as_str())
+        .collect();
+    assert_eq!(
+        diagnostic_prose,
+        Vec::<&str>::new(),
+        "{ROW_DIAG_004}: a diagnostic template has a prose argument"
+    );
+}
+
+#[test]
+fn lib_diag_004_catalog_check_reads_prose_arguments_and_reports_a_wrong_kind() {
+    let plain_source = "[Text(\"class\"), Text(\"id\"), Text(\"role\")]";
+    let prose_source = source_with(
+        plain_source,
+        "[Text(\"class\"), Text(\"id\"), Prose(\"role\")]",
+    );
+    let plain_row = "`class`, `id`, `role`";
+    let prose_catalog = catalog_with(plain_row, "`class`, `id`, `role` (prose)");
+    let (declared, problems) = source_templates(&prose_source);
+    assert!(problems.is_empty(), "{ROW_DIAG_004}: setup: {problems:#?}");
+    assert_eq!(
+        declared[0].arguments,
+        [
+            ("class".to_owned(), Kind::Text),
+            ("id".to_owned(), Kind::Text),
+            ("role".to_owned(), Kind::Prose),
+        ],
+        "{ROW_DIAG_004}: Prose(\"role\") in the source is not read as a prose argument"
+    );
+    let (listed, problems) = catalog_templates(&prose_catalog);
+    assert!(problems.is_empty(), "{ROW_DIAG_004}: setup: {problems:#?}");
+    assert_eq!(
+        listed[0].arguments,
+        [
+            ("class".to_owned(), Kind::Text),
+            ("id".to_owned(), Kind::Text),
+            ("role".to_owned(), Kind::Prose),
+        ],
+        "{ROW_DIAG_004}: `role` (prose) in the catalog is not read as a prose argument"
+    );
+    let cases: [(&str, &str, &str, &[&str]); 5] = [
+        ("prose in both", &prose_source, &prose_catalog, &[]),
+        (
+            "prose in the crate, Text in the catalog",
+            &prose_source,
+            CATALOG_TEXT,
+            &["argument-kind"],
+        ),
+        (
+            "Text in the crate, prose in the catalog",
+            SOURCE,
+            &prose_catalog,
+            &["argument-kind"],
+        ),
+        (
+            "prose in the crate, Count in the catalog",
+            &prose_source,
+            &catalog_with(plain_row, "`class`, `id`, `role` (count)"),
+            &["argument-kind"],
+        ),
+        (
+            "Count in the crate, prose in the catalog",
+            SOURCE,
+            &catalog_with("`unit` (count)", "`unit` (prose)"),
+            &["argument-kind"],
+        ),
+    ];
+    for (what, source, catalog, codes) in cases {
+        let problems = catalog_problems(Some(source), catalog);
+        assert_eq!(
+            problem_codes(&problems),
+            codes
+                .iter()
+                .map(|&code| code.to_owned())
+                .collect::<Vec<_>>(),
+            "{ROW_DIAG_004}: {what}: expected {codes:?}, got {problems:#?}"
+        );
+    }
+    // A kind the check does not know is no argument.
+    assert_eq!(
+        problem_codes(&catalog_problems(
+            Some(&source_with(
+                plain_source,
+                "[Text(\"class\"), Text(\"id\"), Words(\"role\")]"
+            )),
+            CATALOG_TEXT,
+        )),
+        ["extra-row", "malformed-entry"],
+        "{ROW_DIAG_004}: an unknown kind in the source is not a malformed entry"
+    );
+    assert_eq!(
+        problem_codes(&catalog_problems(
+            Some(SOURCE),
+            &catalog_with(plain_row, "`class`, `id`, `role` (words)"),
+        )),
+        ["malformed-row", "missing-row"],
+        "{ROW_DIAG_004}: an unknown kind in the catalog is not a malformed row"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DIAG-005: only the crate builds diagnostics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_diag_005_diagnostic_rs_makes_its_constructors_public_only_under_test_support() {
+    let files = sacm_sources();
+    let Some(source) = files.get(DIAGNOSTIC_SOURCE) else {
+        panic!("{ROW_DIAG_005}: {SACM_SRC}/{DIAGNOSTIC_SOURCE} does not exist");
+    };
+    let mut names: Vec<String> = public_constructors(source)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    names.sort();
+    // The six of today, so that the check is known to see them: `Code::new`,
+    // `SourceLocation::new`, `Diagnostic::new` and the three `with_*`.
+    assert_eq!(
+        names,
+        [
+            "new",
+            "new",
+            "new",
+            "with_affected",
+            "with_clause",
+            "with_location"
+        ],
+        "{ROW_DIAG_005}: the public constructors of {SACM_SRC}/{DIAGNOSTIC_SOURCE} are not the \
+         six the design names"
+    );
+    let problems = public_constructor_problems(source);
+    assert!(
+        problems.is_empty(),
+        "{ROW_DIAG_005}: public constructors without test-support: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_diag_005_constructor_check_reports_a_public_constructor_without_test_support() {
+    const GATED: &str = "    #[cfg(feature = \"test-support\")]\n    #[cfg_attr(docsrs, doc(cfg(feature = \"test-support\")))]\n    #[must_use]\n";
+    let cases: [(&str, String, &[&str]); 9] = [
+        (
+            "an ungated new",
+            "impl Diagnostic {\n    /// A diagnostic.\n    #[must_use]\n    pub fn new(code: Code) -> Self { todo() }\n}\n".to_owned(),
+            &["public-constructor"],
+        ),
+        (
+            "an ungated with_clause",
+            "impl Diagnostic {\n    #[must_use]\n    pub fn with_clause(self, clause: &'static str) -> Self { todo() }\n}\n".to_owned(),
+            &["public-constructor"],
+        ),
+        (
+            "an ungated new returning Option<Self>",
+            "impl SourceLocation {\n    pub fn new(line: u32, column: u32) -> Option<Self> { todo() }\n}\n".to_owned(),
+            &["public-constructor"],
+        ),
+        (
+            "an ungated const new",
+            "impl Code {\n    pub const fn new(code: &'static str) -> Self { todo() }\n}\n".to_owned(),
+            &["public-constructor"],
+        ),
+        (
+            "two ungated, one gated",
+            format!(
+                "impl Diagnostic {{\n    pub fn new(code: Code) -> Self {{ todo() }}\n\n{GATED}    pub fn with_clause(self, clause: &'static str) -> Self {{ todo() }}\n\n    pub fn with_location(self, location: SourceLocation) -> Self {{ todo() }}\n}}\n"
+            ),
+            &["public-constructor", "public-constructor"],
+        ),
+        (
+            "a gated new and with_clause",
+            format!(
+                "impl Diagnostic {{\n    /// A diagnostic.\n{GATED}    pub fn new(code: Code) -> Self {{ todo() }}\n\n    /// Sets the clause.\n{GATED}    pub fn with_clause(self, clause: &'static str) -> Self {{ todo() }}\n}}\n"
+            ),
+            &[],
+        ),
+        (
+            "a crate-private emit and an accessor",
+            "impl Diagnostic {\n    pub(crate) fn emit(template: &'static Template) -> Self { todo() }\n\n    #[must_use]\n    pub fn code(&self) -> Code { self.code }\n}\n".to_owned(),
+            &[],
+        ),
+        (
+            "an ungated new in a comment, a literal or a test",
+            "// pub fn new(code: Code) -> Self { todo() }\nconst S: &str = \"pub fn new(code: Code) -> Self\";\n#[cfg(test)]\nmod tests {\n    pub fn new(code: Code) -> Self { todo() }\n}\n".to_owned(),
+            &[],
+        ),
+        (
+            "a gate in a doc comment only",
+            "impl Diagnostic {\n    /// #[cfg(feature = \"test-support\")]\n    pub fn new(code: Code) -> Self { todo() }\n}\n".to_owned(),
+            &["public-constructor"],
+        ),
+    ];
+    for (what, source, codes) in cases {
+        let problems = public_constructor_problems(&source);
+        assert_eq!(
+            problem_codes(&problems),
+            codes
+                .iter()
+                .map(|&code| code.to_owned())
+                .collect::<Vec<_>>(),
+            "{ROW_DIAG_005}: {what}: expected {codes:?}, got {problems:#?}"
+        );
+    }
 }

@@ -23,7 +23,7 @@ use sacm::edit::{
     SetReferences,
 };
 use sacm::model::{Document, ElementId, ReferenceEnd, Referrer, SacmElement};
-use sacm::xmi::{self, ReadOptions};
+use sacm::xmi::{self, Mode, ReadOptions};
 
 const ROW: &str = "LIB-API-014";
 
@@ -181,9 +181,9 @@ fn entry(holder: &str, end: ReferenceEnd, position: usize) -> Entry {
     (holder.to_owned(), end, position)
 }
 
-/// Reads `input` with the default (tolerant) options.
+/// Reads `input` in tolerant mode.
 fn read(what: &str, input: &[u8]) -> Document {
-    match xmi::read(input, &ReadOptions::default()) {
+    match xmi::read(input, &ReadOptions::default().with_mode(Mode::Tolerant)) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: setup: {what} does not read: {error}"),
     }
