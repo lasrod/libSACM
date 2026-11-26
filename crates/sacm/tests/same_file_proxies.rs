@@ -526,6 +526,49 @@ fn sacm23_xmi_030_a_proxy_of_no_root_is_kept() {
     }
 }
 
+/// The id a kept proxy names counts as a reference, by `xmi:idref` or by
+/// `href`: a generated id never takes it, so the proxy never comes to name
+/// a new element by accident (ADR 0026).
+#[test]
+fn sacm23_xmi_030_the_id_a_kept_proxy_names_is_never_generated() {
+    for (what, link) in [
+        ("xmi:idref", "xmi:idref=\"argument_package_1\""),
+        ("href", "href=\"#argument_package_1\""),
+    ] {
+        let input = wrapped(&[case("case", &format!("<argumentPackage {link}/>"))]);
+        for mode in MODES {
+            let what = format!("a kept proxy naming argument_package_1 by {what}, {mode:?}");
+            let output = read_ok(&what, mode, &input);
+            assert_eq!(
+                output
+                    .diagnostics()
+                    .iter()
+                    .map(Diagnostic::template)
+                    .collect::<Vec<_>>(),
+                ["SACM-XMI-003/proxy-of-no-root"],
+                "{ROW}: {what}: the proxy is not kept"
+            );
+            let mut doc = output.into_document();
+            let created = match edit::apply(
+                &mut doc,
+                edit::CreateArgumentPackage::root(sacm::model::LangString::new("new")),
+            ) {
+                Ok(mutation) => mutation
+                    .created_ids()
+                    .iter()
+                    .map(|id| id.as_str().to_owned())
+                    .collect::<Vec<_>>(),
+                Err(error) => panic!("{ROW}: {what}: the package is not created: {error}"),
+            };
+            assert_eq!(
+                created,
+                ["argument_package_2"],
+                "{ROW}: {what}: the generated id of the new package"
+            );
+        }
+    }
+}
+
 // --- 6. Shared -------------------------------------------------------------------------
 
 #[test]

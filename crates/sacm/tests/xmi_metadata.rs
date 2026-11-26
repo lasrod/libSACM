@@ -1426,6 +1426,163 @@ fn sacm23_xmi_019_a_strict_save_checks_metadata_ids_and_idrefs() {
     }
 }
 
+/// XMI.xsd types only an `xmi:Extension` in a Documentation or a
+/// Difference: an `Extension` in no namespace or in another one, and another
+/// XMI element, are not walked, so the `xmi:idref` they carry is no IDREF a
+/// strict save checks; in an `xmi:Extension` it is.
+#[test]
+fn sacm23_xmi_019_a_strict_save_walks_only_an_xmi_extension_below_documentation_or_a_difference() {
+    for holder in ["xmi:Documentation", "xmi:Difference"] {
+        for child in [
+            "<Extension xmi:idref=\"nope\"/>",
+            "<v:Extension xmlns:v=\"urn:v\" xmi:idref=\"nope\"/>",
+            "<xmi:Documentation xmi:idref=\"nope\"/>",
+        ] {
+            let what = format!("{child} in {holder}");
+            let doc = read_clean(
+                &what,
+                Mode::Strict,
+                &wrapper("", &format!("<{holder}>{child}</{holder}>"), ""),
+            );
+            let text = written(&what, &doc, Mode::Strict);
+            assert!(
+                text.contains("xmi:idref=\"nope\""),
+                "{ROW}: {what}: the strict write does not write it:\n{text}"
+            );
+        }
+        let what = format!("<xmi:Extension xmi:idref=\"nope\"/> in {holder}");
+        let doc = read_clean(
+            &what,
+            Mode::Strict,
+            &wrapper(
+                "",
+                &format!("<{holder}><xmi:Extension xmi:idref=\"nope\"/></{holder}>"),
+                "",
+            ),
+        );
+        let found = invalid_diagnostics(&what, &doc);
+        assert_eq!(
+            found.iter().map(summary).collect::<Vec<_>>(),
+            [(
+                "SACM-REF-001",
+                Severity::Error,
+                "SACM-REF-001/metadata-dangling",
+                None,
+                vec!["nope".to_owned()]
+            )],
+            "{ROW}: {what}: not one SACM-REF-001/metadata-dangling"
+        );
+    }
+}
+
+/// The metadata children of a part are written one level below it, each on
+/// its own line: in a `name`, and in a text role element (a Description's
+/// `content`) before a value and after the last one (ADR 0042; the writer
+/// indents two spaces per level).
+#[test]
+fn sacm23_xmi_019_part_metadata_children_are_written_one_level_below_their_part() {
+    let what = "metadata children of a name and of a description's content";
+    let input = package(&claim(
+        "c1",
+        "",
+        "<description xmi:id=\"d1\"><content><xmi:Extension extender=\"A\"/>\
+         <value content=\"v\"/><xmi:Extension extender=\"B\"/></content></description>",
+    ))
+    .replace(
+        "<name content=\"c1\"/>",
+        "<name content=\"c1\"><xmi:Extension extender=\"N\"/></name>",
+    );
+    let doc = read_clean(what, Mode::Strict, &input);
+    let text = written(what, &doc, Mode::Strict);
+    let lines: Vec<&str> = text.lines().collect();
+    let indent_of = |line: &str| line.len() - line.trim_start().len();
+    for (first, count) in [("<name content=\"c1\">", 3), ("<content>", 5)] {
+        let Some(at) = lines.iter().position(|line| line.trim_start() == first) else {
+            panic!("{ROW}: {what}: the output has no line {first:?}:\n{text}");
+        };
+        let block = &lines[at..lines.len().min(at + count)];
+        let depth = indent_of(block[0]);
+        let expected: Vec<(usize, &str)> = if count == 3 {
+            vec![
+                (depth, "<name content=\"c1\">"),
+                (depth + 2, "<xmi:Extension extender=\"N\" />"),
+                (depth, "</name>"),
+            ]
+        } else {
+            vec![
+                (depth, "<content>"),
+                (depth + 2, "<xmi:Extension extender=\"A\" />"),
+                (depth + 2, "<value content=\"v\" />"),
+                (depth + 2, "<xmi:Extension extender=\"B\" />"),
+                (depth, "</content>"),
+            ]
+        };
+        assert_eq!(
+            block
+                .iter()
+                .map(|line| (indent_of(line), line.trim_start()))
+                .collect::<Vec<_>>(),
+            expected,
+            "{ROW}: {what}: the lines of {first} and their indentation\n{text}"
+        );
+    }
+}
+
+/// A schema location written with the prefix `xmi` or `sacm` bound to the
+/// XSI namespace cannot be written back as it stands, since the writer
+/// binds those prefixes to XMI 2.5.1 and SACM 2.3: it is no metadata but
+/// preserved content, under a renamed prefix, in a tolerant read (ADR 0035).
+#[test]
+fn sacm23_xmi_019_a_schema_location_under_the_xmi_or_sacm_prefix_is_no_metadata() {
+    const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    for (what, input) in [
+        (
+            "xmi:schemaLocation with xmi bound to XSI",
+            format!(
+                "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\" \
+                 xmlns:xmi=\"{XSI_NS}\" xmi:schemaLocation=\"a b\" x:id=\"p\">\
+                 <name content=\"p\"/></sacm:ArgumentPackage>"
+            ),
+        ),
+        (
+            "sacm:schemaLocation with sacm bound to XSI",
+            format!(
+                "<s:ArgumentPackage xmlns:s=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
+                 xmlns:sacm=\"{XSI_NS}\" sacm:schemaLocation=\"a b\" xmi:id=\"p\">\
+                 <name content=\"p\"/></s:ArgumentPackage>"
+            ),
+        ),
+    ] {
+        let output = read_ok(what, Mode::Tolerant, &input);
+        let renamed: Vec<Vec<(&'static str, String)>> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.template() == "SACM-XMI-003/prefix-renamed")
+            .map(arguments)
+            .collect();
+        assert!(
+            renamed.len() == 1
+                && renamed[0].contains(&("renamed_prefix", "ns1".to_owned()))
+                && renamed[0].contains(&("holder_id", "p".to_owned())),
+            "{ROW}: {what}: not one prefix-renamed to ns1 on p: {:#?}",
+            output.diagnostics()
+        );
+        let doc = output.document();
+        let p = element(what, doc, "p");
+        assert!(
+            p.has_preserved_content(),
+            "{ROW}: {what}: p does not keep the schema location as preserved content"
+        );
+        let text = written(what, doc, Mode::Tolerant);
+        assert!(
+            text.contains(&format!(
+                "xmlns:ns1=\"{XSI_NS}\" ns1:schemaLocation=\"a b\""
+            )),
+            "{ROW}: {what}: the tolerant write does not write it renamed:\n{text}"
+        );
+    }
+}
+
 // --- 10. Copy, delete and move ------------------------------------------------------
 
 /// The root ArgumentPackage `p` holding the Claim `c1` with a uuid and a

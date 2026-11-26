@@ -1871,6 +1871,29 @@ fn lib_compat_002_emf_names_in_a_difference_target_are_read_strictly_and_written
     );
 }
 
+/// Only a Difference in XMI 2.5.1's namespace, or a `difference` or
+/// `container` in no namespace nested in one, has an open `target`: a
+/// `target` under an element of another namespace spelled `Add`,
+/// `Difference` or `container` is not open, so a strict read refuses the
+/// EMF name on it with SACM-XMI-015 (XMI.xsd; ADR 0044 D1).
+#[test]
+fn lib_compat_002_a_target_under_a_difference_spelling_in_another_namespace_is_not_open() {
+    for holder in ["v:Add", "v:Difference", "v:container", "v:difference"] {
+        let what = format!("an EMF attribute on a target in {holder}");
+        let input = pinned_root(&format!(
+            "<{holder}><target xmlns:e=\"{EMF_NS}\" e:x=\"1\"/></{holder}>"
+        ));
+        let error = refusal(&what, &input, Mode::Strict);
+        assert_xmi_015(
+            &what,
+            &error,
+            "SACM-XMI-015/emf-xmi-namespace",
+            position_of(&input, "e:x="),
+            &[("name", "e:x"), ("row", ROW)],
+        );
+    }
+}
+
 #[test]
 fn lib_compat_002_the_first_path_in_document_order_locates_sacm_xmi_017() {
     // C4: the package's citedElement comes before the path in its Claim's

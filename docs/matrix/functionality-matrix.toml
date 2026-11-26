@@ -4895,6 +4895,7 @@ tests = [
   "crates/sacm/tests/same_file_proxies.rs::sacm23_xmi_030_a_root_with_a_link_attribute_is_not_moved",
   "crates/sacm/tests/same_file_proxies.rs::sacm23_xmi_030_a_chain_deeper_than_the_depth_limit_is_refused",
   "crates/sacm/tests/same_file_proxies.rs::sacm23_xmi_030_a_spelled_proxy_is_reported_as_spelled_and_kept",
+  "crates/sacm/tests/same_file_proxies.rs::sacm23_xmi_030_the_id_a_kept_proxy_names_is_never_generated",
 ]
 acceptance = [
   "In `crates/sacm/tests/same_file_proxies.rs`: `sacm23_xmi_030_a_proxy_of_a_root_moves_the_root_into_place`: Golden P1, in both modes, has no diagnostic. `args` and `arts` are children of `case` with `parent()` = `case`, and `roots()` is `[case]`. Both write modes give the P1 output, which reads back `==`.",
@@ -5934,6 +5935,7 @@ tests = [
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_difference_opens_only_its_target",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_only_an_unqualified_target_is_open",
   "crates/sacm/tests/emf_dialect.rs::lib_compat_002_an_emf_idref_in_open_content_reserves_no_generated_id",
+  "crates/sacm/tests/emf_dialect.rs::lib_compat_002_a_target_under_a_difference_spelling_in_another_namespace_is_not_open",
 ]
 status = "verified"
 verification = "docs/verification/0075a-emf-dialect.md"
@@ -6121,6 +6123,10 @@ tests = [
   "xtask/tests/metamodel.rs::lib_tool_004_flags_agree_with_the_boolean_attributes",
   "xtask/tests/metamodel.rs::lib_tool_004_the_inventory_agrees_with_the_model",
   "xtask/tests/metamodel.rs::lib_tool_004_every_attribute_and_value_composition_is_read_and_written",
+  "xtask/tests/metamodel.rs::lib_tool_004_ancestors_stop_before_a_class_seen_already",
+  "xtask/tests/metamodel.rs::lib_tool_004_corrected_refuses_a_subject_its_correction_cannot_apply_to",
+  "xtask/tests/metamodel.rs::lib_tool_004_load_reports_an_unreadable_model_as_a_read_error",
+  "xtask/tests/metamodel.rs::lib_tool_004_parse_refuses_a_nested_package_as_nested",
 ]
 status = "verified"
 verification = "docs/verification/0074a-schema-checks.md"
@@ -6166,6 +6172,7 @@ tests = [
   "crates/sacm/tests/limits.rs::lib_sec_003_root_namespace_warnings_count_against_the_size_limit",
   "crates/sacm/tests/limits.rs::lib_sec_003_diagnostic_text_counts_against_the_size_limit",
   "crates/sacm/tests/limits.rs::lib_sec_003_a_breach_stops_the_read",
+  "crates/sacm/tests/limits.rs::lib_sec_003_the_depth_is_checked_past_markup_spacing_and_end_tags",
 ]
 acceptance = [
   "In `crates/sacm/tests/limits.rs`: `lib_sec_003_limits_have_the_stated_defaults_and_setters`: The default getters are 33_554_432, 256, 1_000_000 and 256. Each `with_max_*` sets only its own value. `ReadOptions::default().limits() == Limits::default()`, and `with_limits` round-trips. `Limits` and `Limit` are `Copy + Send + Sync + Eq + Hash + Debug`. `Limit` Display is `input bytes`, `depth`, `nodes` and `namespace bindings`.",
@@ -7455,6 +7462,7 @@ tests = [
   "crates/sacm/tests/subclasses.rs::lib_compat_017_a_subclass_counts_its_namespace_text_against_the_size_limit",
   "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_in_both_xmi_namespaces_reads_as_without_declarations",
   "crates/sacm/tests/subclasses.rs::lib_compat_017_a_type_in_one_xmi_namespace_beside_another_xmi_attribute_reads_as_a_subclass",
+  "crates/sacm/tests/subclasses.rs::lib_compat_017_a_declared_xmi_2_5_1_type_beside_an_emf_type_reads_as_without_declarations",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model.rs", "crates/sacm/src/model/subclass.rs", "crates/sacm/src/model/preserved.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/diagnostic/template.rs", "docs/sacm/diagnostics.md"]
 status = "verified"
@@ -8054,7 +8062,9 @@ tests = [
   "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_a_copy_drops_the_uuid_a_delete_removes_and_a_move_keeps",
   "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_metadata_differences_are_compared",
   "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_the_ptc_22_03_13_header_reads",
-
+  "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_a_strict_save_walks_only_an_xmi_extension_below_documentation_or_a_difference",
+  "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_part_metadata_children_are_written_one_level_below_their_part",
+  "crates/sacm/tests/xmi_metadata.rs::sacm23_xmi_019_a_schema_location_under_the_xmi_or_sacm_prefix_is_no_metadata",
 ]
 acceptance = [
   "In `crates/sacm/tests/xmi_metadata.rs`: `sacm23_xmi_019_metadata_reads_in_both_modes_with_no_diagnostic`: Golden M1 and Golden M2 read with no diagnostic. `has_preserved_content()` is false on the document and on every element.",
@@ -8481,6 +8491,13 @@ tests = [
   "xtask/tests/schema.rs::lib_tool_023_validate_checks_goldens_then_outputs_in_name_order",
   "xtask/tests/schema.rs::lib_tool_023_validate_fails_on_an_invalid_file_on_too_few_outputs_and_without_goldens",
   "xtask/tests/run.rs::lib_tool_023_run_dispatches_schema_and_the_usage_lists_it",
+  "xtask/tests/schema.rs::lib_tool_023_generate_refuses_a_name_that_is_not_an_xml_name",
+  "xtask/tests/schema.rs::lib_tool_023_generate_refuses_a_model_it_cannot_write",
+  "xtask/tests/schema.rs::lib_tool_023_a_multi_valued_data_property_is_no_attribute_and_enumerations_are_sorted",
+  "xtask/tests/schema.rs::lib_tool_023_a_redeclared_property_keeps_its_first_declaration",
+  "xtask/tests/schema.rs::lib_tool_023_validate_reads_a_missing_directory_as_empty",
+  "xtask/tests/schema.rs::lib_tool_023_validate_stops_on_a_directory_it_cannot_read",
+  "xtask/tests/schema.rs::lib_tool_023_schema_validate_names_an_xmllint_it_cannot_start",
 ]
 status = "verified"
 verification = "docs/verification/0074a-schema-checks.md"

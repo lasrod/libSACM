@@ -23,7 +23,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use xtask::fetch::{ARTIFACTS, DEFAULT_DEST, sha256_hex};
-use xtask::metamodel::{MODEL_FILE, Metamodel, load, parse};
+use xtask::metamodel::{
+    Class, Enumeration, MODEL_FILE, Metamodel, Package, Property, PropertyKind, load, parse,
+};
 use xtask::schema::{
     DEFAULT_OUT, GENERATED_SHA256, GOLDEN_DIR, Lint, METADATA_ONLY, OUTPUTS_DIR, SCHEMA_FILE,
     Verdict, XMI_SCHEMA_FILE, cmd_schema, generate, judge, validate_with,
@@ -522,6 +524,334 @@ fn lib_tool_023_conflicting_properties_in_a_candidate_type_are_an_error() {
         complex_type(&schema, "T.candidates")
             .contains(&r#"<xsd:attribute name="x" type="xsd:string" use="optional"/>"#),
         "{ROW}: two candidates declaring x alike give one declaration"
+    );
+}
+
+/// A model of one package `P` holding `classes` and `enumerations`.
+fn model_of(classes: Vec<Class>, enumerations: Vec<Enumeration>) -> Metamodel {
+    Metamodel {
+        packages: vec![Package {
+            name: "P".to_owned(),
+            classes,
+            enumerations,
+        }],
+    }
+}
+
+/// The concrete class `name` under `superclass`, with `properties`.
+fn class_of(name: &str, superclass: Option<&str>, properties: Vec<Property>) -> Class {
+    Class {
+        name: name.to_owned(),
+        is_abstract: false,
+        superclass: superclass.map(str::to_owned),
+        properties,
+    }
+}
+
+/// The property `name` of `kind` typed `type_name`, `[0..upper]`.
+fn property_of(name: &str, kind: PropertyKind, type_name: &str, upper: Option<u32>) -> Property {
+    Property {
+        name: name.to_owned(),
+        association: None,
+        kind,
+        type_name: type_name.to_owned(),
+        lower: 0,
+        upper,
+    }
+}
+
+/// The enumeration `name` with the one literal `x`.
+fn enumeration_of(name: &str) -> Enumeration {
+    Enumeration {
+        name: name.to_owned(),
+        literals: vec!["x".to_owned()],
+    }
+}
+
+/// A class, property or enumeration name must be an XML name: a letter or
+/// `_`, then letters, digits, `_` or `-`.
+#[test]
+fn lib_tool_023_generate_refuses_a_name_that_is_not_an_xml_name() {
+    for name in ["A", "_A", "A_b", "A-b", "A1", "Ä"] {
+        let model = model_of(
+            vec![class_of(
+                name,
+                None,
+                vec![property_of(name, PropertyKind::Data, "String", Some(1))],
+            )],
+            vec![enumeration_of(&format!("{name}E"))],
+        );
+        assert!(
+            generate(&model).is_ok(),
+            "{ROW}: the XML name {name:?} is refused: {:?}",
+            generate(&model)
+        );
+    }
+    for name in ["1A", "-A", "A.b", "A b", "A:b", ""] {
+        let as_class = model_of(vec![class_of(name, None, vec![])], vec![]);
+        assert_eq!(
+            generate(&as_class),
+            Err(format!(
+                "schema: the class name {name:?} of {name} is not an XML name"
+            )),
+            "{ROW}: the class name {name:?}"
+        );
+        let as_property = model_of(
+            vec![class_of(
+                "A",
+                None,
+                vec![property_of(name, PropertyKind::Data, "String", Some(1))],
+            )],
+            vec![],
+        );
+        assert_eq!(
+            generate(&as_property),
+            Err(format!(
+                "schema: the property name {name:?} of A is not an XML name"
+            )),
+            "{ROW}: the property name {name:?}"
+        );
+        let as_enumeration = model_of(vec![], vec![enumeration_of(name)]);
+        assert_eq!(
+            generate(&as_enumeration),
+            Err(format!(
+                "schema: the enumeration name {name:?} of {name} is not an XML name"
+            )),
+            "{ROW}: the enumeration name {name:?}"
+        );
+    }
+}
+
+/// `generate` refuses a model it cannot write a valid schema for: two
+/// classes of one name, a class that is its own ancestor, a superclass or a
+/// composition's type that is no class of the model.
+#[test]
+fn lib_tool_023_generate_refuses_a_model_it_cannot_write() {
+    let composition =
+        |type_name: &str| vec![property_of("c", PropertyKind::Composition, type_name, None)];
+    for (what, model, refusal) in [
+        (
+            "two classes named A",
+            model_of(
+                vec![class_of("A", None, vec![]), class_of("A", None, vec![])],
+                vec![],
+            ),
+            "schema: class A is declared twice",
+        ),
+        (
+            "A and B each other's superclass",
+            model_of(
+                vec![
+                    class_of("A", Some("B"), vec![]),
+                    class_of("B", Some("A"), vec![]),
+                ],
+                vec![],
+            ),
+            "schema: class A is its own ancestor",
+        ),
+        (
+            "A under the absent Nope",
+            model_of(vec![class_of("A", Some("Nope"), vec![])], vec![]),
+            "schema: class A specializes Nope, which is not a class of the model",
+        ),
+        (
+            "a composition typed by the absent Nope",
+            model_of(vec![class_of("A", None, composition("Nope"))], vec![]),
+            "schema: composition c of A is typed by Nope, which is not a class of the model",
+        ),
+    ] {
+        // Under a deadline: a walk up a cycle that is not refused never ends.
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // The receiver is gone only after the deadline has failed the test.
+            let _ = sender.send(generate(&model));
+        });
+        let result = receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap_or_else(|e| panic!("{ROW}: generate does not return for {what}: {e}"));
+        assert_eq!(
+            result,
+            Err(refusal.to_owned()),
+            "{ROW}: generate refuses {what}"
+        );
+    }
+    // Control: a composition typed by a class of the model generates.
+    let model = model_of(
+        vec![
+            class_of("A", None, composition("B")),
+            class_of("B", None, vec![]),
+        ],
+        vec![],
+    );
+    assert!(
+        generate(&model).is_ok(),
+        "{ROW}: a composition typed by the class B is refused: {:?}",
+        generate(&model)
+    );
+}
+
+/// Only a single-valued Data property is also an attribute (rule 4j), and
+/// the enumerations of a package come in byte order of name.
+#[test]
+fn lib_tool_023_a_multi_valued_data_property_is_no_attribute_and_enumerations_are_sorted() {
+    let model = model_of(
+        vec![class_of(
+            "A",
+            None,
+            vec![
+                property_of("one", PropertyKind::Data, "String", Some(1)),
+                property_of("many", PropertyKind::Data, "String", None),
+            ],
+        )],
+        vec![enumeration_of("B"), enumeration_of("A")],
+    );
+    let schema = generated("a model with a multi-valued Data property", &model);
+    let lines = complex_type(&schema, "A");
+    assert!(
+        lines.contains(&r#"<xsd:attribute name="one" type="xsd:string" use="optional"/>"#)
+            && !lines
+                .iter()
+                .any(|line| line.contains(r#"attribute name="many""#)),
+        "{ROW}: one is an attribute and many is not: {lines:#?}"
+    );
+    let at = |name: &str| {
+        schema
+            .find(&format!(r#"<xsd:simpleType name="{name}">"#))
+            .unwrap_or_else(|| panic!("{ROW}: the schema has no simpleType {name}:\n{schema}"))
+    };
+    assert!(
+        at("A") < at("B"),
+        "{ROW}: the enumeration A comes before B:\n{schema}"
+    );
+}
+
+/// A missing golden or output directory holds no files: the check then
+/// fails on the count, not on reading the directory.
+#[test]
+fn lib_tool_023_validate_reads_a_missing_directory_as_empty() {
+    let (root, out_dir) = validation_tree("lib-tool-023-no-outputs", &["a.golden.sacm.xmi"], &[]);
+    let outputs = out_dir.join(OUTPUTS_DIR);
+    fs::remove_dir(&outputs)
+        .unwrap_or_else(|e| panic!("{ROW}: setup: remove {}: {e}", outputs.display()));
+    let (result, _, _) = validate_fake(root.path(), &out_dir, &|name: &str| Ok(passing(name)));
+    assert_eq!(
+        result,
+        Err(format!(
+            "fewer outputs (0) than golden files (1) in {}; run the strict-output step first",
+            outputs.display()
+        )),
+        "{ROW}: a missing outputs directory holds no output"
+    );
+    let empty = TempDir::new("lib-tool-023-no-goldens-dir");
+    let (result, _, calls) =
+        validate_fake(empty.path(), &empty.path().join("out"), &|name: &str| {
+            Ok(passing(name))
+        });
+    assert_eq!(
+        (result, calls),
+        (Err(format!("no golden files in {GOLDEN_DIR}")), vec![]),
+        "{ROW}: a missing golden directory holds no golden file"
+    );
+}
+
+/// An outputs directory that exists but cannot be read as one (here a
+/// file) stops the check at once, naming it; it is not taken as empty.
+#[test]
+fn lib_tool_023_validate_stops_on_a_directory_it_cannot_read() {
+    let (root, out_dir) = validation_tree("lib-tool-023-outputs-file", &["a.golden.sacm.xmi"], &[]);
+    let outputs = out_dir.join(OUTPUTS_DIR);
+    fs::remove_dir(&outputs)
+        .and_then(|()| fs::write(&outputs, b"not a directory\n"))
+        .unwrap_or_else(|e| panic!("{ROW}: setup: replace {} by a file: {e}", outputs.display()));
+    let (result, report, calls) =
+        validate_fake(root.path(), &out_dir, &|name: &str| Ok(passing(name)));
+    let read = format!("read {}: ", outputs.display());
+    assert!(
+        result.as_ref().is_err_and(|e| e.starts_with(&read))
+            && report.is_empty()
+            && calls.is_empty(),
+        "{ROW}: an unreadable outputs directory is `{read}<error>` before any file is checked, \
+         got {result:?}, wrote {report:?}, linted {calls:?}"
+    );
+}
+
+/// A property a class declares again under the name of an inherited one
+/// keeps its first declaration, here the inherited `[0..1]`, so it stays an
+/// attribute; a later Composition alone replaces it.
+#[test]
+fn lib_tool_023_a_redeclared_property_keeps_its_first_declaration() {
+    let data = |upper| property_of("x", PropertyKind::Data, "String", upper);
+    for (what, inherited, own, attribute) in [
+        ("[0..1], then [0..*]", Some(1), None, true),
+        ("[0..*], then [0..1]", None, Some(1), false),
+    ] {
+        let model = model_of(
+            vec![
+                class_of("S", None, vec![data(inherited)]),
+                class_of("A", Some("S"), vec![data(own)]),
+            ],
+            vec![],
+        );
+        let schema = generated(what, &model);
+        let lines = complex_type(&schema, "A");
+        assert_eq!(
+            lines.contains(&r#"<xsd:attribute name="x" type="xsd:string" use="optional"/>"#),
+            attribute,
+            "{ROW}: x declared {what}: the attribute follows the first declaration: {lines:#?}"
+        );
+    }
+    // A Composition after a Reference of one name replaces it: the element
+    // is the Composition's, typed by its class.
+    let model = model_of(
+        vec![
+            class_of(
+                "S",
+                None,
+                vec![property_of("x", PropertyKind::Reference, "B", None)],
+            ),
+            class_of(
+                "A",
+                Some("S"),
+                vec![property_of("x", PropertyKind::Composition, "B", None)],
+            ),
+            class_of("B", None, vec![]),
+        ],
+        vec![],
+    );
+    let schema = generated("a Reference, then a Composition", &model);
+    let lines = complex_type(&schema, "A");
+    assert!(
+        lines.contains(
+            &r#"<xsd:element name="x" minOccurs="0" maxOccurs="unbounded" type="sacm:B"/>"#
+        ),
+        "{ROW}: x declared as a Reference, then a Composition: the element is the \
+         Composition's: {lines:#?}"
+    );
+}
+
+/// `schema validate` reports an xmllint it cannot start as such, after
+/// writing the schema: the binary is run with an empty `PATH`.
+#[test]
+fn lib_tool_023_schema_validate_names_an_xmllint_it_cannot_start() {
+    let Some(dir) = spec_dir(ROW, &[MODEL_FILE, XMI_XSD]) else {
+        return;
+    };
+    let root = root_with_spec("lib-tool-023-no-xmllint", &dir, &[MODEL_FILE, XMI_XSD]);
+    let no_tools = TempDir::new("lib-tool-023-empty-path");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["schema", "validate"])
+        .env("XTASK_ROOT", root.path())
+        .env("PATH", no_tools.path())
+        .output()
+        .unwrap_or_else(|e| panic!("{ROW}: the xtask binary can be started: {e}"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success()
+            && stderr.contains("could not run xmllint (is libxml2-utils installed?): ")
+            && root.path().join(DEFAULT_OUT).join(SCHEMA_FILE).is_file(),
+        "{ROW}: `schema validate` without xmllint writes the schema and names xmllint, got \
+         {:?} and stderr {stderr:?}",
+        output.status
     );
 }
 

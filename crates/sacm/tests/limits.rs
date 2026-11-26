@@ -433,6 +433,49 @@ fn lib_sec_003_the_depth_is_checked_before_parsing_at_the_first_element_too_deep
     }
 }
 
+/// The scan follows comments, CDATA sections, processing instructions, white
+/// space around an attribute's `=` and every closed end tag, so an element
+/// after them that is too deep is still refused for its depth, at its `<`,
+/// before the parse (the order of `xmi::read`: the scan, then the parse).
+#[test]
+fn lib_sec_003_the_depth_is_checked_past_markup_spacing_and_end_tags() {
+    let limits = Limits::default().with_max_depth(2);
+    // Each input is well-formed, so only the scan can refuse it.
+    for (what, input) in [
+        (
+            "an XML declaration first",
+            "<?xml version=\"1.0\"?><a><b><c/></b></a>",
+        ),
+        ("a comment first", "<!-- x --><a><b><c/></b></a>"),
+        (
+            "a processing instruction first",
+            "<?p x?><a><b><c/></b></a>",
+        ),
+        ("a CDATA section first", "<a><![CDATA[x]]><b><c/></b></a>"),
+        ("white space before =", "<a d =\"1\"><b><c/></b></a>"),
+        ("white space after =", "<a d= \"1\"><b><c/></b></a>"),
+    ] {
+        assert_exceeded(
+            what,
+            input.as_bytes(),
+            limits,
+            (Limit::Depth, 2, Some(position_of(input, "<c"))),
+            "SACM-SEC-003/depth",
+        );
+    }
+    // An end tag the parser refuses is still passed whole, `<` and all, so
+    // the scan refuses the element too deep after it first.
+    let what = "an element too deep after the end tag </b<>";
+    let input = "<a><b></b<><b><c/></b></a>";
+    assert_exceeded(
+        what,
+        input.as_bytes(),
+        limits,
+        (Limit::Depth, 2, Some(position_of(input, "<c"))),
+        "SACM-SEC-003/depth",
+    );
+}
+
 // --- 4. The node limit -----------------------------------------------------------------
 
 #[test]
