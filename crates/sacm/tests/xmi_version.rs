@@ -1150,7 +1150,7 @@ fn sacm23_xmi_032_an_emf_version_on_a_root_is_named_with_its_prefix() {
     assert_eq!(
         written.matches("version=").count(),
         1,
-        "{XMI_032}: a strict write of R's document writes a version besides the XML          declaration's: {written}"
+        "{XMI_032}: a strict write of R's document writes a version besides the XML declaration's: {written}"
     );
 }
 

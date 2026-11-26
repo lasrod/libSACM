@@ -1789,6 +1789,11 @@ mod tests {
             reason(&E::InvalidChar2("'[' or '>'", b'x', TextPos::new(1, 1))).render(),
             "an unexpected character where \"[\" or \">\" was expected"
         );
+        // The rewritten phrase is prose (LIB-DIAG-004).
+        assert_eq!(
+            reason(&E::InvalidChar2("'[' or '>'", b'x', TextPos::new(1, 1))).arguments(),
+            [Argument::prose("expected", "\"[\" or \">\"")]
+        );
     }
 
     /// The parser errors no input reaches: those of a DTD's entity

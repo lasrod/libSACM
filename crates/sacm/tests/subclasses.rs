@@ -606,7 +606,7 @@ fn lib_compat_017_without_a_declaration_the_element_is_kept_whole() {
     );
     let [kept] = output.diagnostics() else {
         panic!(
-            "{ROW}: G3: a tolerant read with default options does not report exactly one \
+            "{ROW}: G3: a tolerant read with no declaration does not report exactly one \
              diagnostic: {}",
             brief(output.diagnostics())
         );
@@ -628,7 +628,7 @@ fn lib_compat_017_without_a_declaration_the_element_is_kept_whole() {
                 ("holder_id", "case")
             ]),
         ),
-        "{ROW}: G3: the one Warning of a tolerant read with default options"
+        "{ROW}: G3: the one Warning of a tolerant read with no declaration"
     );
     let ids: Vec<&str> = output
         .document()

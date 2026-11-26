@@ -13,8 +13,8 @@
 //!   through the public API, and checks every argument by name and variant
 //!   and the whole `Display`, byte for byte as `message_templates.rs` pins
 //!   it. The other three, `error` of `SACM-SEC-002/unheld-*`, have no input
-//!   (`message_templates.rs`, `NO_INPUT`); unit tests of their crate-private
-//!   constructors build them.
+//!   (`message_templates.rs`, `NO_INPUT`); unit tests in `xmi/roots.rs` check
+//!   the arguments that `unheld` and `unheld_outside` build.
 //! - With `serde`, `lib_diag_004_a_prose_argument_is_a_json_string_and_reads_back_as_prose`
 //!   checks that a prose argument is a JSON string, that the JSON of a
 //!   refusal holding one is unchanged, that it reads back as `Prose`, and
@@ -189,7 +189,7 @@ type Refused = (
 
 #[test]
 fn lib_diag_004_each_prose_argument_a_refusal_reaches_is_prose() {
-    let reads: [Refused; 4] = [
+    let reads: [Refused; 5] = [
         (
             "a UTF-32 BE byte order mark",
             utf32be_with_mark(),
@@ -223,6 +223,14 @@ fn lib_diag_004_each_prose_argument_a_refusal_reaches_is_prose() {
             vec![("expected", prose("\"=\""))],
             "the input is not well-formed XML at line 1, column 5: an unexpected character where \
              \"=\" was expected",
+        ),
+        (
+            "<r a=b/>",
+            b"<r a=b/>".to_vec(),
+            "SACM-XML-001/unexpected-character",
+            vec![("expected", prose("a quote"))],
+            "the input is not well-formed XML at line 1, column 6: an unexpected character where \
+             a quote was expected",
         ),
     ];
     for (what, input, template, arguments, display) in reads {

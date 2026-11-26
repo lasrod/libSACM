@@ -23,11 +23,14 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 ### Added
 
 - `ArgumentValue::Prose` and `ArgumentValue::as_prose` [LIB-DIAG-004].
-- The templates `SACM-XMI-011/emf-version-on-root` and `/emf-version-on-xmi-element`. A
-  tolerant read gives them for a `version` in EMF's XMI namespace, named as the file writes
-  it, in place of `/version-on-root` and `/version-on-xmi-element` [SACM23-XMI-032].
+- The templates `SACM-XMI-011/emf-version-on-root` and `/emf-version-on-xmi-element`, which
+  name a `version` in EMF's XMI namespace as the file writes it [SACM23-XMI-032].
 
 ### Changed
+
+- A tolerant read of a `version` in EMF's XMI namespace gives `SACM-XMI-011/emf-version-on-root`
+  or `/emf-version-on-xmi-element`, not `/version-on-root` or `/version-on-xmi-element` as
+  in 0.4.0 [SACM23-XMI-032].
 
 - `Diagnostic::requirement_id()` is documented as never empty. Only the crate builds a
   `Diagnostic`; the `test-support` constructors are for tests [LIB-DIAG-005].

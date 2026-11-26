@@ -962,10 +962,7 @@ pub(super) fn read(
                 text,
                 element.range().start,
                 Unread::Unheld,
-                Details::new(
-                    &template::SEC_002_UNHELD_OUTSIDE,
-                    vec![Argument::prose("error", error)],
-                ),
+                unheld_outside(&error),
             )
         })?;
     let Findings {
@@ -4679,6 +4676,16 @@ fn hold_element(
     Ok(())
 }
 
+/// The details of the refusal of the content outside every element, which
+/// the document could not hold because of `error`: SACM-SEC-002 (LIB-API-017).
+/// Checked input never gives one.
+fn unheld_outside(error: &str) -> Details {
+    Details::new(
+        &template::SEC_002_UNHELD_OUTSIDE,
+        vec![Argument::prose("error", error)],
+    )
+}
+
 /// The details of the refusal of `element`, which the document could not
 /// hold because of `error`: SACM-SEC-002, naming the root element or the
 /// element (LIB-API-017). Checked input never gives one.
@@ -7222,6 +7229,29 @@ mod tests {
         assert_eq!(
             details.render(),
             "the element \"argumentElement\" cannot be held in the document: e"
+        );
+    }
+
+    /// The refusal of the content outside every element that the document
+    /// could not hold has the template unheld-outside, whose `error` is prose
+    /// (LIB-API-017, acceptance 4; LIB-DIAG-004): a template no input
+    /// reaches.
+    #[test]
+    fn the_unheld_outside_refusal_has_its_template() {
+        use crate::diagnostic::{Argument, template};
+
+        let details = super::unheld_outside("e");
+        assert_eq!(
+            (details.template(), details.arguments()),
+            (
+                template::SEC_002_UNHELD_OUTSIDE.id,
+                [Argument::prose("error", "e")].as_slice()
+            ),
+            "LIB-DIAG-004: the content outside every element"
+        );
+        assert_eq!(
+            details.render(),
+            "the content outside every element cannot be held in the document: e"
         );
     }
 

@@ -1254,7 +1254,7 @@ fn sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted() {
     let row = "SACM23-XMI-012";
     let expected = Some(LangString::new("A").with_lang("en"));
     // An `xsi:type` is read, and reported as SACM-XMI-010 on the owner, a
-    // Warning in the default tolerant mode (LIB-COMPAT-001).
+    // Warning in tolerant mode (LIB-COMPAT-001).
     let xsi_type: &[(Code, Severity, &str)] = &[(Code::XMI_XSI_TYPE, Severity::Warning, "a")];
     for (attribute, reported) in [
         ("xmi:type=\"sacm:LangString\"", &[][..]),

@@ -15,7 +15,7 @@
 //! which are read first, so a reference that stops reading fails before any
 //! variant is compared with it. A reference has no diagnostics, except the
 //! ones with an `xsi:type` or an `xmi:version`, which carry SACM-XMI-010 (a
-//! Warning in the default tolerant mode) or SACM-XMI-011 (Info)
+//! Warning in tolerant mode) or SACM-XMI-011 (Info)
 //! (LIB-COMPAT-001); a variant with that attribute is compared with them.
 //!
 //! A root is refused at the `<` of its start tag and an attribute at the
@@ -340,7 +340,7 @@ fn reported_reference(
 }
 
 /// The reference for an ArgumentPackage `a` with a redundant `xsi:type`: one
-/// SACM-XMI-010, a Warning in the default tolerant mode (LIB-COMPAT-001).
+/// SACM-XMI-010, a Warning in tolerant mode (LIB-COMPAT-001).
 fn xsi_type_reference() -> Shape {
     reported_reference(
         BARE_A_XSI_TYPE,

@@ -54,10 +54,10 @@
 //!
 //! Both take a [`Mode`] in their options (ADR 0022, ADR 0035). [`ReadOptions`]
 //! and [`WriteOptions`] both default to strict: a read refuses what it cannot
-//! read conformantly, and a write writes only schema-valid output. Ask for
-//! [`Mode::Tolerant`] to open a well-formed SACM file that a strict read
-//! refuses for a defect it can keep (the table below lists what a tolerant
-//! read still refuses).
+//! read conformantly, and a write refuses what is not schema-valid, apart
+//! from XMI metadata it writes as read. Ask for [`Mode::Tolerant`] to open a
+//! well-formed SACM file that a strict read refuses for a defect it can keep
+//! (the table below lists what a tolerant read still refuses).
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|

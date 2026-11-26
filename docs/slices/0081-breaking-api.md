@@ -57,3 +57,9 @@ API rows: the maintainer's decisions, 2026-11-26, on lasrod/libSACM#113 (B1, B2,
   serde_json reports as a syntax error, not a data error; it now uses `"message":1`.
   Departures accepted: lib.rs:90-91 had the same false "the default" wording and was
   fixed; `Findings::xmi_version` picks its template itself (a private change).
+- 2026-11-26 verification: draft PR #115 at 1f9094e. sacm-verifier: LIB-API-020,
+  LIB-DIAG-005 and SACM23-XMI-032 PASS; LIB-DIAG-004 FAIL, because two prose sites survive
+  a mutation back to Text (M13: `InvalidChar2` in input.rs; M11: unheld-outside in
+  roots.rs). Fix round: two controls and an `unheld_outside` extraction (builder),
+  wording with the verifier's text (builder, lead), CHANGELOG Changed entry and the
+  matrix source page (lead).
