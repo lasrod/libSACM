@@ -69,22 +69,22 @@ impl CreateArtifactPackage {
     /// Creates a root `ArtifactPackage` named `name`, after the document's
     /// last root.
     #[must_use]
-    pub fn root(name: LangString) -> Self {
+    pub fn root(name: impl Into<LangString>) -> Self {
         Self {
             parent: None,
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
     /// Creates an `ArtifactPackage` named `name` as the last child of
     /// `parent`.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: Some(parent.into()),
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
@@ -203,11 +203,11 @@ macro_rules! named_create {
                 "Creates a `", stringify!($kind), "` named `name` as the last child of `parent`."
             )]
             #[must_use]
-            pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+            pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
                 Self {
                     parent: parent.into(),
                     id: None,
-                    name,
+                    name: name.into(),
                 }
             }
 
@@ -429,11 +429,11 @@ impl CreateArtifactGroup {
     /// Creates an `ArtifactGroup` named `name` as the last child of
     /// `parent`, with no members.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             group_members: Vec::new(),
         }
     }
@@ -570,11 +570,11 @@ impl CreateArtifact {
     /// Creates an `Artifact` named `name` as the last child of `parent`,
     /// with no version and no date.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             version: None,
             date: None,
         }
@@ -713,11 +713,11 @@ impl CreateEvent {
     /// Creates an `Event` named `name` as the last child of `parent`, with
     /// no date.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             date: None,
         }
     }
@@ -838,11 +838,11 @@ impl CreateResource {
     /// Creates a `Resource` named `name` as the last child of `parent`, with
     /// no location.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             location: None,
         }
     }
@@ -972,11 +972,11 @@ impl CreateActivity {
     /// Creates an `Activity` named `name` as the last child of `parent`,
     /// with no start or end time.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             start_time: None,
             end_time: None,
         }
@@ -1146,14 +1146,14 @@ impl CreateArtifactAssetRelationship {
     #[must_use]
     pub fn new(
         parent: impl Into<ElementId>,
-        name: LangString,
+        name: impl Into<LangString>,
         sources: impl IntoIterator<Item = impl Into<ElementId>>,
         targets: impl IntoIterator<Item = impl Into<ElementId>>,
     ) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             sources: sources.into_iter().map(Into::into).collect(),
             targets: targets.into_iter().map(Into::into).collect(),
         }

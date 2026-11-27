@@ -81,10 +81,10 @@ pub struct SetName {
 impl SetName {
     /// Sets the name of `element` to `name`.
     #[must_use]
-    pub fn new(element: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(element: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             element: element.into(),
-            name,
+            name: name.into(),
         }
     }
 

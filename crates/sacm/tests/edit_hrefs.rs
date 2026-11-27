@@ -8,7 +8,7 @@
 //!   refuses anything else with the first `HrefError` in the order of its
 //!   variants.
 //! - `SetReferences::with_hrefs` sets an end's `href`s beside its ids,
-//!   `AddReference::href` appends one and `RemoveReference::href` removes
+//!   `AddReference::new_href` appends one and `RemoveReference::new_href` removes
 //!   every occurrence of one (`EditError::HrefNotHeld` when the end holds
 //!   none).
 //! - The four interface creates take `implements` as an `Href`, and the four
@@ -722,7 +722,7 @@ fn lib_edit_020_set_references_with_hrefs_replaces_both_lists() {
 }
 
 // =================================================================================
-// 3. AddReference::href
+// 3. AddReference::new_href
 // =================================================================================
 
 #[test]
@@ -736,19 +736,19 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
     };
     let (h1, h2) = (href(H1), href(H2));
     // The accessors: exactly one of an id and an href.
-    let by_href = AddReference::href("b", ParticipantPackage, h2.clone());
+    let by_href = AddReference::new_href("b", ParticipantPackage, h2.clone());
     let by_id = AddReference::new("b", ParticipantPackage, "q");
     assert_eq!(
         (
             by_href.element().as_str(),
             by_href.end(),
             by_href.id(),
-            by_href.cross_document(),
+            by_href.href(),
             by_id.id().map(ElementId::as_str),
-            by_id.cross_document()
+            by_id.href()
         ),
         ("b", ParticipantPackage, None, Some(&h2), Some("q"), None),
-        "{ROW}: element(), end(), id() and cross_document()"
+        "{ROW}: element(), end(), id() and href()"
     );
 
     // Appending h2 to ids [p] and hrefs [h1].
@@ -762,7 +762,7 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
             mutation.deleted_ids().len()
         ),
         ((owned(&["p"]), owned(&[H1, H2])), vec!["b"], 0, 0),
-        "{ROW}: AddReference::href of h2"
+        "{ROW}: AddReference::new_href of h2"
     );
     // An id is still appended to the ids, and leaves the hrefs alone.
     applied(&mut doc, by_id);
@@ -775,7 +775,10 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
 
     // The upper bound counts every value.
     let mut doc = the_case();
-    let error = refuse(&mut doc, AddReference::href("e", Implements, h2.clone()));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("e", Implements, h2.clone()),
+    );
     assert_too_many(
         "a second implements href on an interface",
         &error,
@@ -783,7 +786,10 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
         2,
         1,
     );
-    let error = refuse(&mut doc, AddReference::href("i", Implements, h2.clone()));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("i", Implements, h2.clone()),
+    );
     assert_too_many(
         "an implements href on an interface that holds an id",
         &error,
@@ -791,7 +797,7 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
         2,
         1,
     );
-    let error = refuse(&mut doc, AddReference::href("inf", Target, h1.clone()));
+    let error = refuse(&mut doc, AddReference::new_href("inf", Target, h1.clone()));
     assert_too_many(
         "an href on a target that holds an id",
         &error,
@@ -801,7 +807,10 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
     );
 
     // citedElement of a Claim: appended, and written in element form.
-    let mutation = applied(&mut doc, AddReference::href("c1", CitedElement, h1.clone()));
+    let mutation = applied(
+        &mut doc,
+        AddReference::new_href("c1", CitedElement, h1.clone()),
+    );
     assert_eq!(
         (
             ids(&doc, "c1", CitedElement),
@@ -809,7 +818,7 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
             strs(mutation.changed_ids())
         ),
         (Vec::new(), owned(&[H1]), vec!["c1"]),
-        "{ROW}: AddReference::href on the citedElement of c1"
+        "{ROW}: AddReference::new_href on the citedElement of c1"
     );
     let text = round_trip("c1 with a citedElement href", &doc);
     assert!(
@@ -817,13 +826,22 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
             && !text.contains(" citedElement=\""),
         "{ROW}: the citedElement is not written in element form\n{text}"
     );
-    let error = refuse(&mut doc, AddReference::href("c1", CitedElement, h2.clone()));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("c1", CitedElement, h2.clone()),
+    );
     assert_too_many("a second citedElement href", &error, "citedElement", 2, 1);
     // An unbounded end keeps the order given; ids stay attributes' tokens no
     // more: the end is written in element form, the ids first.
-    applied(&mut doc, AddReference::href("c2", MetaClaim, h2.clone()));
+    applied(
+        &mut doc,
+        AddReference::new_href("c2", MetaClaim, h2.clone()),
+    );
     applied(&mut doc, AddReference::new("c2", MetaClaim, "c1"));
-    applied(&mut doc, AddReference::href("c2", MetaClaim, h1.clone()));
+    applied(
+        &mut doc,
+        AddReference::new_href("c2", MetaClaim, h1.clone()),
+    );
     assert_eq!(
         (ids(&doc, "c2", MetaClaim), hrefs(&doc, "c2", MetaClaim)),
         (owned(&["c1"]), owned(&[H2, H1])),
@@ -847,12 +865,18 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
     );
 
     // The checks before the bounds; the href itself is never checked.
-    let error = refuse(&mut doc, AddReference::href("nope", MetaClaim, h1.clone()));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("nope", MetaClaim, h1.clone()),
+    );
     assert!(
         matches!(&error, EditError::ElementNotFound { element, .. } if element.as_str() == "nope"),
         "{ROW}: an href on an element the document does not hold: {error:?}"
     );
-    let error = refuse(&mut doc, AddReference::href("c1", Expression, h1.clone()));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("c1", Expression, h1.clone()),
+    );
     assert!(
         matches!(
             &error,
@@ -864,7 +888,10 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
         ),
         "{ROW}: an href on the derived expression end: {error:?}"
     );
-    let error = refuse(&mut doc, AddReference::href("c1", ParticipantPackage, h1));
+    let error = refuse(
+        &mut doc,
+        AddReference::new_href("c1", ParticipantPackage, h1),
+    );
     assert!(
         matches!(&error, EditError::FeatureNotApplicable { element, .. } if element.as_str() == "c1"),
         "{ROW}: an href on an end a Claim does not have: {error:?}"
@@ -872,7 +899,7 @@ fn lib_edit_020_add_reference_href_appends_and_checks_bounds() {
 }
 
 // =================================================================================
-// 4. RemoveReference::href
+// 4. RemoveReference::new_href
 // =================================================================================
 
 #[test]
@@ -885,19 +912,19 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     let (h1, h2) = (href(H1), href(H2));
     let absent = href("o.xmi#x");
     // The accessors.
-    let by_href = RemoveReference::href("b", ParticipantPackage, h1.clone());
+    let by_href = RemoveReference::new_href("b", ParticipantPackage, h1.clone());
     let by_id = RemoveReference::new("b", ParticipantPackage, "p");
     assert_eq!(
         (
             by_href.element().as_str(),
             by_href.end(),
             by_href.id(),
-            by_href.cross_document(),
+            by_href.href(),
             by_id.id().map(ElementId::as_str),
-            by_id.cross_document()
+            by_id.href()
         ),
         ("b", ParticipantPackage, None, Some(&h1), Some("p"), None),
-        "{ROW}: element(), end(), id() and cross_document()"
+        "{ROW}: element(), end(), id() and href()"
     );
 
     // Removing h1 from [h1, h1, h2] leaves [h2]; the ids stay.
@@ -910,26 +937,26 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
             mutation.deleted_ids().len()
         ),
         ((owned(&["p"]), owned(&[H2])), vec!["b"], 0),
-        "{ROW}: RemoveReference::href of h1 from [h1, h1, h2]"
+        "{ROW}: RemoveReference::new_href of h1 from [h1, h1, h2]"
     );
     round_trip("b after the removal", &doc);
     // Every occurrence, wherever it stands.
     let mut doc = case_with_b(&["p", "q"], &[H1, H2, H1, H2, H1]);
     applied(
         &mut doc,
-        RemoveReference::href("b", ParticipantPackage, h1.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, h1.clone()),
     );
     assert_eq!(
         participants(&doc, "b"),
         (owned(&["p", "q"]), owned(&[H2, H2])),
-        "{ROW}: RemoveReference::href of h1 from [h1, h2, h1, h2, h1]"
+        "{ROW}: RemoveReference::new_href of h1 from [h1, h2, h1, h2, h1]"
     );
 
     // An href the end does not hold.
     let mut doc = the_case();
     let error = refuse(
         &mut doc,
-        RemoveReference::href("b", ParticipantPackage, absent.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, absent.clone()),
     );
     let EditError::HrefNotHeld {
         end, href: named, ..
@@ -957,7 +984,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     let mut typed = case_with_b(&["p", "q"], &["sacm:ArgumentPackage o.xmi#h1"]);
     let error = refuse(
         &mut typed,
-        RemoveReference::href("b", ParticipantPackage, h1.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, h1.clone()),
     );
     assert!(
         matches!(&error, EditError::HrefNotHeld { end: "participantPackage", href, .. } if *href == h1),
@@ -965,7 +992,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     );
     applied(
         &mut typed,
-        RemoveReference::href(
+        RemoveReference::new_href(
             "b",
             ParticipantPackage,
             href("sacm:ArgumentPackage o.xmi#h1"),
@@ -981,7 +1008,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     let mut doc = the_case();
     let error = refuse(
         &mut doc,
-        RemoveReference::href("b", ParticipantPackage, h1.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, h1.clone()),
     );
     assert_too_few(
         "removing h1 from ids [p] and hrefs [h1]",
@@ -993,7 +1020,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     let mut repeated = case_with_b(&["p"], &[H1, H1]);
     let error = refuse(
         &mut repeated,
-        RemoveReference::href("b", ParticipantPackage, h1.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, h1.clone()),
     );
     assert_too_few(
         "removing h1 from ids [p] and hrefs [h1, h1]",
@@ -1005,7 +1032,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     let mut below = case_with_b(&["p"], &[]);
     let error = refuse(
         &mut below,
-        RemoveReference::href("b", ParticipantPackage, absent.clone()),
+        RemoveReference::new_href("b", ParticipantPackage, absent.clone()),
     );
     assert!(
         matches!(
@@ -1027,10 +1054,13 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     );
 
     // An end with no lower bound is left empty, and written without it.
-    applied(&mut doc, AddReference::href("c1", CitedElement, h2.clone()));
+    applied(
+        &mut doc,
+        AddReference::new_href("c1", CitedElement, h2.clone()),
+    );
     let mutation = applied(
         &mut doc,
-        RemoveReference::href("c1", CitedElement, h2.clone()),
+        RemoveReference::new_href("c1", CitedElement, h2.clone()),
     );
     assert_eq!(
         (
@@ -1050,7 +1080,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     // feature.
     let error = refuse(
         &mut doc,
-        RemoveReference::href("nope", MetaClaim, absent.clone()),
+        RemoveReference::new_href("nope", MetaClaim, absent.clone()),
     );
     assert!(
         matches!(&error, EditError::ElementNotFound { element, .. } if element.as_str() == "nope"),
@@ -1058,7 +1088,7 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     );
     let error = refuse(
         &mut doc,
-        RemoveReference::href("c1", Expression, absent.clone()),
+        RemoveReference::new_href("c1", Expression, absent.clone()),
     );
     assert!(
         matches!(
@@ -1073,13 +1103,13 @@ fn lib_edit_020_remove_reference_href_removes_every_occurrence() {
     );
     let error = refuse(
         &mut doc,
-        RemoveReference::href("c1", ParticipantPackage, absent.clone()),
+        RemoveReference::new_href("c1", ParticipantPackage, absent.clone()),
     );
     assert!(
         matches!(&error, EditError::FeatureNotApplicable { element, .. } if element.as_str() == "c1"),
         "{ROW}: an href removed from an end a Claim does not have: {error:?}"
     );
-    let error = refuse(&mut doc, RemoveReference::href("c1", MetaClaim, absent));
+    let error = refuse(&mut doc, RemoveReference::new_href("c1", MetaClaim, absent));
     assert!(
         matches!(
             &error,
@@ -1556,11 +1586,11 @@ fn lib_edit_020_serde_reads_and_writes_hrefs() {
                 r#"{"type":"SetReferences","element":"binding","end":"participantPackage","ids":["vehicle_api"],"hrefs":["braking.sacm.xmi#braking_api"]}"#,
             ),
             (
-                AddReference::href("binding", participant, remote.clone()).into(),
+                AddReference::new_href("binding", participant, remote.clone()).into(),
                 r#"{"type":"AddReference","element":"binding","end":"participantPackage","href":"braking.sacm.xmi#braking_api"}"#,
             ),
             (
-                RemoveReference::href("binding", participant, remote.clone()).into(),
+                RemoveReference::new_href("binding", participant, remote.clone()).into(),
                 r#"{"type":"RemoveReference","element":"binding","end":"participantPackage","href":"braking.sacm.xmi#braking_api"}"#,
             ),
             (
@@ -1743,7 +1773,7 @@ fn lib_edit_020_serde_reads_and_writes_hrefs() {
         let mut doc = the_case();
         let error = refuse(
             &mut doc,
-            RemoveReference::href("b", participant, href("o.xmi#x")),
+            RemoveReference::new_href("b", participant, href("o.xmi#x")),
         );
         assert_eq!(to_json(&error), sample, "{ROW}: the JSON of HrefNotHeld");
         assert_eq!(
@@ -1930,22 +1960,25 @@ fn lib_edit_020_hrefs_made_by_edits_write_and_read_back() {
             remote("m1"),
         ]),
     );
-    applied(&mut doc, AddReference::href("c1", MetaClaim, remote("m3")));
     applied(
         &mut doc,
-        RemoveReference::href("c1", MetaClaim, remote("m1")),
+        AddReference::new_href("c1", MetaClaim, remote("m3")),
     );
     applied(
         &mut doc,
-        AddReference::href("c2", CitedElement, remote("cited")),
+        RemoveReference::new_href("c1", MetaClaim, remote("m1")),
     );
     applied(
         &mut doc,
-        AddReference::href("args_binding", ParticipantPackage, remote("c")),
+        AddReference::new_href("c2", CitedElement, remote("cited")),
     );
     applied(
         &mut doc,
-        RemoveReference::href("args_binding", ParticipantPackage, remote("a")),
+        AddReference::new_href("args_binding", ParticipantPackage, remote("c")),
+    );
+    applied(
+        &mut doc,
+        RemoveReference::new_href("args_binding", ParticipantPackage, remote("a")),
     );
 
     // What the document holds.

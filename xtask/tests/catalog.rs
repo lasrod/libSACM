@@ -585,6 +585,25 @@ fn lib_diag_006_generate_names_each_input_it_cannot_read() {
         ),
         ("the carrier Read(\"\")", "Write(\"NoRoot\")", "Read(\"\")"),
         ("an unexpected `#`", "[],", "[#],"),
+        // A lone `/` is no line comment (catalog.rs: the `//` guard). It
+        // stands last on its line: read as a comment, the rest of the line
+        // is all it would skip, and the table would parse.
+        ("a lone `/`", "[],", "[], /"),
+        // A name starts with a letter, a digit or `_`, never `#`
+        // (catalog.rs: the name-start guard). The template name is not
+        // used, so a name read with the `#` would parse.
+        (
+            "a template name that starts with `#`",
+            "XMI_001_NO_ROOT_TO_WRITE =",
+            "#XMI_001_NO_ROOT_TO_WRITE =",
+        ),
+        // Each separator is the one expected, not any punctuation
+        // (catalog.rs: `Cursor::punct`).
+        (
+            "a `;` where a `,` stands",
+            "XMI_002_SACM_LIKE = XMI_NAMESPACE_NOT_PINNED, Diagnostic,",
+            "XMI_002_SACM_LIKE = XMI_NAMESPACE_NOT_PINNED; Diagnostic,",
+        ),
     ] {
         let malformed = synthetic(
             "malformed-entry",

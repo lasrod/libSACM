@@ -5639,7 +5639,7 @@ id = "LIB-EDIT-020"
 area = "EDIT"
 milestone = "M6"
 title = "Edits create and remove cross-document references"
-requirement = "`Href::new`. It accepts exactly the values `Href::as_str()` can give and refuses anything else with `HrefError`. Reference edits. `SetReferences::with_hrefs` sets the end's `href`s beside its ids, replacing both lists. `AddReference::href` appends one `Href`. `RemoveReference::href` removes every occurrence of one, and is `EditError::HrefNotHeld` when the end holds none. Creates. The four interface creates take `implements` as an `Href` (`root_href`, `new_href`). The four binding creates take `participantPackage` `Href`s beside their ids (`with_participant_package_hrefs`). Expressions. `LangString::with_expression_href` sets an `expression` `Href`. Bounds and checks. Bounds count distinct ids plus distinct `href`s, and an `Href` is never checked for existence or type. serde. `Href` is a JSON string, checked by `Href::new`. `SetReferences` takes `hrefs`, which defaults to empty and is written only when it is not empty. `AddReference` and `RemoveReference` take exactly one of `id` and `href`. Interface creates take exactly one of `implements` and `implements_href`. Binding creates take `participant_package_hrefs`, which defaults to empty and is written only when it is not empty. An ExpressionLangString's `expression` is an id string, `null`, or `{\"href\": \"…\"}`. Href characters. `Href::new` refuses a character that is not an XML 1.0 `Char` (§2.2) before any other check, as `HrefError::Character`, so no edit or JSON value can hold an href that a write could not represent."
+requirement = "`Href::new`. It accepts exactly the values `Href::as_str()` can give and refuses anything else with `HrefError`. Reference edits. `SetReferences::with_hrefs` sets the end's `href`s beside its ids, replacing both lists. `AddReference::new_href` appends one `Href`. `RemoveReference::new_href` removes every occurrence of one, and is `EditError::HrefNotHeld` when the end holds none. Creates. The four interface creates take `implements` as an `Href` (`root_href`, `new_href`). The four binding creates take `participantPackage` `Href`s beside their ids (`with_participant_package_hrefs`). Expressions. `LangString::with_expression_href` sets an `expression` `Href`. Bounds and checks. Bounds count distinct ids plus distinct `href`s, and an `Href` is never checked for existence or type. serde. `Href` is a JSON string, checked by `Href::new`. `SetReferences` takes `hrefs`, which defaults to empty and is written only when it is not empty. `AddReference` and `RemoveReference` take exactly one of `id` and `href`. Interface creates take exactly one of `implements` and `implements_href`. Binding creates take `participant_package_hrefs`, which defaults to empty and is written only when it is not empty. An ExpressionLangString's `expression` is an id string, `null`, or `{\"href\": \"…\"}`. Href characters. `Href::new` refuses a character that is not an XML 1.0 `Char` (§2.2) before any other check, as `HrefError::Character`, so no edit or JSON value can hold an href that a write could not represent."
 source = "ADR 0040 amendment 1 (D7); XMI 2.5.1 formal/15-06-07 §7.10.2 (p. 23) \"The URI reference must be of the form URI#id_value\"; formal/23-05-08 §9.4 (p. 25) \"external to Packages to the AssuranceCasePackage that contains this AssuranceCasePackageBinding\"; M6 decisions Q8 (the maintainer, 2026-11-19)"
 kind = "editing"
 status = "verified"
@@ -7322,10 +7322,157 @@ area = "API"
 milestone = "M7"
 title = "Public API review"
 requirement = "The full public API is reviewed against the Rust API Guidelines checklist; findings are fixed or recorded as accepted deviations in an ADR before 1.0. The review settles these pre-1.0 questions from docs reviews: whether `edit::check` and `edit::preview` take a sealed borrow trait, so `check(&doc, &CreateClaim::new(..))` compiles (ADR 0019 amendment 3); and whether a name id gets a distinct type rather than `ElementId`. Assurance Forge had no evidence either way on both (lasrod/libSACM#113)."
-source = "Rust API Guidelines; lasrod/libSACM#113"
+source = "Rust API Guidelines checklist; lasrod/libSACM#113; ADR 0045"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
+status = "verified"
+depends_on = ["LIB-DOC-001", "LIB-EDIT-009", "LIB-API-022", "LIB-API-023", "LIB-API-024", "LIB-API-025"]
+notes = "Reviewed in slice 0084 (ADR 0045). The two questions: `check` and `preview` keep `&Operation` (an operation struct is passed as `&op.into()`), and every `xmi:id` stays an `ElementId` (the maintainer, 2026-11-27)."
+acceptance = [
+  "Every public type is `Send`, `Sync` and `Debug`, checked by one test listing them all.",
+  "`edit::check` and `edit::preview` accept an operation struct as `&op.into()`, with the same result as an `Operation`.",
+  "The id of a name, content, key or value is an `ElementId` that `get` does not find and `is_id_in_use` covers; a create with it is refused as `DuplicateId`.",
+  "ADR 0045 records the fixes, the argument and return rules and the accepted deviations D1-D7.",
+]
+code = [
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/model/id.rs",
+  "crates/sacm/src/compare.rs",
+  "docs/adr/0045-public-api-review.md",
+]
+tests = [
+  "crates/sacm/tests/api_review.rs::lib_api_005_every_public_type_is_send_sync_and_debug",
+  "crates/sacm/tests/api_review.rs::lib_api_005_check_and_preview_take_an_operation_struct_by_into",
+  "crates/sacm/tests/api_review.rs::lib_api_005_a_part_id_is_an_element_id_get_does_not_find",
+]
+verification = "docs/verification/0084-api-review.md"
+
+[[row]]
+id = "LIB-API-022"
+area = "API"
+milestone = "M7"
+title = "Names take plain text"
+requirement = "`LangString` converts from `&str` and `String`, with no `lang`. Every operation's `name` parameter takes `impl Into<LangString>`, as content, key and location take `impl Into<MultiLangString>`. The JSON of an operation is unchanged."
+source = "Rust API Guidelines C-CONV-TRAITS, C-GENERIC; LIB-API-005 review; ADR 0045"
+kind = "api"
+status = "verified"
+depends_on = ["LIB-API-013"]
+acceptance = [
+  "`LangString::from(\"C1\") == LangString::new(\"C1\")`, with no `lang`; the same from `String`.",
+  "Every create, root, `new_href` and `root_href` constructor with a name, and `SetName::new`, takes text and gives the same operation as with `LangString::new`.",
+  "The JSON of an operation is unchanged.",
+  "Swapping a create's parent and name is refused as `ParentNotFound`, and changes nothing.",
+]
+code = [
+  "crates/sacm/src/model/lang_string.rs",
+  "crates/sacm/src/edit/create.rs",
+  "crates/sacm/src/edit/argumentation.rs",
+  "crates/sacm/src/edit/artifact.rs",
+  "crates/sacm/src/edit/terminology.rs",
+  "crates/sacm/src/edit/set.rs",
+]
+tests = [
+  "crates/sacm/tests/api_review.rs::lib_api_022_lang_string_from_text_has_no_lang",
+  "crates/sacm/tests/api_review.rs::lib_api_022_every_name_parameter_takes_text",
+  "crates/sacm/tests/api_review.rs::lib_api_022_operation_json_is_unchanged",
+  "crates/sacm/tests/api_review.rs::lib_api_022_swapped_parent_and_name_is_refused",
+]
+verification = "docs/verification/0084-api-review.md"
+
+[[row]]
+id = "LIB-API-023"
+area = "API"
+milestone = "M7"
+title = "Uniform traits and conversions"
+requirement = "`Flag` and `ReferenceEnd` implement `Display` (their `name()`) and `Ord` (declaration order). `Mode` has `as_str` and `Display`. `ElementId` and `Href` convert into `String`. `Href` implements `FromStr`, `TryFrom<&str>` and `TryFrom<String>`, each giving the result of `Href::new`, and compares with `str` and `&str` as `ElementId` does."
+source = "Rust API Guidelines C-COMMON-TRAITS, C-CONV-TRAITS; LIB-API-005 review; ADR 0045"
+kind = "api"
+status = "verified"
+depends_on = []
+acceptance = [
+  "`Flag` and `ReferenceEnd` display their `name()` and order as declared.",
+  "`Mode::as_str()` and `Display` give `strict` and `tolerant`.",
+  "`String::from` an `ElementId` or `Href` gives its text.",
+  "`Href` parses with `FromStr`, `TryFrom<&str>` and `TryFrom<String>` exactly as `Href::new`.",
+  "`Href` equals a `str` or `&str` of the same value, both ways, and a `HashSet<Href>` finds one by `&str`.",
+]
+code = [
+  "crates/sacm/src/model/reference.rs",
+  "crates/sacm/src/xmi.rs",
+  "crates/sacm/src/model/id.rs",
+  "crates/sacm/src/model/href.rs",
+]
+tests = [
+  "crates/sacm/tests/api_review.rs::lib_api_023_flag_and_reference_end_display_their_name",
+  "crates/sacm/tests/api_review.rs::lib_api_023_mode_as_str_and_display",
+  "crates/sacm/tests/api_review.rs::lib_api_023_flag_and_reference_end_order_as_declared",
+  "crates/sacm/tests/api_review.rs::lib_api_023_ids_and_hrefs_convert_into_string",
+  "crates/sacm/tests/api_review.rs::lib_api_023_href_parses_as_new_does",
+]
+verification = "docs/verification/0084-api-review.md"
+
+[[row]]
+id = "LIB-API-024"
+area = "API"
+milestone = "M7"
+title = "Collection and result helpers"
+requirement = "`MultiLangString` has `iter`, `iter_mut` and `IntoIterator` for `&` and `&mut`. `Mutation::is_empty` is true exactly when the mutation lists no id. `ReadOutput::into_parts` returns the document and its diagnostics."
+source = "Rust API Guidelines C-ITER, C-CONV; LIB-API-005 review; ADR 0045"
+kind = "api"
+status = "verified"
+depends_on = ["LIB-API-013"]
+acceptance = [
+  "`MultiLangString` iterates its values in order, by `iter`, `iter_mut`, `&` and `&mut`.",
+  "`Mutation::is_empty()` is true exactly when no id is listed (a root reorder lists none).",
+  "`ReadOutput::into_parts()` gives the document and its diagnostics without a clone.",
+]
+code = [
+  "crates/sacm/src/model/lang_string.rs",
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/xmi.rs",
+]
+tests = [
+  "crates/sacm/tests/api_review.rs::lib_api_024_multi_lang_string_iterates_its_values",
+  "crates/sacm/tests/api_review.rs::lib_api_024_mutation_is_empty_when_it_lists_no_id",
+  "crates/sacm/tests/api_review.rs::lib_api_024_into_parts_keeps_document_and_diagnostics",
+]
+verification = "docs/verification/0084-api-review.md"
+
+[[row]]
+id = "LIB-API-025"
+area = "API"
+milestone = "M7"
+title = "One spelling for the href form"
+requirement = "`AddReference::new_href` and `RemoveReference::new_href` build the cross-document form, and `href()` returns its `Href`. The `href` constructors and `cross_document()` are removed. The JSON is unchanged."
+source = "Rust API Guidelines C-CTOR, naming consistency; LIB-API-005 review; ADR 0045"
+kind = "api"
+status = "verified"
+depends_on = []
+acceptance = [
+  "`AddReference::new_href` and `RemoveReference::new_href` hold the `Href`, returned by `href()`; the id form's `href()` is `None`.",
+  "The JSON of an href reference operation is unchanged.",
+]
+code = [
+  "crates/sacm/src/edit/references.rs",
+  "crates/sacm/src/edit.rs",
+]
+tests = [
+  "crates/sacm/tests/api_review.rs::lib_api_025_add_reference_new_href_holds_the_href",
+  "crates/sacm/tests/api_review.rs::lib_api_025_remove_reference_new_href_holds_the_href",
+  "crates/sacm/tests/api_review.rs::lib_api_025_href_reference_json_is_unchanged",
+]
+verification = "docs/verification/0084-api-review.md"
+
+[[row]]
+id = "LIB-API-026"
+area = "API"
+milestone = "M7"
+title = "Edit refusals as data"
+requirement = "`EditError` has `template()` and `arguments()`, as `ReadError`, `WriteError` and `Diagnostic` do, so an application words every refusal from one catalog."
+source = "LIB-API-005 review (ADR 0045, deferred)"
+kind = "api"
+status = "candidate"
+notes = "Deferred by the API review (ADR 0045): additive, and Assurance Forge matches on the variants today."
+depends_on = ["LIB-API-017"]
 
 [[row]]
 id = "LIB-DOC-002"

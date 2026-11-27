@@ -19,6 +19,17 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `/detected-encoding`, and `attribute` of `SACM-XML-003/unrepresentable-character`. Their
   JSON and every `Display` are unchanged [LIB-DIAG-004].
 - A `Diagnostic` read with serde refuses an empty `requirement_id` [LIB-DIAG-005].
+- The cross-document form of `AddReference` and `RemoveReference` is built with `new_href`, not
+  `href`, and read with `href()`, not `cross_document()`, as for the other href forms. The JSON
+  is unchanged [LIB-API-025].
+- Every operation's `name` takes `impl Into<LangString>`, so a name whose type was inferred
+  from the parameter now needs it written: `CreateClaim::new("p", Default::default())` is
+  `CreateClaim::new("p", LangString::default())`, and a name given as `x.into()` or
+  deserialized in place needs `LangString` as its type [LIB-API-022].
+- `Href` now compares with `str` and `&str`, so the element type of an empty array or vector
+  is no longer inferred: `assert_eq!(element.hrefs(end), [])` needs `[] as [Href; 0]`, or
+  `.is_empty()`; `href == x.into()` and `href == s.parse()?` likewise need the target type
+  [LIB-API-023].
 - `ElementId` now compares with `str` and `&str`, so the element type of an empty array is
   no longer inferred: `assert_eq!(mutation.created_ids(), [])` needs
   `[] as [ElementId; 0]`, or `.is_empty()`; `id == x.into()` likewise needs the target
@@ -53,6 +64,14 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `diagnostic::CATALOG_JSON`, also shipped as `src/diagnostic/catalog.json`: every code with
   its severities, and every message template with its code, carrier, arguments and English,
   as JSON [LIB-DIAG-006].
+- Names take plain text: `LangString` converts from `&str` and `String`, and every operation's
+  `name` takes `impl Into<LangString>`, so `CreateClaim::new("p", "The system is safe")` works
+  [LIB-API-022].
+- `Display` and `Ord` for `Flag` and `ReferenceEnd`; `Mode::as_str` and `Display`; `From<ElementId>`
+  and `From<Href>` for `String`; `FromStr` and `TryFrom` for `Href`; `Href` compares with `str`
+  [LIB-API-023].
+- `MultiLangString::iter`, `iter_mut` and `IntoIterator`; `Mutation::is_empty`;
+  `ReadOutput::into_parts` [LIB-API-024].
 
 ### Changed
 

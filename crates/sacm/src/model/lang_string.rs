@@ -7,7 +7,9 @@ use std::fmt;
 use super::{ElementId, Href};
 
 /// Text with an optional language tag, where the text may also be absent:
-/// SACM's `LangString` (SACM 2.3 §8.3).
+/// SACM's `LangString` (SACM 2.3 §8.3). Plain text converts into one with no
+/// `lang`: `LangString::from("C1") == LangString::new("C1")`, so an
+/// operation's `name` takes `"C1"` as well.
 ///
 /// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6), read
 /// with [`SacmElement::name`](crate::model::SacmElement::name), and for each
@@ -336,6 +338,30 @@ impl LangString {
     }
 }
 
+impl From<&str> for LangString {
+    /// A `LangString` with the content `content` and no `lang`, as
+    /// [`LangString::new`] gives. Every operation's `name` takes one, so a
+    /// name can be plain text.
+    ///
+    /// ```
+    /// use sacm::model::LangString;
+    ///
+    /// assert_eq!(LangString::from("C1"), LangString::new("C1"));
+    /// assert_eq!(LangString::from("").content(), Some(""));
+    /// ```
+    fn from(content: &str) -> Self {
+        Self::new(content)
+    }
+}
+
+impl From<String> for LangString {
+    /// A `LangString` with the content `content` and no `lang`, as
+    /// [`LangString::new`] gives.
+    fn from(content: String) -> Self {
+        Self::new(content)
+    }
+}
+
 impl fmt::Debug for LangString {
     /// A plain value as `LangString { lang, content }`; an
     /// `ExpressionLangString` as `ExpressionLangString { lang, content,
@@ -621,6 +647,45 @@ impl MultiLangString {
         &mut self.values
     }
 
+    /// An iterator over the values, in order: `values().iter()`.
+    ///
+    /// `for value in &text` gives the same.
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let text: MultiLangString =
+    ///     [LangString::new("Färg").with_lang("sv"), LangString::new("Colour").with_lang("en")]
+    ///         .into_iter()
+    ///         .collect();
+    /// let langs: Vec<_> = text.iter().filter_map(LangString::lang).collect();
+    /// assert_eq!(langs, ["sv", "en"]);
+    /// ```
+    pub fn iter(&self) -> std::slice::Iter<'_, LangString> {
+        self.values.iter()
+    }
+
+    /// An iterator over the values, in order, to change each in place: the
+    /// number of values stays as it is, as with
+    /// [`values_mut`](Self::values_mut).
+    ///
+    /// `for value in &mut text` gives the same.
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let mut text: MultiLangString = [LangString::new("Colour"), LangString::new("Färg")]
+    ///     .into_iter()
+    ///     .collect();
+    /// for value in &mut text {
+    ///     value.set_lang(Some("und".to_owned()));
+    /// }
+    /// assert!(text.iter().all(|value| value.lang() == Some("und")));
+    /// ```
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, LangString> {
+        self.values.iter_mut()
+    }
+
     /// The index of the value to show for the language `lang`, such as
     /// `"en-GB"`: SACM 2.3 §8.5 holds one value per language, each with its
     /// §8.3 `lang`.
@@ -735,6 +800,26 @@ impl From<LangString> for MultiLangString {
         Self {
             values: vec![value],
         }
+    }
+}
+
+impl<'a> IntoIterator for &'a MultiLangString {
+    type Item = &'a LangString;
+    type IntoIter = std::slice::Iter<'a, LangString>;
+
+    /// The values, in order: [`MultiLangString::iter`].
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut MultiLangString {
+    type Item = &'a mut LangString;
+    type IntoIter = std::slice::IterMut<'a, LangString>;
+
+    /// The values, in order, to change in place: [`MultiLangString::iter_mut`].
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 

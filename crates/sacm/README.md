@@ -49,7 +49,7 @@ says what that covers and where it stops.
   in the end's hrefs (`SacmElement::hrefs`), written back and counted toward the end's
   bounds, but never resolved; its fragment may be an XPointer, and a type may stand before
   it (`Href::kind`). `Href::new` makes one, and `SetReferences::with_hrefs`,
-  `AddReference::href`, `RemoveReference::href` and the interface and binding creates set
+  `AddReference::new_href`, `RemoveReference::new_href` and the interface and binding creates set
   them. A child held in another file, such as
   `<argumentPackage href="arguments.sacm.xmi#args"/>`, is held as a `model::Proxy` of its
   container (`SacmElement::proxies`), written back and never resolved. A `name`, or a value of a

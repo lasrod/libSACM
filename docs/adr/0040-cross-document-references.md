@@ -101,3 +101,6 @@ may conform).
   - Keeping a proxy's xmi:type as an attribute: two representations of one fact.
 - **A9.** A diagnostic about a kept same-file proxy affects its container, never the id the
   proxy names.
+
+- Amendment (ADR 0045, LIB-API-025): `AddReference::href` and `RemoveReference::href` are
+  renamed `new_href`, and `cross_document()` is renamed `href()`. The JSON is unchanged.

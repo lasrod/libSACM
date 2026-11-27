@@ -1071,18 +1071,18 @@ fn lib_edit_020_the_builders_replace_and_the_accessors_give_what_was_given() {
         ([].as_slice(), [].as_slice()),
         "{EDIT_ROW}: new and clear give hrefs"
     );
-    let add = AddReference::href("b", end, h1.clone());
-    let remove = RemoveReference::href("b", end, h2.clone());
+    let add = AddReference::new_href("b", end, h1.clone());
+    let remove = RemoveReference::new_href("b", end, h2.clone());
     assert_eq!(
         (
             add.element().as_str(),
             add.end(),
             add.id(),
-            add.cross_document(),
+            add.href(),
             remove.element().as_str(),
             remove.end(),
             remove.id(),
-            remove.cross_document()
+            remove.href()
         ),
         ("b", end, None, Some(&h1), "b", end, None, Some(&h2)),
         "{EDIT_ROW}: the accessors of the href forms"
@@ -1094,9 +1094,9 @@ fn lib_edit_020_the_builders_replace_and_the_accessors_give_what_was_given() {
     assert_eq!(
         (
             by_id.0.id().map(ElementId::as_str),
-            by_id.0.cross_document(),
+            by_id.0.href(),
             by_id.1.id().map(ElementId::as_str),
-            by_id.1.cross_document()
+            by_id.1.href()
         ),
         (Some("p"), None, Some("q"), None),
         "{EDIT_ROW}: the accessors of the id forms"
@@ -1115,7 +1115,7 @@ fn lib_edit_020_the_builders_replace_and_the_accessors_give_what_was_given() {
     assert_eq!(
         CreateArgumentPackageBinding::new("case", LangString::new("B"), ["p", "q"])
             .participant_package_hrefs(),
-        [],
+        [] as [Href; 0],
         "{EDIT_ROW}: a binding created with ids gives hrefs"
     );
     let interface = CreateArgumentPackageInterface::root(LangString::new("I"), "p");

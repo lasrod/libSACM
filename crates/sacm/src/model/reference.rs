@@ -25,6 +25,8 @@
 //! crate-private, as the role tables of [`containment`](super::containment)
 //! are.
 
+use std::fmt;
+
 use super::{AbstractClass, DeclaredType, ElementKind, MetamodelPackage};
 
 /// The classes that own a flag, the `assertionDeclaration` or a reference
@@ -68,14 +70,19 @@ pub(crate) const OWNERS: [DeclaredType; 24] = [
 /// asserted relationship also has `isCounter` (§11.13). Later releases may
 /// add flags, so a `match` on `Flag` needs a wildcard arm.
 ///
+/// It displays as its [`name`](Self::name), and [`Ord`] is the order of
+/// [`Flag::ALL`].
+///
 /// # Examples
 ///
 /// ```
 /// use sacm::model::Flag;
 ///
 /// assert_eq!(Flag::IsCounter.name(), "isCounter");
+/// assert_eq!(Flag::IsCounter.to_string(), "isCounter");
+/// assert!(Flag::IsCitation < Flag::IsCounter);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
@@ -158,6 +165,13 @@ impl Flag {
     }
 }
 
+impl fmt::Display for Flag {
+    /// Writes [`Flag::name`].
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
 /// The flag named `local` that an element of `kind` has, if any.
 pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
     Flag::ALL
@@ -184,12 +198,17 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 /// [`Target`](Self::Target). Later releases may add ends, so a `match` on
 /// `ReferenceEnd` needs a wildcard arm.
 ///
+/// It displays as its [`name`](Self::name), and [`Ord`] is the order of
+/// [`ReferenceEnd::ALL`].
+///
 /// # Examples
 ///
 /// ```
 /// use sacm::model::ReferenceEnd;
 ///
 /// assert_eq!(ReferenceEnd::Source.name(), "source");
+/// assert_eq!(ReferenceEnd::ArtifactSource.to_string(), "source");
+/// assert!(ReferenceEnd::Source < ReferenceEnd::ArtifactSource);
 /// // A group's members are its `argumentElement` references, and an
 /// // ArtifactGroup's its `artifactElement` references.
 /// assert_eq!(ReferenceEnd::GroupMember.name(), "argumentElement");
@@ -198,7 +217,7 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 /// // AssertedRelationship's.
 /// assert_eq!(ReferenceEnd::ArtifactTarget.name(), "target");
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
@@ -690,6 +709,15 @@ impl ReferenceEnd {
     }
 }
 
+impl fmt::Display for ReferenceEnd {
+    /// Writes [`ReferenceEnd::name`]: `source` for both
+    /// [`Source`](ReferenceEnd::Source) and
+    /// [`ArtifactSource`](ReferenceEnd::ArtifactSource).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
 /// The reference end named `local` that an element of `kind` has, if any:
 /// never the derived `expression`, which is no attribute of the element
 /// (SACM23-BASE-009).
@@ -704,6 +732,17 @@ pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<Refe
 mod tests {
     use super::{Flag, OWNERS, ReferenceEnd, flag_named, reference_end_named};
     use crate::model::{AbstractClass, DeclaredType, ElementKind, role_named};
+
+    /// `ALL` lists each enum in declaration order, the order `Ord` derives.
+    #[test]
+    fn all_is_in_declaration_order() {
+        for (position, flag) in Flag::ALL.iter().enumerate() {
+            assert_eq!(*flag as usize, position, "{flag} is out of place in ALL");
+        }
+        for (position, end) in ReferenceEnd::ALL.iter().enumerate() {
+            assert_eq!(*end as usize, position, "{end:?} is out of place in ALL");
+        }
+    }
 
     #[test]
     fn every_kind_has_its_classes_ends_and_flags_by_name_and_no_other() {

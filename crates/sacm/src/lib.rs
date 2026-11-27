@@ -510,10 +510,10 @@
 //! # #[cfg(feature = "serde")]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use sacm::edit::{self, CreateArgumentPackage, CreateClaim, Mutation, Operation};
-//! use sacm::model::{Document, LangString};
+//! use sacm::model::Document;
 //!
 //! let mut document = Document::new();
-//! let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+//! let arguments = CreateArgumentPackage::root("Arguments").with_id("arguments");
 //! edit::apply(&mut document, arguments)?;
 //!
 //! // An operation received as JSON, from a user interface, say.
@@ -531,8 +531,7 @@
 //! assert_eq!(read, mutation);
 //!
 //! // A refusal carries its catalog code after its type.
-//! let misplaced = Operation::from(CreateClaim::new("nowhere", LangString::new("C1")));
-//! let error = edit::check(&document, &misplaced).unwrap_err();
+//! let error = edit::check(&document, &CreateClaim::new("nowhere", "C1").into()).unwrap_err();
 //! assert_eq!(
 //!     serde_json::to_string(&error)?,
 //!     r#"{"type":"ParentNotFound","code":"SACM-CMD-001","parent":"nowhere"}"#
