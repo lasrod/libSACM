@@ -44,3 +44,6 @@ follows SACM 2.3 §8.5 (TaggedValue) and ADR 0030 for its JSON.
   existing files typed `[] as [ElementId; 0]`, as `PartialEq<str>` makes `[]` ambiguous
   (Breaking in the CHANGELOG); cases added to kill three survivors (case-sensitive step 1,
   the 7.6.3 and VAL-020 7.6.1 specifications).
+- 2026-11-27 verification: FAIL on LIB-API-013 (three test gaps: specification at ten emit
+  sites, `is_empty` per list, a lang's position). LIB-API-021, LIB-EDIT-023, LIB-EDIT-024
+  PASS. Fix round: the tests to the builder; CHANGELOG wording with the verifier's text.

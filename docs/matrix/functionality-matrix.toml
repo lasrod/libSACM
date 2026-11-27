@@ -7848,6 +7848,7 @@ code = [
   "docs/adr/0030-serde-for-edit-and-diagnostic-values.md",
 ]
 tests = [
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_013_each_diagnostic_template_input_names_its_clause_s_specification",
   "crates/sacm/tests/api_additions.rs::lib_api_013_a_sacm_clause_names_sacm_2_3",
   "crates/sacm/tests/api_additions.rs::lib_api_013_an_xmi_clause_names_xmi_2_5_1",
   "crates/sacm/tests/api_additions.rs::lib_api_013_every_crate_diagnostic_with_a_clause_names_its_specification",

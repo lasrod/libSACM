@@ -1405,11 +1405,27 @@ fn lib_api_013_a_batch_that_changes_nothing_net_is_empty() {
             Ok(())
         }),
     );
+    let created = outcome(
+        "only a CreateClaim",
+        edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+            tx.apply(CreateClaim::new("p", LangString::new("New")).with_id("new"))?;
+            Ok(())
+        }),
+    );
+    let deleted = outcome(
+        "only a DeleteElement of cq",
+        edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+            tx.apply(DeleteElement::new("cq"))?;
+            Ok(())
+        }),
+    );
     for (what, batch, mutations, is_empty) in [
         ("an empty closure", &empty, 0, true),
         ("SetName to the name held", &same, 1, true),
         ("a create and a delete of tmp", &came_and_went, 2, true),
         ("a real SetName", &real, 1, false),
+        ("only a CreateClaim", &created, 1, false),
+        ("only a DeleteElement of cq", &deleted, 1, false),
     ] {
         assert_eq!(
             batch.mutations().len(),
@@ -1533,7 +1549,43 @@ fn lib_api_013_a_value_error_names_the_value_s_position() {
          which XML 1.0 cannot represent",
         "{ROW}: the Display of a bad key value lang"
     );
+    assert_content_lang_error();
     assert_location_value_errors();
+}
+
+/// A bad lang of the second content value names position 1, in a tolerant
+/// write.
+fn assert_content_lang_error() {
+    let content: MultiLangString = [
+        LangString::new("a"),
+        LangString::new("b").with_lang("e\u{4}"),
+    ]
+    .into_iter()
+    .collect();
+    let doc = note_with(content);
+    let error = write_refusal(
+        "U+0004 in the lang of content value 1",
+        &doc,
+        Mode::Tolerant,
+    );
+    assert!(
+        matches!(
+            &error,
+            WriteError::UnrepresentableCharacter {
+                element,
+                attribute: WriteAttribute::ContentValueLang,
+                position: Some(1),
+                ..
+            } if element.as_str() == "n1"
+        ),
+        "{ROW}: the refusal of U+0004 in the lang of content value 1: {error:?}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "the element \"n1\" cannot be written: its content value's lang at index 1 holds \
+         U+0004, which XML 1.0 cannot represent",
+        "{ROW}: the Display of a bad content value lang"
+    );
 }
 
 /// A bad location value, content and lang, names its position.
