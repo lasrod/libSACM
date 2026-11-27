@@ -15,9 +15,10 @@
 //!
 //! [`validation::validate`](crate::validation::validate) and
 //! [`xmi::read`](crate::xmi::read) return diagnostics. A strict
-//! [`xmi::write`](crate::xmi::write) never runs `validate`: it refuses only output
-//! that would not be schema-valid, with the schema errors in
-//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
+//! [`xmi::write`](crate::xmi::write) never runs `validate`: it refuses output that
+//! would not be schema-valid, with the schema errors in
+//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid), and a document that holds
+//! preserved content.
 //! Every function that returns diagnostics returns them sorted by
 //! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds a
 //! diagnostic of severity [`Severity::Error`].

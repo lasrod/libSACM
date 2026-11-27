@@ -1,8 +1,8 @@
 ---
 slice: 0085
 name: docs-entry
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-DOC-009, LIB-DOC-006]
 mode: pr
 ---
@@ -43,3 +43,6 @@ root draft the maintainer chose in the blind pilot (Fable 5.2, scratchpad
   strict refuses"; "nothing dropped", though comments and processing instructions are not
   kept). Fix round: the verifier's texts, the stale strict-write sentence in diagnostic.rs,
   five test controls; the matrix banner moved back; two follow-ups.
+- 2026-11-27 verification: re-verify PASS on both rows (1bf2889); the verifier's last
+  diagnostic.rs wording applied after the PASS. Record `docs/verification/0085-docs-entry.md`.
+  Rows `verified`.

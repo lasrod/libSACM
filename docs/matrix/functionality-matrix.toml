@@ -1202,7 +1202,7 @@ title = "Docs claim only verified capability"
 requirement = "The crate root documentation, crate READMEs and repository README describe unbuilt capabilities as planned scope and link the functionality matrix for current status; nothing is stated in the present tense that the matrix does not show as verified."
 source = "Verification 0001 finding (present-tense claims in crates/sacm/src/lib.rs and README)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 notes = "Moved from M0 to M7 on 2026-11-09 (slice 0012): useful, not foundational."
 acceptance = [
   "The crate root and the three READMEs each link the functionality matrix for current status (a test checks the link).",
@@ -1217,6 +1217,7 @@ code = [
 tests = [
   "xtask/tests/docs_style.rs::lib_doc_006_the_crate_root_and_readmes_link_the_matrix",
 ]
+verification = "docs/verification/0085-docs-entry.md"
 
 # ===========================================================================
 # M1 — Minimal editable vertical slice
@@ -9216,7 +9217,7 @@ title = "Short, structured documentation"
 requirement = "A short style guide (docs/style.md) governs user-facing docs. Each item leads with its point, keeps the most important information first, uses lists and tables instead of long sentences, does not restate signatures, and links sparingly. Rustdoc has no diagrams; Markdown docs may use Mermaid. The `rust-library-craft` skill carries the rules, and the verifier checks them. The crate root, the three READMEs and docs/architecture.md follow it: the crate root gives an overview and a table of entry points, and the functionality matrix stays the full inventory. Module docs, item docs and the docs/sacm references follow in LIB-DOC-011 to LIB-DOC-013. Slice and verification records and accepted ADRs are history and stay as written."
 source = "The maintainer, 2026-11-26 (the crate root's \"What works today\" is a wall of text; a blind pilot chose the direct draft)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-001"]
 acceptance = [
   "docs/style.md states the rules in under a page, with one good and one bad example; the `rust-library-craft` skill summarises them and links it.",
@@ -9243,6 +9244,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_009_rustdoc_holds_no_diagram",
   "xtask/tests/docs_style.rs::lib_doc_009_the_skill_links_the_style_guide",
 ]
+verification = "docs/verification/0085-docs-entry.md"
 
 [[row]]
 id = "LIB-DOC-011"
