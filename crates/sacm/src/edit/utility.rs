@@ -11,17 +11,15 @@ use crate::model::{Document, ElementId, ElementKind, MultiLangString};
 /// Creates a `Description` (SACM 2.3 §8.9) as the last child of a
 /// `ModelElement`, in its `description` role, with a `content`.
 ///
-/// The content is a [`MultiLangString`], kept exactly as given: a
-/// [`LangString`](crate::model::LangString) converts into one with one value.
-/// The parent can be any `ModelElement`. A `UtilityElement` contains no
-/// elements, so it is never a parent: one as the parent is
-/// [`EditError::InvalidParent`]. Several descriptions
-/// are kept (D-DESC-MULT), and
-/// [`validation::validate`](crate::validation::validate) reports more than one
-/// as a SACM-MULT-001 Warning (SACM23-VAL-011). Apply it with
-/// [`edit::apply`](super::apply).
-/// Without [`with_id`](Self::with_id), the id is generated:
-/// `description_<n>`.
+/// - **Content.** A [`MultiLangString`], kept exactly as given: a
+///   [`LangString`](crate::model::LangString) converts into one with one value.
+/// - **Parent.** Any `ModelElement`. A `UtilityElement` contains no elements, so one as
+///   the parent is [`EditError::InvalidParent`].
+/// - **Several descriptions are kept** (D-DESC-MULT), and
+///   [`validation::validate`](crate::validation::validate) reports more than one as a
+///   SACM-MULT-001 Warning (SACM23-VAL-011).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `description_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -69,11 +67,11 @@ impl CreateDescription {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -114,19 +112,20 @@ impl CreateDescription {
     }
 }
 
-/// Creates an `ImplementationConstraint` (SACM 2.3 §8.8) as the last child
-/// of a `ModelElement`, in its `implementationConstraint` role, with a
-/// `content`.
+/// Creates an `ImplementationConstraint` (SACM 2.3 §8.8) as the last child of a
+/// `ModelElement`, in its `implementationConstraint` role, with a `content`.
 ///
-/// An implementation constraint is a condition an abstract element must meet
-/// before it can be made concrete. §8.6 says an element should have
-/// implementation constraints only if it is abstract, which
-/// [`SetFlag`](super::SetFlag) sets; a create does not check it, and a
-/// later validation rule (SACM23-VAL-021) will report the combination.
-///
-/// It follows the rules of [`CreateDescription`]. Without
-/// [`with_id`](Self::with_id), the id is generated:
-/// `implementation_constraint_<n>`.
+/// - **What it is.** A condition an abstract element must meet before it can be made
+///   concrete.
+/// - **Abstract elements only, by §8.6,** which says an element should have
+///   implementation constraints only if it is abstract; [`SetFlag`](super::SetFlag) sets
+///   that.
+/// - **Not checked here.** A create does not refuse the combination;
+///   [`validation::validate`](crate::validation::validate) reports it as a SACM-ABS-001
+///   Error (SACM23-VAL-021).
+/// - **Rules.** Those of [`CreateDescription`].
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `implementation_constraint_<n>`.
 ///
 /// # Examples
 ///
@@ -167,11 +166,11 @@ impl CreateImplementationConstraint {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -256,11 +255,11 @@ impl CreateNote {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -301,20 +300,19 @@ impl CreateNote {
     }
 }
 
-/// Creates a `TaggedValue` (SACM 2.3 §8.12), a key/value pair, as the last
-/// child of a `ModelElement`, in its `taggedValue` role, with a `key` and a
-/// `content`.
+/// Creates a `TaggedValue` (SACM 2.3 §8.12), a key/value pair, as the last child of a
+/// `ModelElement`, in its `taggedValue` role, with a `key` and a `content`.
 ///
-/// Both are [`MultiLangString`]s, kept exactly as given; a
-/// [`LangString`](crate::model::LangString) converts into one with one value,
-/// and a `&str` or `String` converts too. To set a tagged value by its key,
-/// creating it only when there is none, use
-/// [`SetTaggedValue`](super::SetTaggedValue).
-/// The tagged value's value is its `content` (§8.7). In XMI, a `<value>`
-/// element is one `LangString` inside `key` or `content` (§8.5), not the
-/// tagged value's value. `TaggedValue`s with equal keys are all kept. It
-/// otherwise follows the rules of [`CreateDescription`]. Without
-/// [`with_id`](Self::with_id), the id is generated: `tagged_value_<n>`.
+/// - **`key` and `content`** are [`MultiLangString`]s, kept exactly as given. A
+///   [`LangString`](crate::model::LangString) converts into one with one value, and a
+///   `&str` or `String` converts too.
+/// - **Its value is its `content`** (§8.7). In XMI, a `<value>` element is one
+///   `LangString` inside `key` or `content` (§8.5), not the tagged value's value.
+/// - **Equal keys.** `TaggedValue`s with equal keys are all kept. To set a tagged value
+///   by its key, creating it only when there is none, use
+///   [`SetTaggedValue`](super::SetTaggedValue).
+/// - **Rules.** Otherwise those of [`CreateDescription`].
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `tagged_value_<n>`.
 ///
 /// # Examples
 ///
@@ -366,11 +364,11 @@ impl CreateTaggedValue {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {

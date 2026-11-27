@@ -22,17 +22,19 @@ use super::plan::{Features, NewElement, Plan};
 use super::references::{check_targets, expression_ids};
 use crate::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, StringAttribute};
 
-/// Creates a `TerminologyPackage` (SACM 2.3 §10.4): a root, or a child of an
-/// element whose class can hold one, an `AssuranceCasePackage` (its
-/// `terminologyPackage` role), another `TerminologyPackage` (its
-/// `terminologyElement` role, "`TerminologyPackages` can be nested") or an
-/// `ArtifactPackage` (its `artifactElement` role).
+/// Creates a `TerminologyPackage` (SACM 2.3 §10.4): a root, or a child of an element
+/// whose class can hold one.
 ///
-/// "The TerminologyPackage is the container element for SACM terminology
-/// assets" (§10.4): Categories, Terms, Expressions, `TerminologyGroups` and
-/// nested `TerminologyPackages`. It is the Terminology unit of interchange
-/// (§2.5). Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `terminology_package_<n>`.
+/// - **Parents.** An `AssuranceCasePackage` (its `terminologyPackage` role), another
+///   `TerminologyPackage` (its `terminologyElement` role, "`TerminologyPackages` can be
+///   nested") or an `ArtifactPackage` (its `artifactElement` role).
+/// - **What it is.** "The TerminologyPackage is the container element for SACM
+///   terminology assets" (§10.4): Categories, Terms, Expressions, `TerminologyGroups`
+///   and nested `TerminologyPackages`.
+/// - **Unit of interchange.** It is the Terminology one (§2.5).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `terminology_package_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -90,11 +92,11 @@ impl CreateTerminologyPackage {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -142,19 +144,23 @@ impl From<CreateTerminologyPackage> for super::Operation {
 
 interface_operation! {
     /// Creates a `TerminologyPackageInterface` (SACM 2.3 §10.5) declaring the
-    /// TerminologyPackage `implements` names: a root, or a child of an
-    /// AssuranceCasePackage, a TerminologyPackage or an ArtifactPackage (or
-    /// one of their interfaces and bindings). The package's `interface` end
-    /// is not changed (ADR 0039).
+    /// TerminologyPackage that `implements` names.
     ///
-    /// `implements` is required (`implements:TerminologyPackage[1]`). After
-    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
-    /// XML white space is [`EditError::InvalidReference`], one that names no
-    /// element is [`EditError::ReferenceNotFound`], and one that names an
-    /// element of no TerminologyPackage kind is
-    /// [`EditError::WrongReferenceType`] (SACM-REF-002). Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `terminology_package_interface_<n>`.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage, a TerminologyPackage
+    ///   or an ArtifactPackage (or one of their interfaces and bindings).
+    /// - **`implements` is required** (`implements:TerminologyPackage[1]`). The
+    ///   package's `interface` end is not changed (ADR 0039).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `terminology_package_interface_<n>`.
+    ///
+    /// After [ADR 0019]'s four checks and the name's expression, the `implements` id is
+    /// checked in this order:
+    ///
+    /// | The id | Refusal |
+    /// |---|---|
+    /// | holds XML white space | [`EditError::InvalidReference`] |
+    /// | names no element | [`EditError::ReferenceNotFound`] |
+    /// | names an element of no TerminologyPackage kind | [`EditError::WrongReferenceType`] (SACM-REF-002) |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
     ///
@@ -181,43 +187,70 @@ interface_operation! {
 }
 
 binding_operation! {
-    /// Creates a `TerminologyPackageBinding` (SACM 2.3 §10.6;
-    /// `participantPackage:TerminologyPackage[2..*]` in ptc/22-03-13) binding
-    /// the packages `participant_packages` names, each of a
-    /// `TerminologyPackage` kind: a root, or a child of an
-    /// AssuranceCasePackage, a TerminologyPackage or an ArtifactPackage (or
-    /// one of their interfaces and bindings).
+    /// Creates a `TerminologyPackageBinding` (SACM 2.3 §10.6) binding the packages that
+    /// `participant_packages` names, each of a `TerminologyPackage` kind.
     ///
-    /// After [ADR 0019]'s four checks, fewer than two distinct ids is
-    /// [`EditError::TooFewReferences`] (ADR 0039 D3); then the name's
-    /// expression; then an id that holds XML white space is
-    /// [`EditError::InvalidReference`], one that names no element
-    /// [`EditError::ReferenceNotFound`], and one that names an element of no
-    /// TerminologyPackage kind [`EditError::WrongReferenceType`], each over
-    /// the ids in order. Without [`with_id`](Self::with_id), the id is
-    /// generated: `terminology_package_binding_<n>`. See
-    /// [`CreateTerminologyPackageInterface`] for an example.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage, a TerminologyPackage
+    ///   or an ArtifactPackage (or one of their interfaces and bindings).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `terminology_package_binding_<n>`.
+    /// - **With interfaces.** [`CreateTerminologyPackageInterface`] shows a binding of
+    ///   two interfaces.
+    ///
+    /// After [ADR 0019]'s four checks, the participants
+    /// (`participantPackage:TerminologyPackage[2..*]` in ptc/22-03-13) are checked in this
+    /// order, each check over the ids in order:
+    ///
+    /// | Check | Refusal |
+    /// |---|---|
+    /// | fewer than two distinct ids | [`EditError::TooFewReferences`] (ADR 0039 D3) |
+    /// | then the name's expression | as [`apply`](super::apply#creates) lists |
+    /// | an id holds XML white space | [`EditError::InvalidReference`] |
+    /// | an id names no element | [`EditError::ReferenceNotFound`] |
+    /// | an id names an element of no TerminologyPackage kind | [`EditError::WrongReferenceType`] |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateTerminologyPackage, CreateTerminologyPackageBinding};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateTerminologyPackage::root("Hazard terms").with_id("hazard"))?;
+    /// edit::apply(&mut doc, CreateTerminologyPackage::root("Design terms").with_id("design"))?;
+    ///
+    /// let binding = CreateTerminologyPackageBinding::root("Shared terms", ["hazard", "design"]);
+    /// let created = edit::apply(&mut doc, binding)?;
+    /// assert_eq!(created.created_ids()[0].as_str(), "terminology_package_binding_1");
+    /// let bound = doc.get("terminology_package_binding_1").map(|b| b.participant_packages().len());
+    /// assert_eq!(bound, Some(2));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
     CreateTerminologyPackageBinding, TerminologyPackageBinding, "TerminologyPackage"
 }
 
-/// Creates a `Category` (SACM 2.3 §10.8) as the last child of an element
-/// whose class can hold one: a `TerminologyPackage` or an `ArtifactPackage`.
-/// A Category is never a root.
+/// Creates a `Category` (SACM 2.3 §10.8) as the last child of a `TerminologyPackage` or
+/// an `ArtifactPackage`. A Category is never a root.
 ///
-/// "The Category class describes categories of `ExpressionElements` (Terms and
-/// Expressions) and can be used to group these elements within
-/// `TerminologyPackages`" (§10.8). With
-/// [`with_categories`](Self::with_categories) it holds the ids of its own
-/// `category` end, held as written: formal/23-05-08 does not say which way a
-/// Category's `category` points (spec defect D21). Apply it with
-/// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, an id that
-/// holds XML white space is [`EditError::InvalidReference`], then one that
-/// names no element is [`EditError::ReferenceNotFound`], then one that names
-/// no Category is [`EditError::WrongReferenceType`]; each check runs over
-/// every id in order before the next. Without [`with_id`](Self::with_id), the
-/// id is generated: `category_<n>`.
+/// - **What it is.** "The Category class describes categories of `ExpressionElements`
+///   (Terms and Expressions) and can be used to group these elements within
+///   `TerminologyPackages`" (§10.8).
+/// - **Its own `category` end.** With [`with_categories`](Self::with_categories) it
+///   holds those ids, as written: formal/23-05-08 does not say which way a Category's
+///   `category` points (spec defect D21).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `category_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// After [ADR 0019]'s four checks, the ids are checked in this order, each check over
+/// every id in order before the next:
+///
+/// | An id | Refusal |
+/// |---|---|
+/// | holds XML white space | [`EditError::InvalidReference`] |
+/// | names no element | [`EditError::ReferenceNotFound`] |
+/// | names no Category | [`EditError::WrongReferenceType`] |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -264,11 +297,11 @@ impl CreateCategory {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -277,9 +310,10 @@ impl CreateCategory {
         }
     }
 
-    /// Gives the new Category the `category` ids `ids`, in the order given,
-    /// repeats included, replacing any given before. Each must name a
-    /// Category of the document.
+    /// Gives the new Category the `category` ids `ids`, in the order given, repeats
+    /// included, replacing any given before.
+    ///
+    /// Each must name a Category of the document.
     #[must_use]
     pub fn with_categories(self, ids: impl IntoIterator<Item = impl Into<ElementId>>) -> Self {
         Self {
@@ -334,24 +368,31 @@ impl From<CreateCategory> for super::Operation {
     }
 }
 
-/// Creates a `Term` (SACM 2.3 §10.11) as the last child of an element whose
-/// class can hold one: a `TerminologyPackage` or an `ArtifactPackage`. A Term
-/// is never a root.
+/// Creates a `Term` (SACM 2.3 §10.11) as the last child of a `TerminologyPackage` or an
+/// `ArtifactPackage`. A Term is never a root.
 ///
-/// "Term is used to model both abstract and concrete terms in SACM"
-/// (§10.11). It takes its `value` (§10.9 `value:String[1]`, required) when it
-/// is created, held exactly as given. With
-/// [`with_categories`](Self::with_categories) it names the Categories it
-/// belongs to, with [`with_origin`](Self::with_origin) the `ModelElement` it
-/// originates from (`origin:Base::ModelElement[0..1]`), and with
-/// [`with_external_reference`](Self::with_external_reference) its
-/// `externalReference` (`String[0..1]`, such as a URI). Apply it with
-/// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, an id that
-/// holds XML white space is [`EditError::InvalidReference`], then one that
-/// names no element is [`EditError::ReferenceNotFound`], then one of the
-/// wrong kind is [`EditError::WrongReferenceType`]; each check runs over the
-/// `category` ids, then the `origin`, before the next. Without
-/// [`with_id`](Self::with_id), the id is generated: `term_<n>`.
+/// - **What it is.** "Term is used to model both abstract and concrete terms in SACM"
+///   (§10.11).
+/// - **`value`** (§10.9 `value:String[1]`, required) is taken when it is created, and
+///   held exactly as given.
+///
+/// | With | It names |
+/// |---|---|
+/// | [`with_categories`](Self::with_categories) | the Categories it belongs to |
+/// | [`with_origin`](Self::with_origin) | the `ModelElement` it originates from (`origin:Base::ModelElement[0..1]`) |
+/// | [`with_external_reference`](Self::with_external_reference) | its `externalReference` (`String[0..1]`, such as a URI) |
+///
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `term_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// After [ADR 0019]'s four checks, the ids are checked in this order, each check over
+/// the `category` ids, then the `origin`, before the next:
+///
+/// | An id | Refusal |
+/// |---|---|
+/// | holds XML white space | [`EditError::InvalidReference`] |
+/// | names no element | [`EditError::ReferenceNotFound`] |
+/// | names an element of the wrong kind | [`EditError::WrongReferenceType`] |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -415,11 +456,11 @@ impl CreateTerm {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -428,9 +469,10 @@ impl CreateTerm {
         }
     }
 
-    /// Gives the new Term the Categories `ids` it belongs to, in the order
-    /// given, repeats included, replacing any given before. Each must name a
-    /// Category of the document.
+    /// Gives the new Term the Categories `ids` it belongs to, in the order given,
+    /// repeats included, replacing any given before.
+    ///
+    /// Each must name a Category of the document.
     #[must_use]
     pub fn with_categories(self, ids: impl IntoIterator<Item = impl Into<ElementId>>) -> Self {
         Self {
@@ -439,9 +481,9 @@ impl CreateTerm {
         }
     }
 
-    /// Gives the new Term the origin `id`, replacing any given before. It
-    /// must name a `ModelElement` of the document (any element but a
-    /// `UtilityElement`).
+    /// Gives the new Term the origin `id`, replacing any given before.
+    ///
+    /// It must name a `ModelElement` of the document (any element but a `UtilityElement`).
     #[must_use]
     pub fn with_origin(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -534,21 +576,24 @@ impl From<CreateTerm> for super::Operation {
     }
 }
 
-/// Creates an `Expression` (SACM 2.3 §10.10) as the last child of an
-/// element whose class can hold one: a `TerminologyPackage` or an
-/// `ArtifactPackage`. An Expression is never a root.
+/// Creates an `Expression` (SACM 2.3 §10.10) as the last child of a `TerminologyPackage`
+/// or an `ArtifactPackage`. An Expression is never a root.
 ///
-/// "The Expression class is used to model both abstract and concrete phrases
-/// in SACM" (§10.10). It takes its `value` (§10.9 `value:String[1]`,
-/// required) when it is created, held exactly as given. With
-/// [`with_expression_elements`](Self::with_expression_elements) it names the
-/// `ExpressionElements` it is formed from (`element:ExpressionElement[0..*]`),
-/// and with [`with_categories`](Self::with_categories) the Categories it
-/// belongs to. Nothing checks that the value names its elements
-/// (D-EXPR-NAMES). Apply it with [`edit::apply`](super::apply); the reference
-/// checks run as for [`CreateTerm`], over the `category` ids, then the
-/// `element` ids. Without [`with_id`](Self::with_id), the id is generated:
-/// `expression_<n>`.
+/// - **What it is.** "The Expression class is used to model both abstract and concrete
+///   phrases in SACM" (§10.10).
+/// - **`value`** (§10.9 `value:String[1]`, required) is taken when it is created, and
+///   held exactly as given.
+/// - **Its elements.** With [`with_expression_elements`](Self::with_expression_elements)
+///   it names the `ExpressionElements` it is formed from
+///   (`element:ExpressionElement[0..*]`).
+/// - **Its categories.** With [`with_categories`](Self::with_categories) it names the
+///   Categories it belongs to.
+/// - **The value is not parsed.** Nothing checks that it names its elements
+///   (D-EXPR-NAMES).
+/// - **Checks.** The reference checks run as for [`CreateTerm`], over the `category`
+///   ids, then the `element` ids.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `expression_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -605,11 +650,11 @@ impl CreateExpression {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -618,9 +663,10 @@ impl CreateExpression {
         }
     }
 
-    /// Gives the new Expression the Categories `ids` it belongs to, in the
-    /// order given, repeats included, replacing any given before. Each must
-    /// name a Category of the document.
+    /// Gives the new Expression the Categories `ids` it belongs to, in the order given,
+    /// repeats included, replacing any given before.
+    ///
+    /// Each must name a Category of the document.
     #[must_use]
     pub fn with_categories(self, ids: impl IntoIterator<Item = impl Into<ElementId>>) -> Self {
         Self {
@@ -629,10 +675,10 @@ impl CreateExpression {
         }
     }
 
-    /// Gives the new Expression the `ExpressionElements` `ids` it is formed
-    /// from, its `element` ids, in the order given, repeats included,
-    /// replacing any given before. Each must name a Term or an Expression of
-    /// the document.
+    /// Gives the new Expression the `ExpressionElements` `ids` it is formed from, its
+    /// `element` ids, in the order given, repeats included, replacing any given before.
+    ///
+    /// Each must name a Term or an Expression of the document.
     #[doc(alias = "element")]
     #[must_use]
     pub fn with_expression_elements(
@@ -677,9 +723,8 @@ impl CreateExpression {
         &self.categories
     }
 
-    /// The ids given with
-    /// [`with_expression_elements`](Self::with_expression_elements), in the
-    /// order given: empty unless given.
+    /// The ids given with [`with_expression_elements`](Self::with_expression_elements),
+    /// in the order given: empty unless given.
     #[doc(alias = "element")]
     #[must_use]
     pub fn expression_elements(&self) -> &[ElementId] {
@@ -709,21 +754,22 @@ impl From<CreateExpression> for super::Operation {
     }
 }
 
-/// Creates a `TerminologyGroup` (SACM 2.3 §10.3) as the last child of an
-/// element whose class can hold one: a `TerminologyPackage` or an
-/// `ArtifactPackage`. A `TerminologyGroup` is never a root.
+/// Creates a `TerminologyGroup` (SACM 2.3 §10.3) as the last child of a
+/// `TerminologyPackage` or an `ArtifactPackage`. A `TerminologyGroup` is never a root.
 ///
-/// A `TerminologyGroup` organises "a collection of `TerminologyElements`"
-/// (§10.3), its [`group_members`](crate::model::SacmElement::group_members)
-/// (`terminologyElement:TerminologyElement[0..*]`). The members are
-/// references, not children: "`TerminologyGroups` serve no structural purpose"
-/// (§10.3). In XMI the end is named `terminologyElement`, like the composite
-/// role of a `TerminologyPackage`; it is
-/// [`ReferenceEnd::TerminologyGroupMember`](crate::model::ReferenceEnd::TerminologyGroupMember).
-/// With [`with_group_members`](Self::with_group_members) it names its
-/// members; each must name a `TerminologyElement`, checked as for
-/// [`CreateCategory`]. Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `terminology_group_<n>`.
+/// - **What it is.** It organises "a collection of `TerminologyElements`" (§10.3), its
+///   [`group_members`](crate::model::SacmElement::group_members)
+///   (`terminologyElement:TerminologyElement[0..*]`).
+/// - **Members are references, not children:** "`TerminologyGroups` serve no structural
+///   purpose" (§10.3).
+/// - **The end's name.** In XMI it is `terminologyElement`, like the composite role of a
+///   `TerminologyPackage`; it is
+///   [`ReferenceEnd::TerminologyGroupMember`](crate::model::ReferenceEnd::TerminologyGroupMember).
+/// - **Its members.** With [`with_group_members`](Self::with_group_members) it names
+///   them. Each must name a `TerminologyElement`, checked as for [`CreateCategory`].
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `terminology_group_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -770,11 +816,11 @@ impl CreateTerminologyGroup {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -783,8 +829,9 @@ impl CreateTerminologyGroup {
         }
     }
 
-    /// Gives the new group the members `ids`, its `terminologyElement` ids,
-    /// in the order given, repeats included, replacing any given before.
+    /// Gives the new group the members `ids`, its `terminologyElement` ids, in the order
+    /// given, repeats included, replacing any given before.
+    ///
     /// Each must name a `TerminologyElement` of the document.
     #[doc(alias = "terminologyElement")]
     #[must_use]

@@ -11,27 +11,38 @@ use super::plan::{Plan, Value};
 use super::set::{changing, edited};
 use crate::model::{Document, ElementId, ElementKind, Href, LangString, ReferenceEnd, SacmElement};
 
-/// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
-/// §11.2, §11.9, §11.10, §11.12, §11.13), in the order given, repeats
-/// included; [`clear`](Self::clear) empties the end. The end then holds
-/// exactly these ids and the cross-document references given with
-/// [`with_hrefs`](Self::with_hrefs), none unless some are given
-/// ([`SacmElement::hrefs`](crate::model::SacmElement::hrefs); ADR 0040 D7,
-/// amendment 1).
+/// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2, §11.2, §11.9,
+/// §11.10, §11.12, §11.13), in the order given, repeats included.
 ///
-/// The ids must fit the end's bounds: `source` needs at least one, `target`
-/// and an interface's `implements` exactly one, a binding's
-/// `participantPackage` at least two distinct ids (ADR 0039 D3), and the
-/// other single-valued ends (`citedElement`, `abstractForm`, `reasoning`,
-/// `structure`, `origin`) hold at most one. An href counts as a value
-/// beside the ids: a lower bound counts the distinct ids plus the distinct
-/// hrefs, and an upper bound every value (ADR 0040 D5). Every id the
-/// end does not already hold must name an element of the document, of a
-/// kind its end admits, so an edit never makes a dangling or wrongly typed
-/// reference; an id the end holds is kept as it is, even if it is dangling
-/// or wrongly typed, so that the end can be repaired one id at a time (ADR
-/// 0029). Apply it with [`edit::apply`](super::apply). It refuses, in
-/// order:
+/// - **Exactly these.** The end then holds these ids and the cross-document references
+///   given with [`with_hrefs`](Self::with_hrefs), none unless some are given
+///   ([`SacmElement::hrefs`](crate::model::SacmElement::hrefs); ADR 0040 D7, amendment 1).
+/// - **[`clear`](Self::clear)** empties the end.
+/// - **Only new ids are checked.** Every id the end does not already hold must name an
+///   element of the document, of a kind its end admits. So an edit never makes a
+///   dangling or wrongly typed reference.
+/// - **A held id is kept as it is,** even if it is dangling or wrongly typed, so that
+///   the end can be repaired one id at a time (ADR 0029).
+/// - **Narrower rules are content.** §11.15, §11.17 and §11.18 ask that the ends of some
+///   relationships be `ArtifactReference`s. They are not refused, and
+///   [`validation::validate`](crate::validation::validate) reports them.
+/// - **The element** is in [`changed_ids`](super::Mutation::changed_ids) when the end
+///   changes; the referenced elements are not.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// The values must fit the end's bounds:
+///
+/// | End | Holds |
+/// |---|---|
+/// | `source` | at least one |
+/// | `target`, an interface's `implements` | exactly one |
+/// | a binding's `participantPackage` | at least two distinct ids (ADR 0039 D3) |
+/// | the other single-valued ends: `citedElement`, `abstractForm`, `reasoning`, `structure`, `origin` | at most one |
+///
+/// An href counts as a value beside the ids: a lower bound counts the distinct ids plus
+/// the distinct hrefs, and an upper bound every value (ADR 0040 D5).
+///
+/// It refuses, in order:
 /// 1. an unknown element, as [`EditError::ElementNotFound`];
 /// 2. the derived [`ReferenceEnd::Expression`], whose ids the element's
 ///    name and texts hold, as [`EditError::DerivedEnd`] (SACM23-BASE-009);
@@ -40,22 +51,18 @@ use crate::model::{Document, ElementId, ElementKind, Href, LangString, Reference
 /// 4. fewer values than the end needs, as [`EditError::TooFewReferences`];
 /// 5. more values than it allows, as [`EditError::TooManyReferences`];
 /// 6. then, over the ids the end does not hold, an id holding XML white
-///    space ([`EditError::InvalidReference`]), then one that names no
-///    element ([`EditError::ReferenceNotFound`]), then one of a kind the end
-///    does not admit ([`EditError::WrongReferenceType`]), each in list
-///    order.
+///    space ([`EditError::InvalidReference`]);
+/// 7. then one that names no element ([`EditError::ReferenceNotFound`]);
+/// 8. then one of a kind the end does not admit
+///    ([`EditError::WrongReferenceType`]), each in list order.
 ///
-/// The narrower rules of §11.15, §11.17 and §11.18, that the ends of some
-/// relationships be `ArtifactReference`s, are content: they are not refused,
-/// and [`validation::validate`](crate::validation::validate) reports them.
-/// The element is in [`changed_ids`](super::Mutation::changed_ids) when the
-/// end changes; the referenced elements are not.
+/// A preserved attribute of the end's name is replaced:
 ///
-/// An end set to one or more ids replaces an attribute of the end's name
-/// that the element holds as preserved content, such as a `metaClaim=""`
-/// read from a file, which held no id (ADR 0033): the edit is the repair, so
-/// the element is then changed even if the end held those ids already.
-/// [`AddReference`] does the same.
+/// - **Which.** One the element holds as preserved content, such as a `metaClaim=""`
+///   read from a file, which held no id (ADR 0033).
+/// - **When.** The end is set to one or more ids. [`AddReference`] does the same.
+/// - **The edit is the repair,** so the element is then changed even if the end held
+///   those ids already.
 ///
 /// # Examples
 ///
@@ -234,15 +241,16 @@ impl SetReferences {
         }
     }
 
-    /// These references with `hrefs` as the end's cross-document
-    /// references, in order, repeats included, replacing any given before
-    /// (LIB-EDIT-020; ADR 0040 amendment 1).
+    /// These references with `hrefs` as the end's cross-document references, in order,
+    /// repeats included, replacing any given before (LIB-EDIT-020; ADR 0040 amendment 1).
     ///
-    /// The end then holds the ids and these hrefs, and nothing else. Its
-    /// bounds count both: a lower bound the distinct ids plus the distinct
-    /// hrefs, an upper bound every value. An href is never checked: the
-    /// element it names need not exist, and its type is not compared with
-    /// the end's.
+    /// - **Exactly these.** The end then holds the ids and these hrefs, and nothing else.
+    /// - **Bounds count both:** a lower bound the distinct ids plus the distinct hrefs,
+    ///   an upper bound every value.
+    /// - **An href is never checked.** The element it names need not exist, and its type
+    ///   is not compared with the end's.
+    ///
+    /// # Examples
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackageBinding, CreateArgumentPackageInterface,
@@ -324,19 +332,22 @@ impl SetReferences {
 
 /// Appends one id to a reference end of an element.
 ///
-/// It follows the rules of [`SetReferences`] for the end with the id added:
-/// it refuses an unknown element ([`EditError::ElementNotFound`]), the
-/// derived `expression` ([`EditError::DerivedEnd`]), a kind that does not
-/// own the end ([`EditError::FeatureNotApplicable`]), an end
-/// that would hold fewer distinct ids than it needs, such as a binding read
-/// with one participant that is given it again
-/// ([`EditError::TooFewReferences`]; give it two with [`SetReferences`]), or
-/// more ids than it allows, such as a second `target`
-/// ([`EditError::TooManyReferences`]), and then an id the end does not hold
-/// already that holds white space, names no element or names an element of
-/// a kind the end does not admit. An id the end holds is appended again,
-/// and [`validation::validate`](crate::validation::validate) warns about the
-/// repeat (SACM23-VAL-022). Apply it with [`edit::apply`](super::apply).
+/// - **Rules.** Those of [`SetReferences`], for the end with the id added.
+/// - **A held id is appended again,** and
+///   [`validation::validate`](crate::validation::validate) warns about the repeat
+///   (SACM23-VAL-022).
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// It refuses, in order:
+///
+/// | Refused | Refusal |
+/// |---|---|
+/// | an unknown element | [`EditError::ElementNotFound`] |
+/// | the derived `expression` | [`EditError::DerivedEnd`] |
+/// | a kind that does not own the end | [`EditError::FeatureNotApplicable`] |
+/// | an end that would hold fewer distinct ids than it needs, such as a binding read with one participant that is given it again (give it two with [`SetReferences`]) | [`EditError::TooFewReferences`] |
+/// | an end that would hold more ids than it allows, such as a second `target` | [`EditError::TooManyReferences`] |
+/// | an id the end does not hold already that holds white space, names no element or names an element of a kind the end does not admit | as [`SetReferences`] refuses it |
 ///
 /// # Examples
 ///
@@ -361,11 +372,13 @@ impl SetReferences {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 ///
-/// [`AddReference::new_href`] appends a cross-document reference instead
-/// (LIB-EDIT-020; ADR 0040 amendment 1): the same first three refusals, then
-/// the end's bounds over its ids and its hrefs with the new one. An href is
-/// never checked, so it may name nothing, and one the end holds is appended
-/// again.
+/// [`AddReference::new_href`] appends a cross-document reference instead (LIB-EDIT-020;
+/// ADR 0040 amendment 1):
+///
+/// - **Refusals.** The same first three, then the end's bounds over its ids and its
+///   hrefs with the new one.
+/// - **Never checked.** An href may name nothing, and one the end holds is appended
+///   again.
 ///
 /// ```
 /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim};
@@ -424,9 +437,8 @@ impl AddReference {
         }
     }
 
-    /// Appends the cross-document reference `href` to the end `end` of
-    /// `element`, after the hrefs the end holds (LIB-EDIT-020; ADR 0040
-    /// amendment 1).
+    /// Appends the cross-document reference `href` to the end `end` of `element`, after
+    /// the hrefs the end holds (LIB-EDIT-020; ADR 0040 amendment 1).
     #[must_use]
     pub fn new_href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
         Self {
@@ -493,20 +505,23 @@ impl AddReference {
 
 /// Removes every occurrence of one id from a reference end of an element.
 ///
-/// It refuses, in order: an unknown element
-/// ([`EditError::ElementNotFound`]), the derived `expression`
-/// ([`EditError::DerivedEnd`]), a kind that does not own the end
-/// ([`EditError::FeatureNotApplicable`]), an id the end does not hold
-/// ([`EditError::ReferenceNotHeld`]), and an end that would hold fewer ids
-/// than it needs, such as an asserted relationship's last source or its
-/// target ([`EditError::TooFewReferences`]). The id need not name an
-/// element: removing a dangling id is how a file's dangling reference is
-/// repaired, and once no reference holds it, an edit may generate it as a
-/// new element's id. Apply it with [`edit::apply`](super::apply).
+/// - **The id need not name an element.** Removing a dangling id is how a file's
+///   dangling reference is repaired. Once no reference holds it, an edit may generate it
+///   as a new element's id.
+/// - **A preserved attribute of the end's name,** which held no id (ADR 0033), is
+///   replaced by a removal that leaves the end holding one or more ids, as by
+///   [`SetReferences`] and [`AddReference`].
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
-/// Like [`SetReferences`] and [`AddReference`], a removal that leaves the
-/// end holding one or more ids replaces an attribute of the end's name that
-/// the element holds as preserved content, which held no id (ADR 0033).
+/// It refuses, in order:
+///
+/// | Refused | Refusal |
+/// |---|---|
+/// | an unknown element | [`EditError::ElementNotFound`] |
+/// | the derived `expression` | [`EditError::DerivedEnd`] |
+/// | a kind that does not own the end | [`EditError::FeatureNotApplicable`] |
+/// | an id the end does not hold | [`EditError::ReferenceNotHeld`] |
+/// | an end that would hold fewer ids than it needs, such as an asserted relationship's last source or its target | [`EditError::TooFewReferences`] |
 ///
 /// # Examples
 ///
@@ -531,11 +546,10 @@ impl AddReference {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
-/// [`RemoveReference::new_href`] removes every occurrence of a
-/// cross-document reference instead (LIB-EDIT-020; ADR 0040 amendment 1):
-/// the same first three refusals, then an href the end does not hold
-/// ([`EditError::HrefNotHeld`]; hrefs are compared as strings), then the
-/// end's bounds over what is left.
+/// [`RemoveReference::new_href`] removes every occurrence of a cross-document reference
+/// instead (LIB-EDIT-020; ADR 0040 amendment 1). It refuses the same first three, then
+/// an href the end does not hold ([`EditError::HrefNotHeld`]; hrefs are compared as
+/// strings), then the end's bounds over what is left.
 ///
 /// ```
 /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim, RemoveReference};

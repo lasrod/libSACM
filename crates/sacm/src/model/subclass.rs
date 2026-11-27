@@ -11,6 +11,8 @@
 /// - **Preserved content.** A tolerant write writes it back as the element's `xmi:type`, and
 ///   a strict write refuses the element.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::model::ElementKind;
 /// use sacm::xmi::{self, Mode, ReadOptions};

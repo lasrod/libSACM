@@ -10,27 +10,32 @@ use crate::model::{Document, ElementId, SacmElement};
 /// Reorders some of the direct children of an element, or some of the
 /// document's roots.
 ///
-/// SACM marks no composition as ordered, but a document keeps the order its
-/// elements were added or read in (D-ORDER), and [`xmi::write`](crate::xmi::write)
-/// writes it. `order` names the elements to move, in their new order: they
-/// go back into the positions they occupy now, and every other child keeps
-/// its position. So `["d", "b"]` under a parent with the children `a b c d`
-/// gives `a d c b`. The children are those of every role: a Note can be
-/// moved before a Claim. Nothing else changes: not the parents, roles, ids
-/// or the ids generated next.
+/// - **Why order.** SACM marks no composition as ordered, but a document keeps the order
+///   its elements were added or read in (D-ORDER), and [`xmi::write`](crate::xmi::write)
+///   writes it.
+/// - **`order`** names the elements to move, in their new order. They go back into the
+///   positions they occupy now, and every other child keeps its position. So
+///   `["d", "b"]` under a parent with the children `a b c d` gives `a d c b`.
+/// - **Every role.** The children are those of every role: a Note can be moved before a
+///   Claim.
+/// - **Nothing else changes:** not the parents, roles, ids or the ids generated next.
+/// - **Forms.** [`new`](Self::new) reorders the children of `parent`, and
+///   [`roots`](Self::roots) the roots. Apply it with [`edit::apply`](super::apply).
 ///
-/// [`new`](Self::new) reorders the children of `parent`, and
-/// [`roots`](Self::roots) the roots. Apply it with
-/// [`edit::apply`](super::apply). It refuses, in order:
+/// What the [`Mutation`](super::Mutation) lists:
+///
+/// - **The parent** is in [`changed_ids`](super::Mutation::changed_ids) when the order of
+///   its children changes.
+/// - **A root reorder lists no id.** The order of the roots belongs to the document, not
+///   to an element, so [`Mutation::is_empty`](super::Mutation::is_empty) is true even
+///   when the roots moved.
+///
+/// It refuses, in order:
 /// 1. an unknown parent, as [`EditError::ElementNotFound`];
 /// 2. an empty `order`, as [`EditError::InvalidOrder`];
 /// 3. then, id by id in list order, an id that is no direct child of the
 ///    parent (or no root) as [`EditError::ChildNotFound`], and an id named
 ///    before as [`EditError::InvalidOrder`].
-///
-/// The parent is in [`changed_ids`](super::Mutation::changed_ids) when the
-/// order of its children changes. A root reorder reports no id: the order
-/// of the roots belongs to the document, not to an element.
 ///
 /// # Examples
 ///

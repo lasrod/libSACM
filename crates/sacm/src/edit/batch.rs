@@ -11,11 +11,12 @@ use crate::model::{Document, ElementId, SacmElement};
 /// The operations of one [`batch`](super::batch), applied so far to a
 /// private copy of the document.
 ///
-/// [`apply`](Self::apply) applies one operation and answers as
-/// [`edit::apply`](super::apply) would on the state so far, so a later
-/// operation can use an id an earlier one generated.
-/// [`document`](Self::document) shows that state. The batch commits when the
-/// closure returns `Ok`, and otherwise the document is as it was.
+/// - **[`apply`](Self::apply)** applies one operation and answers as
+///   [`edit::apply`](super::apply) would on the state so far. So a later operation can
+///   use an id an earlier one generated.
+/// - **[`document`](Self::document)** shows that state.
+/// - **Commit.** The batch commits when the closure returns `Ok`, and otherwise the
+///   document is as it was.
 ///
 /// # Examples
 ///
@@ -52,16 +53,43 @@ impl Batch<'_> {
     /// Applies `operation` to the state so far, or refuses it and changes
     /// nothing, as [`edit::apply`](super::apply) does.
     ///
-    /// A refusal the closure ignores changed nothing, so the batch still
-    /// commits the other operations (ADR 0032). Pass it on with `?` to roll
-    /// the whole batch back; the closure's error type then needs
-    /// `From<BatchError>`.
+    /// - **An ignored refusal** changed nothing, so the batch still commits the other
+    ///   operations (ADR 0032).
+    /// - **Pass it on with `?`** to roll the whole batch back. The closure's error type
+    ///   then needs `From<BatchError>`.
     ///
     /// # Errors
     ///
-    /// A [`BatchError`] holding the refusal [`edit::apply`](super::apply)
-    /// would give, with the number of earlier `apply` calls of the batch as
-    /// its [`index`](BatchError::index), and the operation.
+    /// A [`BatchError`] holding the refusal [`edit::apply`](super::apply) would give, with
+    /// the number of earlier `apply` calls of the batch as its
+    /// [`index`](BatchError::index), and the operation.
+    ///
+    /// # Examples
+    ///
+    /// A later operation uses the id an earlier one generated, and a refusal names its
+    /// call:
+    ///
+    /// ```
+    /// use sacm::edit::{self, BatchError, CreateArgumentPackage, CreateClaim, EditError};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+    ///     let package = tx.apply(CreateArgumentPackage::root("Arguments"))?;
+    ///     let package = package.created_ids()[0].clone();
+    ///     assert_eq!(package.as_str(), "argument_package_1");
+    ///
+    ///     // Refused: the batch has no such parent. Ignored, it changes nothing.
+    ///     let refused = tx.apply(CreateClaim::new("nowhere", "C0")).unwrap_err();
+    ///     assert_eq!(refused.index(), 1);
+    ///     assert!(matches!(refused.error(), EditError::ParentNotFound { .. }));
+    ///
+    ///     tx.apply(CreateClaim::new(&package, "C1"))?;
+    ///     Ok(())
+    /// })?;
+    /// assert_eq!(doc.element_count(), 2);
+    /// # Ok::<(), BatchError>(())
+    /// ```
     pub fn apply(&mut self, operation: impl Into<Operation>) -> Result<Mutation, BatchError> {
         let index = self.calls;
         self.calls = self.calls.saturating_add(1);
@@ -136,24 +164,24 @@ fn run_on<E>(
 /// What a committed batch did: each accepted operation's [`Mutation`], and
 /// the net ids the whole batch created, changed and deleted.
 ///
-/// The net ids are what [`semantic_compare`](crate::compare::semantic_compare)
-/// of the document before and after the batch reports (ADR 0032), computed
-/// from the ids the batch touched rather than by comparing whole documents:
-/// - [`created_ids`](Self::created_ids): in the document after and not
-///   before, in creation order;
-/// - [`changed_ids`](Self::changed_ids): in both, with a difference in the
-///   element itself, in pre-order after;
-/// - [`deleted_ids`](Self::deleted_ids): in the document before and not
-///   after, in pre-order before.
+/// The net ids are what [`semantic_compare`](crate::compare::semantic_compare) of the
+/// document before and after the batch reports (ADR 0032). They are computed from the
+/// ids the batch touched, not by comparing whole documents.
 ///
-/// So an element created and deleted in one batch is in none of them, and
-/// one deleted and created again with its id is at most changed, and its
-/// parent is changed if its position among the children moved.
+/// | List | Its ids are | Order |
+/// |---|---|---|
+/// | [`created_ids`](Self::created_ids) | in the document after and not before | creation order |
+/// | [`changed_ids`](Self::changed_ids) | in both, with a difference in the element itself | pre-order after |
+/// | [`deleted_ids`](Self::deleted_ids) | in the document before and not after | pre-order before |
 ///
-/// One `BatchMutation` is one change in an undo history. It records ids, not
-/// the old content, so to undo it keep the document from before
-/// ([`Document::clone`]). For undo and redo, see
-/// [the `edit` docs](crate::edit#undo-and-redo) (LIB-EDIT-011).
+/// - **Created and deleted in one batch:** the element is in none of them.
+/// - **Deleted and created again with its id:** it is at most changed, and its parent is
+///   changed if its position among the children moved.
+/// - **Nothing changed** when [`is_empty`](Self::is_empty) is true, except for the order
+///   of the roots, which lists no id.
+/// - **Undo.** One `BatchMutation` is one change in an undo history. It records ids, not
+///   the old content, so keep the document from before ([`Document::clone`]); see
+///   [the `edit` docs](crate::edit#undo-and-redo) (LIB-EDIT-011).
 ///
 /// # Examples
 ///
@@ -205,17 +233,17 @@ impl BatchMutation {
         &self.created
     }
 
-    /// The ids of the elements the batch changed, net: in the document
-    /// before and after, with a difference in the element itself, in
+    /// The ids of the elements the batch changed, net, in
     /// [pre-order](crate::model::Document::elements) after.
+    ///
+    /// They are in the document before and after, with a difference in the element itself.
     #[must_use]
     pub fn changed_ids(&self) -> &[ElementId] {
         &self.changed
     }
 
-    /// The ids of the elements the batch deleted, net: in the document before
-    /// and not after, in [pre-order](crate::model::Document::elements)
-    /// before.
+    /// The ids of the elements the batch deleted, net: in the document before and not
+    /// after, in [pre-order](crate::model::Document::elements) before.
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
@@ -224,11 +252,14 @@ impl BatchMutation {
     /// Whether the batch changed nothing, net: it created, changed and
     /// deleted no id.
     ///
-    /// [`mutations`](Self::mutations) may still hold some, such as a create
-    /// and a delete of one element, and a committed batch still gives the
-    /// document a new revision. A reorder of the roots lists no id, so a
-    /// batch that only reorders the roots is empty although the document
-    /// changed.
+    /// - **Empty means nothing changed, net,** except for the order of the roots.
+    /// - **[`mutations`](Self::mutations) may still hold some,** such as a create and a
+    ///   delete of one element.
+    /// - **The revision is new all the same:** a committed batch always gives the
+    ///   document one.
+    /// - **A change of the root order lists no id,** so a batch that only reorders the
+    ///   roots is empty although the document changed. To tell, compare the document with
+    ///   a clone taken before, as for [`Mutation::is_empty`].
     ///
     /// # Examples
     ///
@@ -253,13 +284,13 @@ impl BatchMutation {
     }
 }
 
-/// Why a batch refused an operation: its index among the batch's
-/// [`Batch::apply`] calls, counting from 0, the operation and its
-/// [`EditError`].
+/// Why a batch refused an operation: its index among the batch's [`Batch::apply`] calls,
+/// counting from 0, the operation and its [`EditError`].
 ///
-/// [`edit::apply_all`](super::apply_all) returns it for the first refusal,
-/// and [`Batch::apply`] for each. `Display` writes one line, and
-/// [`source`](std::error::Error::source) is the `EditError`.
+/// - **From** [`edit::apply_all`](super::apply_all) for the first refusal, and from
+///   [`Batch::apply`] for each.
+/// - **`Display`** writes one line; [`source`](std::error::Error::source) is the
+///   `EditError`.
 ///
 /// # Examples
 ///
@@ -294,9 +325,10 @@ pub struct BatchError {
 }
 
 impl BatchError {
-    /// The refused operation's index: the number of [`Batch::apply`] calls
-    /// before it, refused ones included, or its position in the list given
-    /// to [`edit::apply_all`](super::apply_all).
+    /// The refused operation's index, counting from 0.
+    ///
+    /// It is the number of [`Batch::apply`] calls before it, refused ones included, or its
+    /// position in the list given to [`edit::apply_all`](super::apply_all).
     #[must_use]
     pub fn index(&self) -> usize {
         self.index

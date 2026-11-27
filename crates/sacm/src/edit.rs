@@ -29,54 +29,55 @@
 //! - **Content is not refused.** An empty name or a duplicate gid is accepted;
 //!   [`validation::validate`](crate::validation::validate) reports it (D-VAL-LAYER).
 //! - **Refusals are ordered.** The first check that fails is the result.
-//!   [Refusals](#refusals) lists the checks of each operation, and
-//!   [Moving and copying elements](#moving-and-copying-elements) those of a move and a copy.
+//!   [`apply`](apply#errors) lists the checks of each operation, in order.
 //!
 //! # Operations that create an element
 //!
-//! | Operation | Creates | Root | Under a parent |
-//! |---|---|---|---|
-//! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) | [`root`](CreateAssuranceCasePackage::root) | [`new`](CreateAssuranceCasePackage::new) |
-//! | [`CreateAssuranceCasePackageInterface`] | an `AssuranceCasePackageInterface` (§9.3), with its `implements` | [`root`](CreateAssuranceCasePackageInterface::root) | [`new`](CreateAssuranceCasePackageInterface::new) |
-//! | [`CreateAssuranceCasePackageBinding`] | an `AssuranceCasePackageBinding` (§9.4), with its participants (`participantPackage`) | [`root`](CreateAssuranceCasePackageBinding::root) | [`new`](CreateAssuranceCasePackageBinding::new) |
-//! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) | [`root`](CreateArgumentPackage::root) | [`new`](CreateArgumentPackage::new) |
-//! | [`CreateArgumentPackageInterface`] | an `ArgumentPackageInterface` (§11.6), with its `implements` | [`root`](CreateArgumentPackageInterface::root) | [`new`](CreateArgumentPackageInterface::new) |
-//! | [`CreateArgumentPackageBinding`] | an `ArgumentPackageBinding` (§11.5), with its participants (`participantPackage`) | [`root`](CreateArgumentPackageBinding::root) | [`new`](CreateArgumentPackageBinding::new) |
-//! | [`CreateClaim`] | a `Claim` (§11.11) | no | [`new`](CreateClaim::new) |
-//! | [`CreateArgumentReasoning`] | an `ArgumentReasoning` (§11.12), with an optional `structure` | no | [`new`](CreateArgumentReasoning::new) |
-//! | [`CreateAssertedInference`] | an `AssertedInference` (§11.14), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedInference::new) |
-//! | [`CreateAssertedContext`] | an `AssertedContext` (§11.16), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedContext::new) |
-//! | [`CreateArtifactReference`] | an `ArtifactReference` (§11.9), with its optional `referencedArtifactElement` ids | no | [`new`](CreateArtifactReference::new) |
-//! | [`CreateArgumentGroup`] | an `ArgumentGroup` (§11.2), with its optional members (`argumentElement`) | no | [`new`](CreateArgumentGroup::new) |
-//! | [`CreateAssertedEvidence`] | an `AssertedEvidence` (§11.15), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedEvidence::new) |
-//! | [`CreateAssertedArtifactSupport`] | an `AssertedArtifactSupport` (§11.17), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedArtifactSupport::new) |
-//! | [`CreateAssertedArtifactContext`] | an `AssertedArtifactContext` (§11.18), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedArtifactContext::new) |
-//! | [`CreateDescription`] | a `Description` (§8.9) | no | [`new`](CreateDescription::new) |
-//! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
-//! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
-//! | [`CreateTaggedValue`] | a `TaggedValue` (§8.12) | no | [`new`](CreateTaggedValue::new) |
-//! | [`CreateArtifactPackage`] | an `ArtifactPackage` (§12.2) | [`root`](CreateArtifactPackage::root) | [`new`](CreateArtifactPackage::new) |
-//! | [`CreateArtifactPackageInterface`] | an `ArtifactPackageInterface` (§12.5), with its `implements` | [`root`](CreateArtifactPackageInterface::root) | [`new`](CreateArtifactPackageInterface::new) |
-//! | [`CreateArtifactPackageBinding`] | an `ArtifactPackageBinding` (§12.4), with its participants (`participantPackage`) | [`root`](CreateArtifactPackageBinding::root) | [`new`](CreateArtifactPackageBinding::new) |
-//! | [`CreateProperty`] | a `Property` (§12.8) | no | [`new`](CreateProperty::new) |
-//! | [`CreateTechnique`] | a `Technique` (§12.12) | no | [`new`](CreateTechnique::new) |
-//! | [`CreateParticipant`] | a `Participant` (§12.13) | no | [`new`](CreateParticipant::new) |
-//! | [`CreateArtifactGroup`] | an `ArtifactGroup` (§12.3), with its optional members (`artifactElement`) | no | [`new`](CreateArtifactGroup::new) |
-//! | [`CreateArtifact`] | an `Artifact` (§12.7), with an optional `version` and `date` | no | [`new`](CreateArtifact::new) |
-//! | [`CreateEvent`] | an `Event` (§12.9), with an optional `date` | no | [`new`](CreateEvent::new) |
-//! | [`CreateResource`] | a `Resource` (§12.10), with an optional `location` | no | [`new`](CreateResource::new) |
-//! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` | no | [`new`](CreateActivity::new) |
-//! | [`CreateArtifactAssetRelationship`] | an `ArtifactAssetRelationship` (§12.14), with its sources and targets | no | [`new`](CreateArtifactAssetRelationship::new) |
-//! | [`CreateTerminologyPackage`] | a `TerminologyPackage` (§10.4) | [`root`](CreateTerminologyPackage::root) | [`new`](CreateTerminologyPackage::new) |
-//! | [`CreateTerminologyPackageInterface`] | a `TerminologyPackageInterface` (§10.5), with its `implements` | [`root`](CreateTerminologyPackageInterface::root) | [`new`](CreateTerminologyPackageInterface::new) |
-//! | [`CreateTerminologyPackageBinding`] | a `TerminologyPackageBinding` (§10.6), with its participants (`participantPackage`) | [`root`](CreateTerminologyPackageBinding::root) | [`new`](CreateTerminologyPackageBinding::new) |
-//! | [`CreateCategory`] | a `Category` (§10.8), with its optional `category` ids | no | [`new`](CreateCategory::new) |
-//! | [`CreateTerm`] | a `Term` (§10.11), with its `value` and its optional categories, `origin` and `externalReference` | no | [`new`](CreateTerm::new) |
-//! | [`CreateExpression`] | an `Expression` (§10.10), with its `value` and its optional categories and `element` ids | no | [`new`](CreateExpression::new) |
-//! | [`CreateTerminologyGroup`] | a `TerminologyGroup` (§10.3), with its optional members (`terminologyElement`) | no | [`new`](CreateTerminologyGroup::new) |
+//! | Operation | Creates |
+//! |---|---|
+//! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) |
+//! | [`CreateAssuranceCasePackageInterface`] | an `AssuranceCasePackageInterface` (§9.3), with its `implements` |
+//! | [`CreateAssuranceCasePackageBinding`] | an `AssuranceCasePackageBinding` (§9.4), with its participants (`participantPackage`) |
+//! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) |
+//! | [`CreateArgumentPackageInterface`] | an `ArgumentPackageInterface` (§11.6), with its `implements` |
+//! | [`CreateArgumentPackageBinding`] | an `ArgumentPackageBinding` (§11.5), with its participants (`participantPackage`) |
+//! | [`CreateClaim`] | a `Claim` (§11.11) |
+//! | [`CreateArgumentReasoning`] | an `ArgumentReasoning` (§11.12), with an optional `structure` |
+//! | [`CreateAssertedInference`] | an `AssertedInference` (§11.14), with its sources and target, and an optional `reasoning` and `isCounter` |
+//! | [`CreateAssertedContext`] | an `AssertedContext` (§11.16), with its sources and target, and an optional `reasoning` and `isCounter` |
+//! | [`CreateArtifactReference`] | an `ArtifactReference` (§11.9), with its optional `referencedArtifactElement` ids |
+//! | [`CreateArgumentGroup`] | an `ArgumentGroup` (§11.2), with its optional members (`argumentElement`) |
+//! | [`CreateAssertedEvidence`] | an `AssertedEvidence` (§11.15), with its sources and target, and an optional `reasoning` and `isCounter` |
+//! | [`CreateAssertedArtifactSupport`] | an `AssertedArtifactSupport` (§11.17), with its sources and target, and an optional `reasoning` and `isCounter` |
+//! | [`CreateAssertedArtifactContext`] | an `AssertedArtifactContext` (§11.18), with its sources and target, and an optional `reasoning` and `isCounter` |
+//! | [`CreateDescription`] | a `Description` (§8.9) |
+//! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) |
+//! | [`CreateNote`] | a `Note` (§8.11) |
+//! | [`CreateTaggedValue`] | a `TaggedValue` (§8.12) |
+//! | [`CreateArtifactPackage`] | an `ArtifactPackage` (§12.2) |
+//! | [`CreateArtifactPackageInterface`] | an `ArtifactPackageInterface` (§12.5), with its `implements` |
+//! | [`CreateArtifactPackageBinding`] | an `ArtifactPackageBinding` (§12.4), with its participants (`participantPackage`) |
+//! | [`CreateProperty`] | a `Property` (§12.8) |
+//! | [`CreateTechnique`] | a `Technique` (§12.12) |
+//! | [`CreateParticipant`] | a `Participant` (§12.13) |
+//! | [`CreateArtifactGroup`] | an `ArtifactGroup` (§12.3), with its optional members (`artifactElement`) |
+//! | [`CreateArtifact`] | an `Artifact` (§12.7), with an optional `version` and `date` |
+//! | [`CreateEvent`] | an `Event` (§12.9), with an optional `date` |
+//! | [`CreateResource`] | a `Resource` (§12.10), with an optional `location` |
+//! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` |
+//! | [`CreateArtifactAssetRelationship`] | an `ArtifactAssetRelationship` (§12.14), with its sources and targets |
+//! | [`CreateTerminologyPackage`] | a `TerminologyPackage` (§10.4) |
+//! | [`CreateTerminologyPackageInterface`] | a `TerminologyPackageInterface` (§10.5), with its `implements` |
+//! | [`CreateTerminologyPackageBinding`] | a `TerminologyPackageBinding` (§10.6), with its participants (`participantPackage`) |
+//! | [`CreateCategory`] | a `Category` (§10.8), with its optional `category` ids |
+//! | [`CreateTerm`] | a `Term` (§10.11), with its `value` and its optional categories, `origin` and `externalReference` |
+//! | [`CreateExpression`] | an `Expression` (§10.10), with its `value` and its optional categories and `element` ids |
+//! | [`CreateTerminologyGroup`] | a `TerminologyGroup` (§10.3), with its optional members (`terminologyElement`) |
 //!
 //! Where the new element goes:
 //!
+//! - **Root or child.** `new` puts the element under a parent. Only a package, an
+//!   interface or a binding can be a root, so only their creates also have `root`.
 //! - **Position.** A root is added after the document's last root; a child after its
 //!   parent's last child.
 //! - **Legal parents.** A parent is legal exactly when SACM lets its class contain the
@@ -92,9 +93,9 @@
 //!   given, or plain text: `"C1"` and `LangString::new("C1")` give the same name.
 //! - **Any plain name is accepted,** `LangString::default()` included: an empty name is
 //!   still a name. An `ExpressionLangString` name must have an `expression` that names
-//!   a `Term` or an `Expression` (checks 5a to 8 of [Creates](#creates)).
+//!   a `Term` or an `Expression` (checks 5a to 8 of [Creates](apply#creates)).
 //! - **Every text must be savable.** A name, value or other text holding a character
-//!   XML 1.0 cannot represent is refused, last (check 9 of [Creates](#creates)).
+//!   XML 1.0 cannot represent is refused, last (check 9 of [Creates](apply#creates)).
 //! - **`UtilityElement`s have no name.** A description, implementation constraint, note
 //!   or tagged value goes in any `ModelElement`, in the role of its kind. It contains no
 //!   elements, so it is never a parent.
@@ -172,9 +173,12 @@
 //! - **Freed ids.** The ids beyond the new length, every id of a removed `content`, and
 //!   an id no reference holds any more are freed, so a later create may generate them.
 //! - **Setting the value held changes nothing.** The document is not written, and
-//!   [`Mutation::changed_ids`] is empty.
-//! - **Otherwise `changed_ids` is the element,** or for [`ReorderElements::new`] the
-//!   parent. A root reorder changes no element, so it reports none.
+//!   [`Mutation::is_empty`] is true ([`BatchMutation::is_empty`] for a batch).
+//! - **Otherwise [`Mutation::changed_ids`] is the element,** or for
+//!   [`ReorderElements::new`] the parent.
+//! - **A root reorder lists no id.** The order of the roots belongs to no element, so
+//!   its mutation is empty although the document changed; [`Mutation::is_empty`] says
+//!   how to tell.
 //!
 //! # Deleting an element
 //!
@@ -218,17 +222,6 @@
 //!   placement changes, in pre-order after.
 //! - **Changes nothing** when it moves the element to the place it holds.
 //!
-//! [`MoveElement`] checks, in this order:
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. under a parent: the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
-//! | 3. the parent's class can hold the element's kind; for the roots, the element is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] | SACM-CMD-005 |
-//! | 4. the parent is not the element and not inside it | [`EditError::ParentInSubtree`] | SACM-CMD-005 |
-//! | 5. under a parent: the element keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
-//! | 6. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
-//!
 //! A copy:
 //!
 //! - **Captures its source elements when it is built.** An id the source lacks is
@@ -239,19 +232,10 @@
 //!   reference is kept as written, so it must resolve in the target.
 //! - **Reports** [`Mutation::created_ids`], which pair with
 //!   [`CopyElements::source_ids`]. It changes and deletes nothing.
+//! - **Copies nothing** for an empty list, once the parent is found.
 //!
-//! [`CopyElements`] checks, in this order:
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
-//! | 2. each top, in list order: the parent's class can hold it, and it keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
-//! | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
-//! | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
-//! | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
-//! | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
-//!
-//! An empty list copies nothing, once the parent is found.
+//! [`apply`](apply#moves) lists the checks of a move, and [`apply`](apply#copies)
+//! those of a copy, in order.
 //!
 //! # Undo and redo
 //!
@@ -364,96 +348,11 @@
 //!
 //! # Refusals
 //!
-//! ## Creates
-//!
-//! The checks run in this order, and the first that fails is the result. A
-//! root operation has no parent, so it skips the first two.
-//!
-//! | Check | Refusal | Code | Fix |
-//! |---|---|---|---|
-//! | 1. the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 | Create the parent first, or correct its id. Ids are compared exactly, case included. |
-//! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
-//! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
-//! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
-//! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets; a binding has two distinct participants | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). Give a binding two different packages (§9.4, §10.6, §11.5, §12.4 `participantPackage[2..*]`; a repeated id counts once, ADR 0039 D3). |
-//! | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::LangString::with_expression), or make it plain with [`without_expression`](crate::model::LangString::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
-//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids, the group members (`argumentElement` or `artifactElement`), an interface's `implements` and a binding's participants (`participantPackage`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
-//! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
-//! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
-//! | 9. every text the new element would hold has only characters XML 1.0 can represent | [`EditError::UnrepresentableCharacter`] | SACM-XML-003 | Remove the character. |
-//!
-//! In checks 6 to 8, the `expression`s of the name's and texts'
-//! `ExpressionLangStrings` come last, as the end `expression`, which must
-//! name a `Term` or an `Expression` (SACM23-BASE-009).
-//!
-//! ## Operations that change an element
-//!
-//! Every check runs before the one change, and the first that fails is the
-//! result. Each operation first checks:
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, a kind that holds tagged values for `taggedValue`, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
-//!
-//! What each checks after that:
-//!
-//! - **Nothing more:** [`SetFlag`] and [`SetAssertionDeclaration`]. Every element has a
-//!   gid, `isCitation` and `isAbstract`, so [`SetGid`] and those flags skip check 2 too.
-//! - **The `ExpressionLangString`s they set** (SACM23-BASE-009): [`SetName`],
-//!   [`SetContent`], [`SetKey`], [`SetLocation`] and [`SetTaggedValue`], for its content.
-//!   - One with no `expression` is [`EditError::TooFewReferences`] of the end `expression`.
-//!   - Each `expression` the element does not hold already is checked as checks 6 to 8
-//!     below check a new id, for the end `expression`.
-//! - **Last, the text they store** (LIB-EDIT-025). A character XML 1.0 cannot represent
-//!   is [`EditError::UnrepresentableCharacter`] (SACM-XML-003). A set of the value held
-//!   stores nothing, so it is not checked. The operations:
-//!   - [`SetName`], [`SetGid::new`], [`SetContent::new`], [`SetKey`] and [`SetTaggedValue`];
-//!   - [`SetVersion::new`], [`SetDate::new`], [`SetLocation::new`], [`SetStartTime::new`],
-//!     [`SetEndTime::new`], [`SetValue`] and [`SetExternalReference::new`].
-//!
-//! The reference operations then check, in this order:
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
-//! | 3. for [`RemoveReference`] only: the end holds the id, or, for [`RemoveReference::new_href`], the href | [`EditError::ReferenceNotHeld`], [`EditError::HrefNotHeld`] | SACM-CMD-001 |
-//! | 4. the end would hold at least the distinct values it needs, ids plus hrefs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
-//! | 5. the end would hold at most the values it allows, ids plus hrefs: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
-//! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
-//! | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
-//! | 8. every new id names an element of a kind the end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
-//!
-//! A new id is one the end does not hold already; checks 6 to 8 each run
-//! over the new ids in list order, as the creates' checks 6 to 8 do. An
-//! href is never checked: it names an element of another document, which
-//! no edit opens (LIB-EDIT-020; ADR 0040 D6, amendment 1).
-//!
-//! [`ReorderElements`] checks, after the parent (check 1;
-//! [`ReorderElements::roots`] has no parent, so it skips check 1):
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 2. the list names at least one element | [`EditError::InvalidOrder`] | SACM-CMD-009 |
-//! | 3. id by id, in list order: it is a direct child of the parent (or a root) | [`EditError::ChildNotFound`] | SACM-CMD-001 |
-//! | 4. for the same id, right after check 3: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
-//!
-//! ## Deletes
-//!
-//! [`DeleteElement`] checks, in this order:
-//!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s, and no preserved child element (ADR 0033) | [`EditError::NotEmpty`] | SACM-CMD-006 |
-//! | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
-//! | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
-//! | 4. under `RejectIfNonEmpty`: the first interface or binding in pre-order that the delete removes for its bound (left with no `implements`, or fewer than two distinct participants) and that holds an element other than a `UtilityElement` or a preserved child element (LIB-EDIT-019) | [`EditError::NotEmpty`] naming it | SACM-CMD-006 |
-//!
-//! ## Previews
-//!
-//! [`apply_preview`] refuses a preview taken at another revision of the
-//! document as [`EditError::PreviewExpired`] (SACM-CMD-003).
+//! - **Checks and their order.** [`apply`](apply#errors) lists the checks of each
+//!   operation in the order they run, each with its refusal and code.
+//! - **Each refusal.** [`EditError`] says what a refusal means and how to fix it.
+//! - **Previews.** [`apply_preview`] also refuses a preview taken at another revision
+//!   of the document ([`EditError::PreviewExpired`], SACM-CMD-003).
 //!
 //! # Examples
 //!
@@ -550,80 +449,144 @@ use crate::diagnostic::Code;
 use crate::model::{Document, ElementId, ElementKind, Href, Revision, StringAttribute, TextRole};
 use plan::{Features, Outcome, Plan};
 
-/// Checks `operation` against `document` and applies it, or refuses it and
-/// leaves `document` unchanged.
+/// Applies `operation` to `document`, or refuses it and leaves `document` unchanged.
 ///
-/// `apply`, [`apply_preview`], [`batch`] and [`apply_all`] are the only
-/// public ways to change a [`Document`] (outside the unstable `test-support`
-/// feature), and each is all or nothing:
-/// - **On success** the document stays structurally valid, as every
-///   `Document` is: ids are unique, parent and child links agree, every root
-///   is a package, every child is in a composite role of its parent's class,
-///   and every Assertion has an
-///   [`AssertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
-///   §11.10). The returned [`Mutation`] holds the operation and the ids it created,
-///   changed and deleted, and the document has a new
-///   [`revision`](Document::revision).
-/// - **On refusal** the document is unchanged: it is `==` to what it was
-///   before (see [`compare`](crate::compare)), it generates the same next
-///   ids, and its revision is the same.
-///
-/// `apply` neither checks content findings nor refuses an operation because
-/// of one; call [`validate`](crate::validation::validate) again after
-/// editing.
-///
-/// Takes any operation struct, such as [`CreateClaim`], or an [`Operation`].
-/// See the [module docs](self) for the operations, the ids and the order of
-/// the checks. To ask whether `apply` would accept an operation without
-/// changing the document, use [`check`], which gives the same answer.
+/// - **Takes** any operation struct, such as [`CreateClaim`], or an [`Operation`]. The
+///   [module docs](self) list the operations and say how ids are generated.
+/// - **On success** the [`Mutation`] holds the operation and the ids it created, changed
+///   and deleted, and the document has a new [`revision`](Document::revision).
+/// - **On refusal** the document is `==` to what it was (see [`compare`](crate::compare)),
+///   generates the same next ids and keeps its revision.
+/// - **Structurally valid.** The document stays so, as every `Document` is: ids are
+///   unique, parent and child links agree, every root is a package, and every child is
+///   in a composite role of its parent's class.
+/// - **Assertions.** Every Assertion keeps an
+///   [`AssertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3 §11.10).
+/// - **Content is not checked.** No content finding refuses an operation; call
+///   [`validate`](crate::validation::validate) again after editing.
+/// - **Ask first.** [`check`] gives the same answer without changing the document.
+/// - **The only ways to change a [`Document`]** are `apply`, [`apply_preview`], [`batch`]
+///   and [`apply_all`], outside the unstable `test-support` feature. Each is all or
+///   nothing.
 ///
 /// # Errors
 ///
-/// Refuses a create, checked in this order, when:
-/// - the parent is not in the document ([`EditError::ParentNotFound`]);
-/// - the parent's class cannot contain the new element's kind
-///   ([`EditError::InvalidParent`]);
-/// - the id given with `with_id` is not an XML `NCName`
-///   ([`EditError::InvalidId`]);
-/// - the id given with `with_id` is already in the document, as an
-///   element's id or as the `xmi:id` of a name, a `content`, a `key`, a `location` or a
-///   `value` ([`EditError::DuplicateId`]);
-/// - an asserted relationship is given no source
-///   ([`EditError::TooFewReferences`]);
-/// - a referenced id holds XML white space, so it cannot be written as one
-///   id ([`EditError::InvalidReference`]);
-/// - a referenced id names no element of the document
-///   ([`EditError::ReferenceNotFound`]);
-/// - a referenced id names an element of a kind its end does not admit
-///   ([`EditError::WrongReferenceType`]);
-/// - a text the new element would hold has a character XML 1.0 cannot
-///   represent ([`EditError::UnrepresentableCharacter`]).
+/// An [`EditError`]. Every check runs before the one change, in the order below, and
+/// the first that fails is the result.
 ///
-/// Refuses an operation that changes an element, checked in this order,
-/// when:
-/// - the element, or the parent to reorder, is not in the document
-///   ([`EditError::ElementNotFound`]);
-/// - its kind has no such feature ([`EditError::FeatureNotApplicable`]);
-/// - for [`RemoveReference`], the end does not hold the id
-///   ([`EditError::ReferenceNotHeld`]);
-/// - for a reference operation, the end would hold fewer or more ids than
-///   its bounds allow ([`EditError::TooFewReferences`],
-///   [`EditError::TooManyReferences`]), or an id it does not hold already
-///   fails the create's last three checks;
-/// - for [`ReorderElements`], the list is empty or names an id twice
-///   ([`EditError::InvalidOrder`]), or names an id that is no direct child
-///   or root ([`EditError::ChildNotFound`]);
-/// - last, a text it would store has a character XML 1.0 cannot represent
-///   ([`EditError::UnrepresentableCharacter`]).
+/// ## Creates
 ///
-/// Refuses a [`DeleteElement`], checked in this order, when the element is
-/// not in the document ([`EditError::ElementNotFound`]), when it is not
-/// empty and the package policy refuses that ([`EditError::NotEmpty`]), or
-/// when the delete would leave a reference dangling that a policy refuses
-/// ([`EditError::CrossPackageReference`], [`EditError::Referenced`]).
+/// A root operation has no parent, so it skips checks 1 and 2.
 ///
-/// Refuses a [`MoveElement`] or a [`CopyElements`] as the module docs'
-/// [tables](self#moving-and-copying-elements) say.
+/// | Check | Refusal | Code | Fix |
+/// |---|---|---|---|
+/// | 1. the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 | Create the parent first, or correct its id. Ids are compared exactly, case included. |
+/// | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
+/// | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
+/// | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
+/// | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets; a binding has two distinct participants | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). Give a binding two different packages (§9.4, §10.6, §11.5, §12.4 `participantPackage[2..*]`; a repeated id counts once, ADR 0039 D3). |
+/// | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::LangString::with_expression), or make it plain with [`without_expression`](crate::model::LangString::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
+/// | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids, the group members (`argumentElement` or `artifactElement`), an interface's `implements` and a binding's participants (`participantPackage`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
+/// | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
+/// | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
+/// | 9. every text the new element would hold has only characters XML 1.0 can represent | [`EditError::UnrepresentableCharacter`] | SACM-XML-003 | Remove the character. |
+///
+/// In checks 6 to 8, the `expression`s of the name's and texts' `ExpressionLangStrings`
+/// come last, as the end `expression`, which must name a `Term` or an `Expression`
+/// (SACM23-BASE-009).
+///
+/// ## Operations that change an element
+///
+/// Each operation first checks:
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+/// | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, a kind that holds tagged values for `taggedValue`, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
+///
+/// What each checks after that:
+///
+/// - **Nothing more:** [`SetFlag`] and [`SetAssertionDeclaration`]. Every element has a
+///   gid, `isCitation` and `isAbstract`, so [`SetGid`] and those flags skip check 2 too.
+/// - **The `ExpressionLangString`s they set** (SACM23-BASE-009): [`SetName`],
+///   [`SetContent`], [`SetKey`], [`SetLocation`] and [`SetTaggedValue`], for its content.
+///   - One with no `expression` is [`EditError::TooFewReferences`] of the end `expression`.
+///   - Each `expression` the element does not hold already is checked as checks 6 to 8
+///     below check a new id, for the end `expression`.
+/// - **Last, the text they store** (LIB-EDIT-025). A character XML 1.0 cannot represent
+///   is [`EditError::UnrepresentableCharacter`] (SACM-XML-003). A set of the value held
+///   stores nothing, so it is not checked. The operations:
+///   - [`SetName`], [`SetGid::new`], [`SetContent::new`], [`SetKey`] and [`SetTaggedValue`];
+///   - [`SetVersion::new`], [`SetDate::new`], [`SetLocation::new`], [`SetStartTime::new`],
+///     [`SetEndTime::new`], [`SetValue`] and [`SetExternalReference::new`].
+///
+/// The reference operations ([`SetReferences`], [`AddReference`], [`RemoveReference`])
+/// then check, in this order:
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
+/// | 3. for [`RemoveReference`] only: the end holds the id, or, for [`RemoveReference::new_href`], the href | [`EditError::ReferenceNotHeld`], [`EditError::HrefNotHeld`] | SACM-CMD-001 |
+/// | 4. the end would hold at least the distinct values it needs, ids plus hrefs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+/// | 5. the end would hold at most the values it allows, ids plus hrefs: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
+/// | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
+/// | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
+/// | 8. every new id names an element of a kind the end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
+///
+/// - **A new id** is one the end does not hold already. Checks 6 to 8 each run over the
+///   new ids in list order, as the creates' checks 6 to 8 do.
+/// - **An href is never checked.** It names an element of another document, which no
+///   edit opens (LIB-EDIT-020; ADR 0040 D6, amendment 1).
+///
+/// [`ReorderElements`] checks, after the parent (check 1; [`ReorderElements::roots`] has
+/// no parent, so it skips check 1):
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 2. the list names at least one element | [`EditError::InvalidOrder`] | SACM-CMD-009 |
+/// | 3. id by id, in list order: it is a direct child of the parent (or a root) | [`EditError::ChildNotFound`] | SACM-CMD-001 |
+/// | 4. for the same id, right after check 3: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
+///
+/// ## Deletes
+///
+/// [`DeleteElement`] checks, in this order:
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+/// | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s, and no preserved child element (ADR 0033) | [`EditError::NotEmpty`] | SACM-CMD-006 |
+/// | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
+/// | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
+/// | 4. under `RejectIfNonEmpty`: the first interface or binding in pre-order that the delete removes for its bound (left with no `implements`, or fewer than two distinct participants) and that holds an element other than a `UtilityElement` or a preserved child element (LIB-EDIT-019) | [`EditError::NotEmpty`] naming it | SACM-CMD-006 |
+///
+/// ## Moves
+///
+/// [`MoveElement`] checks, in this order:
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+/// | 2. under a parent: the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
+/// | 3. the parent's class can hold the element's kind; for the roots, the element is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] | SACM-CMD-005 |
+/// | 4. the parent is not the element and not inside it | [`EditError::ParentInSubtree`] | SACM-CMD-005 |
+/// | 5. under a parent: the element keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
+/// | 6. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
+///
+/// ## Copies
+///
+/// [`CopyElements`] checks, in this order:
+///
+/// | Check | Refusal | Code |
+/// |---|---|---|
+/// | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
+/// | 2. each top, in list order: the parent's class can hold it, and it keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
+/// | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
+/// | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+/// | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
+/// | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
+///
+/// An id the source lacks is refused earlier, when the copy is built
+/// ([`CopyElements::new`], [`CopyElements::root`]).
 ///
 /// # Examples
 ///
@@ -658,14 +621,14 @@ fn apply_operation(
     apply_planned(document, operation, plan)
 }
 
-/// [`apply`] without the LIB-EDIT-025 text check, so a test can build a
-/// document that [`xmi::write`](crate::xmi::write) refuses. Only with
-/// `test-support`; not part of the stable API.
+/// [`apply`] without the LIB-EDIT-025 text check, for tests only.
+///
+/// - **For.** A test can build a document that [`xmi::write`](crate::xmi::write) refuses.
+/// - **Test support.** Only with the `test-support` feature; not part of the stable API.
 ///
 /// # Errors
 ///
-/// Every refusal of [`apply`] except
-/// [`EditError::UnrepresentableCharacter`].
+/// Every refusal of [`apply`] except [`EditError::UnrepresentableCharacter`].
 #[cfg(feature = "test-support")]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
 pub fn apply_unchecked_text(
@@ -701,24 +664,20 @@ fn apply_planned(
 /// Checks `operation` against `document` without applying it: `Ok` exactly
 /// when [`apply`] would accept it, and otherwise the same [`EditError`].
 ///
-/// `check` runs the same checks as `apply`, in the same order, through the
-/// same code, so the two cannot disagree (ADR 0019 amendment 3). It never
-/// changes the document: it takes it by shared reference, so the elements,
-/// the written XMI and the ids generated next stay as they are. A create
-/// without `with_id` gets the same generated id after any number of checks.
-///
-/// It takes the operation by reference, so the caller keeps it, to apply
-/// later or to show in a menu. What an accepted operation would create or
-/// change is not reported; `apply` returns that in its [`Mutation`].
-///
-/// Like `apply`, it runs no validation: `Ok` does not mean the edited
-/// document will have no findings; see
-/// [`validation::validate`](crate::validation::validate).
+/// - **Same answer as `apply`.** It runs the same checks, in the same order, through the
+///   same code, so the two cannot disagree (ADR 0019 amendment 3).
+/// - **Changes nothing.** The elements, the written XMI and the ids generated next stay
+///   as they are. A create without `with_id` gets the same id after any number of checks.
+/// - **The caller keeps the operation,** to apply later or to show in a menu.
+/// - **No ids reported.** What the operation would create or change is in the
+///   [`Mutation`] that `apply` returns, or in a [`preview`].
+/// - **No validation.** `Ok` does not mean the edited document will have no findings;
+///   see [`validation::validate`](crate::validation::validate).
 ///
 /// # Errors
 ///
-/// Returns the [`EditError`] that `apply` would refuse `operation` with, in
-/// the order of the checks listed in the [module docs](self#refusals).
+/// Returns the [`EditError`] that `apply` would refuse `operation` with, in the order of
+/// the checks that [`apply`](apply#errors) lists.
 ///
 /// # Examples
 ///
@@ -751,19 +710,18 @@ pub fn check(document: &Document, operation: &Operation) -> Result<(), EditError
     plan(document, operation).map(drop)
 }
 
-/// Shows what [`apply`] would do with `operation`, without changing
-/// `document`: the [`Mutation`] it would return and, for a delete, the
-/// references to deleted elements, which the delete removes (LIB-EDIT-004,
-/// ADR 0031).
+/// Shows what [`apply`] would do with `operation`, without changing `document`
+/// (LIB-EDIT-004, ADR 0031).
 ///
-/// `preview` runs the same checks as `apply` and [`check`], through the same
-/// code, and refuses exactly as they do; the mutation it holds is computed
-/// by the same code that `apply` reports from. It takes the document by
-/// shared reference, so the elements, the ids generated next and the
-/// [`revision`](Document::revision) stay as they are. Apply the preview with
-/// [`apply_preview`] while the document is still at the preview's revision.
-/// To learn whether a delete applies under some policy, preview it with that
-/// policy.
+/// - **Gives** the [`Mutation`] `apply` would return and, for a delete, the references
+///   to deleted elements, which the delete removes ([`Preview::dangling_references`]).
+/// - **Same checks, same ids.** It refuses exactly as `apply` and [`check`] do, and its
+///   mutation is computed by the code `apply` reports from.
+/// - **Changes nothing.** The elements, the ids generated next and the
+///   [`revision`](Document::revision) stay as they are.
+/// - **Apply it** with [`apply_preview`], while the document is at the preview's revision.
+/// - **Delete policies.** To learn whether a delete applies under some policy, preview it
+///   with that policy.
 ///
 /// # Errors
 ///
@@ -810,21 +768,20 @@ pub fn preview(document: &Document, operation: &Operation) -> Result<Preview, Ed
     Ok(Preview::new(document.revision(), mutation, dangling))
 }
 
-/// Applies a [`Preview`] taken by [`preview`], if `document` has not changed
-/// since: if its [`revision`](Document::revision) is still the preview's
+/// Applies a [`Preview`] taken by [`preview`], if `document` has not changed since
 /// (LIB-EDIT-007, ADR 0031).
 ///
-/// It then applies the preview's operation, as [`apply`] does, and returns a
-/// [`Mutation`] equal to [`Preview::mutation`]. Every successful edit gives
-/// the document a new revision, so a preview applies at most once. A clone
-/// shares its original's revision until either changes, so a preview taken
-/// on one applies to the other while both are unchanged.
+/// - **Unchanged** means its [`revision`](Document::revision) is still the preview's.
+/// - **Result.** It applies the preview's operation, as [`apply`] does, and returns a
+///   [`Mutation`] equal to [`Preview::mutation`].
+/// - **At most once.** Every successful edit gives the document a new revision.
+/// - **Clones.** A clone shares its original's revision until either changes, so a
+///   preview taken on one applies to the other while both are unchanged.
 ///
 /// # Errors
 ///
-/// Refuses with [`EditError::PreviewExpired`] (SACM-CMD-003), changing
-/// nothing, when the document's revision is not the preview's: preview the
-/// operation again.
+/// Refuses with [`EditError::PreviewExpired`] (SACM-CMD-003), changing nothing, when
+/// the document's revision is not the preview's: preview the operation again.
 ///
 /// # Examples
 ///
@@ -859,30 +816,27 @@ pub fn apply_preview(document: &mut Document, preview: &Preview) -> Result<Mutat
 /// Applies several operations to `document` as one change: all of them, or,
 /// if the closure returns `Err`, none (LIB-EDIT-014, ADR 0032).
 ///
-/// The closure gets a [`Batch`]. Each [`Batch::apply`] answers as [`apply`]
-/// would on the state so far, so a later operation can use an id an earlier
-/// one generated, and [`Batch::document`] shows that state. The batch
-/// commits exactly when the closure returns `Ok`:
-/// - **`Ok`**: every accepted operation stays, and the document gets a new
-///   [`revision`](Document::revision), even when nothing changed. A refusal
-///   the closure ignored changed nothing, so it does not stop the commit.
-///   The [`BatchMutation`] holds each accepted [`Mutation`] and the net ids.
-/// - **`Err(e)`**, a refusal passed on with `?` or the closure's own error:
-///   `e` is returned unchanged, and the document is `==` to before, with the
+/// - **The closure gets a [`Batch`].** Each [`Batch::apply`] answers as [`apply`] would on
+///   the state so far, so a later operation can use an id an earlier one generated.
+///   [`Batch::document`] shows that state.
+/// - **`Ok` commits.** Every accepted operation stays, and the document gets a new
+///   [`revision`](Document::revision), even when nothing changed.
+/// - **The result** is a [`BatchMutation`]: each accepted [`Mutation`] and the net ids.
+/// - **An ignored refusal** changed nothing, so it does not stop the commit.
+/// - **`Err(e)` commits nothing.** `e` is a refusal passed on with `?` or the closure's
+///   own error. It is returned unchanged, and the document is `==` to before, with the
 ///   same next generated ids and the same revision.
-///
-/// The closure's error type needs `From<BatchError>` only if it uses `?` on
-/// `tx.apply`. To apply a list of operations, use [`apply_all`].
+/// - **Error type.** It needs `From<BatchError>` only if the closure uses `?` on
+///   `tx.apply`.
+/// - **A list of operations:** use [`apply_all`].
 ///
 /// # Errors
 ///
-/// Returns the closure's error, unchanged, and leaves the document as it
-/// was.
+/// Returns the closure's error, unchanged, and leaves the document as it was.
 ///
 /// # Panics
 ///
-/// Propagates a panic in the closure. The document is then unchanged, as
-/// for `Err`.
+/// Propagates a panic in the closure. The document is then unchanged, as for `Err`.
 ///
 /// # Examples
 ///
@@ -925,15 +879,15 @@ pub fn batch<E>(
 /// Applies `operations`, in order, as one change: [`batch`] over the list,
 /// stopping at the first refusal (ADR 0032).
 ///
-/// It is for operations sent as data, such as a JSON array of
-/// [`Operation`]s. All of them are applied, or none: after a refusal the
-/// document is `==` to before, with the same next generated ids and the
-/// same revision. An empty list commits, and gives a new revision.
+/// - **For** operations sent as data, such as a JSON array of [`Operation`]s.
+/// - **All or none.** After a refusal the document is `==` to before, with the same next
+///   generated ids and the same revision.
+/// - **An empty list** commits, and gives a new revision.
 ///
 /// # Errors
 ///
-/// A [`BatchError`] naming the first refused operation, by its position in
-/// the list, with its [`EditError`].
+/// A [`BatchError`] naming the first refused operation, by its position in the list,
+/// with its [`EditError`].
 ///
 /// # Examples
 ///
@@ -964,13 +918,11 @@ pub fn apply_all(
 /// Shows what [`batch`] would return for `operations`, without changing
 /// `document`: the closure runs on a copy (LIB-EDIT-024, ADR 0032).
 ///
-/// - The result is the [`BatchMutation`] `batch` would return: each
-///   accepted [`Mutation`] with its generated ids, and the net ids, a whole
-///   delete cascade included.
-/// - It equals `batch`'s result while `document` stays at the same
-///   [`revision`](Document::revision); after another edit, the batch may
-///   generate other ids.
-/// - `document` is unchanged: `==` to before, with the same revision and the
+/// - **Gives** the [`BatchMutation`] `batch` would return: each accepted [`Mutation`] with
+///   its generated ids, and the net ids, a whole delete cascade included.
+/// - **Holds while** `document` stays at the same [`revision`](Document::revision). After
+///   another edit, the batch may generate other ids.
+/// - **Changes nothing.** `document` is `==` to before, with the same revision and the
 ///   same next generated ids, so a [`Preview`] taken before still applies.
 ///
 /// # Errors
@@ -1014,14 +966,14 @@ pub fn preview_batch<E>(
     batch::preview(document, operations)
 }
 
-/// Shows what [`apply_all`] would return for `operations`, without changing
-/// `document`: [`preview_batch`] over the list, stopping at the first
-/// refusal.
+/// Shows what [`apply_all`] would return for `operations`, without changing `document`.
+///
+/// It is [`preview_batch`] over the list, stopping at the first refusal.
 ///
 /// # Errors
 ///
-/// A [`BatchError`] naming the first refused operation, by its position in
-/// the list, with its [`EditError`], as `apply_all` gives it.
+/// A [`BatchError`] naming the first refused operation, by its position in the list,
+/// with its [`EditError`], as `apply_all` gives it.
 ///
 /// # Examples
 ///
@@ -1261,9 +1213,10 @@ fn plan_operation<'o>(
 
 /// An edit operation, as a value: any of the operation structs.
 ///
-/// [`apply`] takes an `Operation` or any operation struct, which converts
-/// into one with `From`. Later releases add operations, so a `match` on
-/// `Operation` needs a wildcard arm.
+/// - **Conversion.** [`apply`] takes an `Operation` or any operation struct, which
+///   converts into one with `From`.
+/// - **Non-exhaustive.** Later releases add operations, so a `match` on `Operation` needs
+///   a wildcard arm.
 ///
 /// # Examples
 ///
@@ -1397,9 +1350,10 @@ pub enum Operation {
     ReorderElements(ReorderElements),
     /// Moves an element under another parent, or to the roots.
     MoveElement(MoveElement),
-    /// Copies elements of another document. Not serialized: with the
-    /// `serde` feature, serializing it is an error, and its tag does not
-    /// deserialize (ADR 0030 amendment 2).
+    /// Copies elements of another document.
+    ///
+    /// Not serialized: with the `serde` feature, serializing it is an error, and its tag
+    /// does not deserialize (ADR 0030 amendment 2).
     #[cfg_attr(feature = "serde", serde(skip))]
     CopyElements(CopyElements),
     /// Deletes an element under explicit policies.
@@ -1410,33 +1364,12 @@ impl Operation {
     /// The operation's stable name, for logs: the name of its struct, such as
     /// `"CreateClaim"`.
     ///
-    /// The names are stable, like a diagnostic [`Code`]: a name never changes
-    /// and is never given to another operation. This release has
-    /// `"CreateAssuranceCasePackage"`, `"CreateAssuranceCasePackageInterface"`,
-    /// `"CreateAssuranceCasePackageBinding"`, `"CreateArgumentPackage"`,
-    /// `"CreateArgumentPackageInterface"`, `"CreateArgumentPackageBinding"`,
-    /// `"CreateClaim"`, `"CreateArgumentReasoning"`,
-    /// `"CreateAssertedInference"`, `"CreateAssertedContext"`,
-    /// `"CreateArtifactReference"`, `"CreateArgumentGroup"`,
-    /// `"CreateAssertedEvidence"`, `"CreateAssertedArtifactSupport"`,
-    /// `"CreateAssertedArtifactContext"`, `"CreateDescription"`,
-    /// `"CreateImplementationConstraint"`, `"CreateNote"`,
-    /// `"CreateTaggedValue"`, `"CreateArtifactPackage"`,
-    /// `"CreateArtifactPackageInterface"`, `"CreateArtifactPackageBinding"`,
-    /// `"CreateProperty"`,
-    /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
-    /// `"CreateArtifact"`, `"CreateEvent"`, `"CreateResource"`,
-    /// `"CreateActivity"`, `"CreateArtifactAssetRelationship"`,
-    /// `"CreateTerminologyPackage"`, `"CreateTerminologyPackageInterface"`,
-    /// `"CreateTerminologyPackageBinding"`, `"CreateCategory"`, `"CreateTerm"`,
-    /// `"CreateExpression"`, `"CreateTerminologyGroup"`, `"SetName"`,
-    /// `"SetGid"`, `"SetFlag"`, `"SetAssertionDeclaration"`, `"SetContent"`,
-    /// `"SetKey"`, `"SetTaggedValue"`, `"SetVersion"`, `"SetDate"`, `"SetLocation"`,
-    /// `"SetStartTime"`, `"SetEndTime"`, `"SetValue"`,
-    /// `"SetExternalReference"`, `"SetReferences"`, `"AddReference"`,
-    /// `"RemoveReference"`, `"ReorderElements"`, `"MoveElement"`,
-    /// `"CopyElements"` and `"DeleteElement"`. The two forms of one struct, such as
-    /// [`SetGid::new`] and [`SetGid::remove`], share its name.
+    /// - **Stable,** like a diagnostic [`Code`]: a name never changes and is never given
+    ///   to another operation.
+    /// - **The names** of this release are those of the [`Operation`] variants, each the
+    ///   name of its struct.
+    /// - **One name per struct.** Its forms, such as [`SetGid::new`] and
+    ///   [`SetGid::remove`], share it.
     ///
     /// # Examples
     ///
@@ -1608,37 +1541,44 @@ impl From<CreateTaggedValue> for Operation {
 /// What an applied operation did: the operation, and the ids it created,
 /// changed and deleted.
 ///
-/// [`apply`] returns one for every operation it applies. The three lists are
-/// what [`semantic_compare`](crate::compare::semantic_compare) of the
-/// document before and after would report; `apply` does not run it (ADR 0019
-/// amendment 1):
-/// - [`created_ids`](Self::created_ids) are in the document after, not
-///   before;
-/// - [`changed_ids`](Self::changed_ids) are in both, with a difference in the
-///   element itself;
-/// - [`deleted_ids`](Self::deleted_ids) are in the document before, not
-///   after.
+/// [`apply`] returns one for every operation it applies. The three lists are what
+/// [`semantic_compare`](crate::compare::semantic_compare) of the document before and
+/// after would report; `apply` does not run it (ADR 0019 amendment 1).
 ///
-/// Adding a child does not change its parent. The new element is reported as
-/// created, and the parent's name, declaration and the order of its existing
-/// children are as before (`semantic_compare` compares the order of the
-/// children both documents hold, so a new child is not a reordering). The
-/// parent is in [`operation`](Self::operation).
+/// | List | Its ids are |
+/// |---|---|
+/// | [`created_ids`](Self::created_ids) | in the document after, not before |
+/// | [`changed_ids`](Self::changed_ids) | in both, with a difference in the element itself |
+/// | [`deleted_ids`](Self::deleted_ids) | in the document before, not after |
 ///
-/// An operation that changes an element, such as [`SetName`] or
-/// [`ReorderElements`], creates nothing, and changes its element (for a
-/// reorder, the parent) exactly when its value differs from the one held;
-/// setting the value held changes nothing, writes nothing, and gives
-/// `changed_ids` empty. An element a reference names is not changed by the
-/// reference, and a root reorder changes no element. A [`DeleteElement`]
-/// deletes the element and what it contains and its policies delete, and
-/// changes each surviving element that loses a reference to one of them;
-/// the parent is not changed, unless a preserved child of it comes after a
-/// deleted child and so moves to a lower index (ADR 0033).
+/// What each operation lists:
 ///
-/// A refused operation returns an [`EditError`] instead, and the document is
-/// unchanged; log it with [`EditError::code`]. To log the refused operation's
-/// name, keep a clone of the operation, since `apply` takes it by value.
+/// - **A create** lists its element as created. The parent is not changed: its features
+///   and the order of its existing children are as before. It is in
+///   [`operation`](Self::operation).
+/// - **A set, reference operation or child reorder** changes its element (for a reorder,
+///   the parent) when the value differs from the one held, or when it replaces a
+///   preserved attribute of the feature's name ([`SetFlag`], [`SetReferences`]). It
+///   creates nothing, but for a [`SetTaggedValue`] that finds no tagged value.
+/// - **A referenced element** is not changed by the reference that names it.
+/// - **A [`DeleteElement`]** deletes the element, what it contains and what its policies
+///   delete, and changes each surviving element that loses a reference to one of them.
+/// - **A deleted element's parent** is not changed, unless a preserved child of it comes
+///   after a deleted child and so moves to a lower index (ADR 0033).
+///
+/// How to tell that an edit changed nothing:
+///
+/// - **[`is_empty`](Self::is_empty)** is true: the three lists are empty. A set of the
+///   value held, a move to the place held and a copy of no element change nothing.
+/// - **Except the root order.** A change of the order of the roots lists no id either,
+///   since that order belongs to no element. [`is_empty`](Self::is_empty) says how to
+///   tell then.
+///
+/// A refused operation returns an [`EditError`] instead:
+///
+/// - **Log it** with [`EditError::code`].
+/// - **Its name.** `apply` takes the operation by value, so keep a clone to log the
+///   refused operation's name.
 ///
 /// # Examples
 ///
@@ -1700,9 +1640,8 @@ impl Mutation {
 
     /// The operation, exactly as given to [`apply`].
     ///
-    /// A generated id is not filled in: for an operation without `with_id`,
-    /// its `id()` is still `None`, and the id is in
-    /// [`created_ids`](Self::created_ids).
+    /// A generated id is not filled in: for an operation without `with_id`, its `id()` is
+    /// still `None`, and the id is in [`created_ids`](Self::created_ids).
     ///
     /// # Examples
     ///
@@ -1724,10 +1663,10 @@ impl Mutation {
     /// The ids of the elements created, in creation order, with the
     /// operation's own element first.
     ///
-    /// They are the ids `semantic_compare(before, after)` reports as only in
-    /// after. A create creates exactly its own element; its parent is not
-    /// changed. A [`CopyElements`] creates its copies in pre-order, the i-th
-    /// being the copy of [`CopyElements::source_ids`]`[i]`.
+    /// - **Same as** the ids `semantic_compare(before, after)` reports as only in after.
+    /// - **A create** creates exactly its own element; its parent is not changed.
+    /// - **A [`CopyElements`]** creates its copies in pre-order, the i-th being the copy
+    ///   of [`CopyElements::source_ids`]`[i]`.
     #[must_use]
     pub fn created_ids(&self) -> &[ElementId] {
         &self.created
@@ -1736,8 +1675,8 @@ impl Mutation {
     /// The id of the one element the operation created: `Some` exactly when
     /// [`created_ids`](Self::created_ids) holds one id.
     ///
-    /// A create gives its element's id. An operation that creates nothing,
-    /// or a [`CopyElements`] that creates several, gives `None`.
+    /// A create gives its element's id. An operation that creates nothing, or a
+    /// [`CopyElements`] that creates several, gives `None`.
     ///
     /// # Examples
     ///
@@ -1767,16 +1706,17 @@ impl Mutation {
     /// [pre-order](crate::model::Document::elements) after the operation.
     ///
     /// They are the ids, in both before and after, for which
-    /// `semantic_compare(before, after)` reports a difference of the element
-    /// itself, such as its kind, parent, name or child order. A create does
-    /// not change its parent, so it gives none. An operation that changes an
-    /// element gives that element, or none when it sets the value held; a
-    /// [`ReorderElements::new`] gives the parent, and a
-    /// [`ReorderElements::roots`] none. A [`DeleteElement`] gives each
-    /// surviving element that lost an id of a deleted element, and each whose
-    /// preserved child moved to a lower index (ADR 0033). A [`MoveElement`]
-    /// gives the element when its parent changes, and each parent whose child
-    /// order or preserved placement changes; a [`CopyElements`] gives none.
+    /// `semantic_compare(before, after)` reports a difference of the element itself, such
+    /// as its kind, parent, name or child order.
+    ///
+    /// | Operation | Gives |
+    /// |---|---|
+    /// | a create, a [`CopyElements`] | none: a new child does not change its parent |
+    /// | an operation that changes an element | that element, or none when it sets the value held |
+    /// | [`ReorderElements::new`] | the parent, or none when the order is the one held |
+    /// | [`ReorderElements::roots`] | none: the order of the roots belongs to no element |
+    /// | [`DeleteElement`] | each surviving element that lost an id of a deleted element, and each whose preserved child moved to a lower index (ADR 0033) |
+    /// | [`MoveElement`] | the element when its parent changes, and each parent whose child order or preserved placement changes; none for a root moved among the roots |
     ///
     /// # Examples
     ///
@@ -1802,23 +1742,26 @@ impl Mutation {
     /// The ids of the elements deleted, in the document's
     /// [pre-order](crate::model::Document::elements) before the operation.
     ///
-    /// They are the ids `semantic_compare(before, after)` reports as only in
-    /// before. Only a [`DeleteElement`] deletes elements: the element,
-    /// everything it contains, and what its policies delete.
+    /// - **Same as** the ids `semantic_compare(before, after)` reports as only in before.
+    /// - **Only a [`DeleteElement`] deletes elements:** the element, everything it
+    ///   contains, and what its policies delete. [`DeleteElement`] lists them by policy.
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
     }
 
-    /// Whether the mutation lists no id: the operation created, changed and
-    /// deleted no element. That is so when it set a feature to the value it
-    /// already held, or when it only reordered the roots.
+    /// Whether the mutation lists no id: the operation created, changed and deleted no
+    /// element.
     ///
-    /// A reorder of the roots lists no id, so its mutation is empty although
-    /// the document changed, as for [`BatchMutation::is_empty`], and unlike
-    /// [`compare::Changes::is_empty`](crate::compare::Changes::is_empty). To
-    /// learn whether the document changed, compare it with a clone taken
-    /// before, or use [`compare::changes`](crate::compare::changes).
+    /// - **Empty means nothing changed,** except for the order of the roots: the operation
+    ///   set the value held, moved an element to the place it holds, or copied no element.
+    /// - **A change of the root order is always empty,** although the document changed:
+    ///   that order belongs to no element. This is a [`ReorderElements::roots`], and a
+    ///   [`MoveElement::root`] of a root.
+    /// - **To learn whether the roots moved,** compare the document with a clone taken
+    ///   before (`==`), or use [`compare::changes`](crate::compare::changes), whose
+    ///   [`Changes::is_empty`](crate::compare::Changes::is_empty) counts the root order.
+    /// - **Batches.** [`BatchMutation::is_empty`] answers the same for a batch.
     ///
     /// # Examples
     ///
@@ -1840,9 +1783,11 @@ impl Mutation {
 
 /// Why [`apply`] refused an operation. The document is unchanged.
 ///
-/// Each refusal has a catalog [`Code`], from [`code`](Self::code). `Display`
-/// writes one line that starts in lower case, with ids quoted by `{:?}` so
-/// that line breaks in them never break the line.
+/// - **Code.** Each refusal has a catalog [`Code`], from [`code`](Self::code).
+/// - **`Display`** writes one line that starts in lower case. Ids are quoted by `{:?}`, so
+///   a line break in one never breaks the line.
+/// - **Order.** [`apply`](apply#errors) lists the checks of each operation in order; the
+///   first that fails is the refusal.
 ///
 /// # Examples
 ///
@@ -1858,20 +1803,22 @@ impl Mutation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EditError {
-    /// The parent is not in the document (SACM-CMD-001). Create the parent
-    /// first, or correct its id. Ids are compared exactly, case included.
+    /// The parent is not in the document (SACM-CMD-001).
+    ///
+    /// Create the parent first, or correct its id. Ids are compared exactly, case included.
     #[non_exhaustive]
     ParentNotFound {
         /// The parent's id, as given.
         parent: ElementId,
     },
-    /// No SACM composite role of the parent's class holds an element of the
-    /// new kind (SACM-CMD-005): a Claim directly in an AssuranceCasePackage,
-    /// say. Choose a parent whose class can hold the new kind. For example, a
-    /// Claim goes in an ArgumentPackage, and an ArgumentPackage in an
-    /// AssuranceCasePackage or another ArgumentPackage.
-    /// [`ElementKind::may_contain`](crate::model::ElementKind::may_contain)
-    /// answers this before applying.
+    /// No SACM composite role of the parent's class holds an element of the new kind
+    /// (SACM-CMD-005): a Claim directly in an AssuranceCasePackage, say.
+    ///
+    /// - **Fix.** Choose a parent whose class can hold the new kind: a Claim goes in an
+    ///   ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another
+    ///   ArgumentPackage.
+    /// - **Ask first.** [`ElementKind::may_contain`](crate::model::ElementKind::may_contain)
+    ///   answers this before applying.
     #[non_exhaustive]
     InvalidParent {
         /// The parent's id.
@@ -1881,43 +1828,48 @@ pub enum EditError {
         /// The kind of the element that was to be created.
         kind: ElementKind,
     },
-    /// The id given with `with_id` is not an XML `NCName` (SACM-ID-002). An
-    /// `NCName` starts with a letter or `_` and continues with letters,
-    /// digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out
-    /// `with_id` to have an id generated.
+    /// The id given with `with_id` is not an XML `NCName` (SACM-ID-002).
+    ///
+    /// - **An `NCName`** starts with a letter or `_` and continues with letters, digits,
+    ///   `-`, `.` or `_`; it has no spaces and no `:`.
+    /// - **Or** leave out `with_id` to have an id generated.
     #[non_exhaustive]
     InvalidId {
         /// The id, as given.
         id: ElementId,
     },
-    /// The id given with `with_id` is already in the document, as an
-    /// element's id or as the `xmi:id` of a name, a `content`, a `key`, a `location` or a
-    /// `value`, which identify no element
-    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id),
-    /// [`SacmElement::content_id`](crate::model::SacmElement::content_id))
-    /// (SACM-CMD-004). Ids are unique across the whole document, not per
-    /// parent. Choose another id, or leave out `with_id` to have one
-    /// generated. [`Document::is_id_in_use`] answers this before applying.
+    /// The id given with `with_id` is already in the document (SACM-CMD-004).
     ///
-    /// A [`CopyElements`] also refuses with it when the preserved content it
-    /// copies holds an `xmi:id` that is not free in the target (in use, or
-    /// named by a reference), or names an id the copy changes or drops; `id`
-    /// is that id.
+    /// - **In use** as an element's id, or as the `xmi:id` of a name, a `content`, a `key`,
+    ///   a `location` or a `value`, which identify no element
+    ///   ([`SacmElement::name_id`](crate::model::SacmElement::name_id),
+    ///   [`SacmElement::content_id`](crate::model::SacmElement::content_id)).
+    /// - **Fix.** Ids are unique across the whole document, not per parent. Choose another
+    ///   id, or leave out `with_id` to have one generated.
+    /// - **Ask first.** [`Document::is_id_in_use`] answers this before applying.
+    /// - **A [`CopyElements`]** also refuses with it for an `xmi:id` of the preserved
+    ///   content it copies: one that is not free in the target (in use, or named by a
+    ///   reference), or that names an id the copy changes or drops. `id` is that id.
     #[non_exhaustive]
     DuplicateId {
         /// The id, as given.
         id: ElementId,
     },
-    /// A reference end is given fewer ids than SACM requires
-    /// (SACM-MULT-001): an asserted relationship with no source
-    /// (`source:ArgumentAsset[1..*]`, §11.13) or no target
-    /// (`target:ArgumentAsset[1]`), which [`SetReferences::clear`] of either
-    /// end, or [`RemoveReference`] of the last source or of the target, would
-    /// leave, an interface with no `implements` (§9.3, §10.5, §11.6, §12.5),
-    /// or a binding with fewer than two distinct participants (§9.4, §10.6,
-    /// §11.5, §12.4). `given` is
-    /// how many distinct ids the end would hold (ADR 0039 D3). Give at least
-    /// `required` ids.
+    /// A reference end is given fewer ids than SACM requires (SACM-MULT-001).
+    ///
+    /// | Refused | SACM |
+    /// |---|---|
+    /// | an asserted relationship with no source | `source:ArgumentAsset[1..*]`, §11.13 |
+    /// | an asserted relationship with no target | `target:ArgumentAsset[1]`, §11.13 |
+    /// | an interface with no `implements` | §9.3, §10.5, §11.6, §12.5 |
+    /// | a binding with fewer than two distinct participants | §9.4, §10.6, §11.5, §12.4 |
+    /// | an `ArtifactAssetRelationship` with no source or no target | §12.14 |
+    /// | an `ExpressionLangString` with no `expression`, as the end `expression` | §8.4 |
+    ///
+    /// - **Edits too.** A [`SetReferences::clear`] of such an end, or a
+    ///   [`RemoveReference`] of the last source or of the target, would leave it so.
+    /// - **`given`** is how many distinct ids the end would hold (ADR 0039 D3).
+    /// - **Fix.** Give at least `required` ids.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim, EditError};
@@ -1946,11 +1898,13 @@ pub enum EditError {
         /// How many it needs at least.
         required: usize,
     },
-    /// A reference end is given more ids than SACM allows (SACM-MULT-001):
-    /// two ids on a single-valued end, such as `target`, `reasoning` or
-    /// `citedElement`, or an [`AddReference`] to one that holds an id
-    /// already. The same id twice is two ids. Give at most `allowed` ids, or
-    /// replace the one held with [`SetReferences`].
+    /// A reference end is given more ids than SACM allows (SACM-MULT-001).
+    ///
+    /// - **When.** Two ids on a single-valued end, such as `target`, `reasoning` or
+    ///   `citedElement`, or an [`AddReference`] to one that holds an id already.
+    /// - **The same id twice** is two ids.
+    /// - **Fix.** Give at most `allowed` ids, or replace the one held with
+    ///   [`SetReferences`].
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetReferences};
@@ -1977,17 +1931,19 @@ pub enum EditError {
         /// How many it holds at most.
         allowed: usize,
     },
-    /// A referenced id holds XML white space (space, TAB, LF or CR), so it is
-    /// not an `NCName` and cannot be written as one id (SACM-ID-002): written
-    /// to a reference attribute, `a b` would read back as the two ids `a`
-    /// and `b`. A file can give an element such an id, since
-    /// [`xmi::read`](crate::xmi::read) keeps an id as written and
-    /// [`validation::validate`](crate::validation::validate) reports it
-    /// (SACM23-VAL-020). The first such id is reported, in the order of
-    /// [`ReferenceNotFound`](Self::ReferenceNotFound). [`SetReferences`]
-    /// and [`AddReference`] check only the ids the end does not hold
-    /// already. Give the referenced element an `NCName` id in the file
-    /// first.
+    /// A referenced id holds XML white space (space, TAB, LF or CR), so it cannot be
+    /// written as one id (SACM-ID-002).
+    ///
+    /// - **Why.** Written to a reference attribute, `a b` would read back as the two ids
+    ///   `a` and `b`.
+    /// - **Where it comes from.** A file can give an element such an id:
+    ///   [`xmi::read`](crate::xmi::read) keeps an id as written, and
+    ///   [`validation::validate`](crate::validation::validate) reports it (SACM23-VAL-020).
+    /// - **Which id.** The first such id, in the order of
+    ///   [`ReferenceNotFound`](Self::ReferenceNotFound).
+    /// - **New ids only.** [`SetReferences`] and [`AddReference`] check only the ids the
+    ///   end does not hold already.
+    /// - **Fix.** Give the referenced element an `NCName` id in the file first.
     ///
     /// ```
     /// use sacm::edit::{self, CreateAssertedInference, EditError};
@@ -2015,20 +1971,20 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
-    /// A referenced id names no element of the document (SACM-CMD-001): a
-    /// source, the target or the `reasoning` of an asserted relationship,
-    /// the `structure` of an `ArgumentReasoning`, a
-    /// `referencedArtifactElement` of an `ArtifactReference` or a member of
-    /// an `ArgumentGroup`. An edit never makes a dangling reference
-    /// (D-VAL-LAYER), and the `xmi:id` of a name, `content`, `key`, `location` or
-    /// `value` names no element. The first such id is reported: the sources
-    /// in order, then the target, the reasoning, the structure, the
-    /// `referencedArtifactElement` ids in order and the group members in
-    /// order. [`SetReferences`] and [`AddReference`] check only the ids the
-    /// end does not hold already, in list order, so a dangling id read from
-    /// a file can be kept while the end is edited. Create the referenced
-    /// element first, or correct the id; ids are compared exactly, case
-    /// included.
+    /// A referenced id names no element of the document (SACM-CMD-001).
+    ///
+    /// - **Any end:** a source, the target or the `reasoning` of an asserted relationship,
+    ///   a `structure`, a `referencedArtifactElement` or a group member, say.
+    /// - **No dangling reference.** An edit never makes one (D-VAL-LAYER). The `xmi:id` of
+    ///   a name, `content`, `key`, `location` or `value` names no element.
+    /// - **Which id.** The first such id: the sources in order, then the target, the
+    ///   reasoning, the structure, the `referencedArtifactElement` ids in order and the
+    ///   group members in order.
+    /// - **New ids only.** [`SetReferences`] and [`AddReference`] check only the ids the
+    ///   end does not hold already, in list order. So a dangling id read from a file can
+    ///   be kept while the end is edited.
+    /// - **Fix.** Create the referenced element first, or correct the id. Ids are compared
+    ///   exactly, case included.
     #[non_exhaustive]
     ReferenceNotFound {
         /// The end, by its XMI name, such as `target`.
@@ -2036,24 +1992,24 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
-    /// A referenced id names an element of a kind its end's declared type
-    /// does not admit (SACM-REF-002): a `structure` that is no
-    /// `ArgumentPackage`, a source or target that is no `ArgumentAsset`, a
-    /// `reasoning` that is no `ArgumentReasoning`, a
-    /// `referencedArtifactElement` that is a `UtilityElement`, or a group
-    /// member that is no `ArgumentationElement`. An edit never makes a
-    /// wrongly typed reference (D-VAL-LAYER, ADR 0028). It is checked once
-    /// every id is known to name an element
-    /// ([`ReferenceNotFound`](Self::ReferenceNotFound)), in the same order,
-    /// and the first such id is reported. [`SetReferences`] and
-    /// [`AddReference`] check only the ids the end does not hold already.
-    /// Reference an element of the end's type instead.
+    /// A referenced id names an element of a kind its end's declared type does not admit
+    /// (SACM-REF-002).
     ///
-    /// The narrower §11.15, §11.17 and §11.18 rules, that the ends of an
-    /// `AssertedEvidence`, `AssertedArtifactSupport` or
-    /// `AssertedArtifactContext` be `ArtifactReference`s, are content, not
-    /// refusals: [`validation::validate`](crate::validation::validate)
-    /// reports them (SACM23-VAL-016).
+    /// - **Such as** a `structure` that is no `ArgumentPackage`, a source or target that
+    ///   is no `ArgumentAsset`, a `reasoning` that is no `ArgumentReasoning`, a
+    ///   `referencedArtifactElement` that is a `UtilityElement`, or a group member that is
+    ///   no `ArgumentationElement`.
+    /// - **No wrongly typed reference.** An edit never makes one (D-VAL-LAYER, ADR 0028).
+    /// - **Which id.** The first such id, in the order of
+    ///   [`ReferenceNotFound`](Self::ReferenceNotFound), once every id is known to name an
+    ///   element.
+    /// - **New ids only.** [`SetReferences`] and [`AddReference`] check only the ids the
+    ///   end does not hold already.
+    /// - **Fix.** Reference an element of the end's type instead.
+    /// - **Narrower rules are content.** §11.15, §11.17 and §11.18 ask that the ends of an
+    ///   `AssertedEvidence`, `AssertedArtifactSupport` or `AssertedArtifactContext` be
+    ///   `ArtifactReference`s. [`validation::validate`](crate::validation::validate)
+    ///   reports them (SACM23-VAL-016); no edit refuses them.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateArgumentReasoning, CreateClaim, EditError};
@@ -2091,14 +2047,13 @@ pub enum EditError {
         /// `ArgumentPackage` or `ArgumentAsset`.
         expected: &'static str,
     },
-    /// The element to edit is not in the document (SACM-CMD-001): the
-    /// element of a set or reference operation, the parent of a
-    /// [`ReorderElements::new`], the element of a [`MoveElement`], or an
-    /// element [`CopyElements::new`] or [`CopyElements::root`] is given that
-    /// the source lacks. Ids are
-    /// compared exactly, case included;
-    /// the `xmi:id` of a name, `content`, `key`, `location` or `value` names no element.
-    /// Correct the id.
+    /// The element to edit is not in the document (SACM-CMD-001).
+    ///
+    /// - **Which element.** The element of a set, reference, delete or move operation, the
+    ///   parent of a [`ReorderElements::new`], or an id given to [`CopyElements::new`] or
+    ///   [`CopyElements::root`] that the source lacks.
+    /// - **Fix.** Correct the id. Ids are compared exactly, case included, and the `xmi:id`
+    ///   of a name, `content`, `key`, `location` or `value` names no element.
     ///
     /// ```
     /// use sacm::edit::{self, EditError, SetName};
@@ -2114,25 +2069,29 @@ pub enum EditError {
         /// The element's id, as given.
         element: ElementId,
     },
-    /// The element's kind has no such feature (SACM-CMD-008): a `name` on a
-    /// `UtilityElement` (§8.6 gives names to `ModelElement`s), `isCounter`
-    /// on a kind that is no `AssertedRelationship` (§11.13), an
-    /// `assertionDeclaration` on one that is no Assertion (§11.10), a
-    /// `content` on one that is no `UtilityElement` (§8.7), a `key` on one
-    /// that is no `TaggedValue` (§8.12), a `taggedValue` on a
-    /// `UtilityElement`, which holds none (§8.6), or a reference end the kind does
-    /// not own, such as a `source` on a Claim. Every element has a `gid`,
-    /// `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, so
-    /// those never fail here. Edit an element whose kind has the feature.
+    /// The element's kind has no such feature (SACM-CMD-008).
     ///
-    /// When the element has an end of the same name, the Display names the
-    /// class whose end it lacks: `source` on an `ArtifactAssetRelationship`
-    /// reads `the ArtifactAssetRelationship "rel" has no source of an
-    /// AssertedRelationship`, and
-    /// [`ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget) on an
-    /// `AssertedInference` reads `the AssertedInference "i1" has no target of
-    /// an ArtifactAssetRelationship` (ADR 0034 amendment 2). The `feature` is
-    /// the XMI name all the same.
+    /// | Feature | Refused on |
+    /// |---|---|
+    /// | `name` | a `UtilityElement` (§8.6 gives names to `ModelElement`s) |
+    /// | `isCounter` | a kind that is no `AssertedRelationship` (§11.13) |
+    /// | `assertionDeclaration` | a kind that is no Assertion (§11.10) |
+    /// | `content` | a kind that is no `UtilityElement` (§8.7) |
+    /// | `key` | a kind that is no `TaggedValue` (§8.12) |
+    /// | `taggedValue` | a `UtilityElement`, which holds none (§8.6) |
+    /// | a reference end | a kind that does not own it, such as a `source` on a Claim |
+    ///
+    /// - **Never here.** Every element has a `gid`, `isCitation`, `isAbstract`,
+    ///   `citedElement` and `abstractForm`.
+    /// - **Fix.** Edit an element whose kind has the feature.
+    /// - **An end of the same name.** When the element has one, the Display names the
+    ///   class whose end it lacks (ADR 0034 amendment 2). The `feature` is the XMI name
+    ///   all the same.
+    ///
+    /// | Operation | Display |
+    /// |---|---|
+    /// | `source` on an `ArtifactAssetRelationship` | `the ArtifactAssetRelationship "rel" has no source of an AssertedRelationship` |
+    /// | [`ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget) on an `AssertedInference` | `the AssertedInference "i1" has no target of an ArtifactAssetRelationship` |
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetFlag};
@@ -2155,20 +2114,20 @@ pub enum EditError {
         element: ElementId,
         /// The element's kind.
         kind: ElementKind,
-        /// The feature, by its XMI name: `name`, `isCounter`,
-        /// `assertionDeclaration`, `content`, `key`, `taggedValue`, or the
-        /// name of a reference end, such as `source`.
+        /// The feature, by its XMI name, such as `name`, `isCounter`, `assertionDeclaration`,
+        /// `content`, `key` or `taggedValue`, or the name of a reference end, such as `source`.
         feature: &'static str,
     },
     /// A reference edit names a derived end (SACM-CMD-008): `ReferenceEnd::Expression`,
     /// which the element's `ExpressionLangStrings` hold. Set the name or text instead.
     ///
-    /// [`SetReferences`], [`AddReference`] and [`RemoveReference`] refuse
-    /// the end after an unknown element ([`ElementNotFound`](Self::ElementNotFound)),
-    /// on every kind (SACM23-BASE-009, ADR 0038 D3): its ids are the
-    /// `expression`s of the element's name and texts, set with
-    /// [`LangString::with_expression`](crate::model::LangString::with_expression)
-    /// and [`SetName`], [`SetContent`], [`SetKey`] or [`SetLocation`].
+    /// - **Who refuses.** [`SetReferences`], [`AddReference`] and [`RemoveReference`], on
+    ///   every kind, after an unknown element ([`ElementNotFound`](Self::ElementNotFound))
+    ///   (SACM23-BASE-009, ADR 0038 D3).
+    /// - **Why.** The end's ids are the `expression`s of the element's name and texts.
+    /// - **Fix.** Set them with
+    ///   [`LangString::with_expression`](crate::model::LangString::with_expression) and
+    ///   [`SetName`], [`SetContent`], [`SetKey`] or [`SetLocation`].
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetReferences};
@@ -2200,6 +2159,7 @@ pub enum EditError {
         end: &'static str,
     },
     /// [`RemoveReference`] names an id the end does not hold (SACM-CMD-001).
+    ///
     /// Ids are compared exactly, case included. Remove an id the end holds.
     ///
     /// ```
@@ -2245,12 +2205,13 @@ pub enum EditError {
         /// The href, as given.
         href: Href,
     },
-    /// [`ReorderElements`] names an id that is not a direct child of the
-    /// parent, or, for [`ReorderElements::roots`], not a root
-    /// (SACM-CMD-001): a grandchild, another element's child, the parent
-    /// itself, the id of a name, or an id the document does not hold. The
-    /// first such id is reported, in list order. Name only the parent's own
-    /// children, or only roots.
+    /// [`ReorderElements`] names an id that is not a direct child of the parent, or, for
+    /// [`ReorderElements::roots`], not a root (SACM-CMD-001).
+    ///
+    /// - **Such as** a grandchild, another element's child, the parent itself, the id of
+    ///   a name, or an id the document does not hold.
+    /// - **Which id.** The first such id, in list order.
+    /// - **Fix.** Name only the parent's own children, or only roots.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, ReorderElements};
@@ -2271,9 +2232,11 @@ pub enum EditError {
         /// The id, as given.
         child: ElementId,
     },
-    /// [`ReorderElements`] does not give one order (SACM-CMD-009): its list
-    /// is empty, or names an element more than once, the first such id in
-    /// list order. Name each child, or each root, to move exactly once.
+    /// [`ReorderElements`] does not give one order (SACM-CMD-009): its list is empty, or
+    /// names an element more than once.
+    ///
+    /// - **Which id.** The first id named again, in list order.
+    /// - **Fix.** Name each child, or each root, to move exactly once.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, ReorderElements};
@@ -2297,14 +2260,16 @@ pub enum EditError {
         /// The first id named more than once, or `None` for an empty list.
         repeated: Option<ElementId>,
     },
-    /// A [`DeleteElement`] under [`ReferenceDeletePolicy::RejectIfReferenced`]
-    /// would leave a reference dangling (SACM-CMD-002): an element outside
-    /// the deleted element's subtree holds the id of a deleted element. The
-    /// first such reference is reported, in the order of
-    /// [`Preview::dangling_references`]. Choose
-    /// [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships)
-    /// or [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences), or
-    /// remove the reference first.
+    /// A [`DeleteElement`] under [`ReferenceDeletePolicy::RejectIfReferenced`] would leave
+    /// a reference dangling (SACM-CMD-002).
+    ///
+    /// - **Dangling.** An element outside the deleted element's subtree holds the id of a
+    ///   deleted element.
+    /// - **Which reference.** The first, in the order of [`Preview::dangling_references`].
+    /// - **Fix.** Choose
+    ///   [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships)
+    ///   or [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences), or remove the
+    ///   reference first.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, EditError, SetReferences};
@@ -2332,10 +2297,12 @@ pub enum EditError {
         /// The id the reference names: an element the delete would remove.
         id: ElementId,
     },
-    /// [`apply_preview`] was given a [`Preview`] taken at another revision
-    /// of the document (SACM-CMD-003): the document changed after the
-    /// preview was taken, or the preview is of another document. Nothing
-    /// changed. Preview the operation again.
+    /// [`apply_preview`] was given a [`Preview`] taken at another revision of the document
+    /// (SACM-CMD-003).
+    ///
+    /// - **Why.** The document changed after the preview was taken, or the preview is of
+    ///   another document.
+    /// - **Fix.** Nothing changed. Preview the operation again.
     #[non_exhaustive]
     PreviewExpired {
         /// The revision the preview was taken at.
@@ -2343,13 +2310,15 @@ pub enum EditError {
         /// The document's revision now.
         current: Revision,
     },
-    /// A [`DeleteElement`] under [`PackageDeletePolicy::RejectIfNonEmpty`]
-    /// names an element that contains elements other than `UtilityElement`s
-    /// (SACM-CMD-006). Descriptions, implementation constraints, notes and
-    /// tagged values do not count; each child element of preserved content
-    /// anywhere in the subtree does (ADR 0033). Choose
-    /// [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively), or
-    /// delete the contents first.
+    /// A [`DeleteElement`] under [`PackageDeletePolicy::RejectIfNonEmpty`] names an element
+    /// that contains elements other than `UtilityElement`s (SACM-CMD-006).
+    ///
+    /// - **Not counted:** descriptions, implementation constraints, notes and tagged
+    ///   values.
+    /// - **Counted:** each child element of preserved content anywhere in the subtree
+    ///   (ADR 0033).
+    /// - **Fix.** Choose [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively), or
+    ///   delete the contents first.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, EditError};
@@ -2368,24 +2337,28 @@ pub enum EditError {
     /// ```
     #[non_exhaustive]
     NotEmpty {
-        /// The id of the element the delete would remove with its contents:
-        /// the element to delete, or an interface or binding the delete
-        /// removes because it is left below a bound (LIB-EDIT-019).
+        /// The id of the element the delete would remove with its contents.
+        ///
+        /// It is the element to delete, or an interface or binding the delete removes
+        /// because it is left below a bound (LIB-EDIT-019).
         element: ElementId,
-        /// How many elements it contains, at any depth, that are not
-        /// `UtilityElement`s, with the preserved child elements of every
-        /// element of its subtree, itself included.
+        /// How many elements it contains, at any depth, that are not `UtilityElement`s.
+        ///
+        /// The preserved child elements of every element of its subtree, itself included,
+        /// count too.
         contained: usize,
     },
-    /// A [`DeleteElement`] under
-    /// [`CrossPackageReferencePolicy::RejectIfExternalReferencesExist`] would
-    /// leave a reference dangling across a package boundary (SACM-CMD-007):
-    /// the holder's nearest package is not that of the element the reference
-    /// names. The first dangling reference a policy refuses is reported, in
-    /// the order of [`Preview::dangling_references`]. Choose
-    /// [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy)
-    /// with a reference policy that handles it, or remove the reference
-    /// first.
+    /// A [`DeleteElement`] would leave a reference dangling across a package boundary
+    /// (SACM-CMD-007).
+    ///
+    /// - **Under** [`CrossPackageReferencePolicy::RejectIfExternalReferencesExist`].
+    /// - **Across a boundary.** The holder's nearest package is not that of the element
+    ///   the reference names.
+    /// - **Which reference.** The first dangling reference a policy refuses, in the order
+    ///   of [`Preview::dangling_references`].
+    /// - **Fix.** Choose
+    ///   [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy) with
+    ///   a reference policy that handles it, or remove the reference first.
     #[non_exhaustive]
     CrossPackageReference {
         /// The id of the element that holds the reference.
@@ -2395,11 +2368,12 @@ pub enum EditError {
         /// The id the reference names: an element the delete would remove.
         id: ElementId,
     },
-    /// A [`MoveElement::root`] or a [`CopyElements::root`] would make a root
-    /// of an element that is no package (SACM-CMD-005). Every root of a
-    /// document is a package
-    /// ([`ElementKind::is_package`](crate::model::ElementKind::is_package)).
-    /// Move or copy the element under a package instead.
+    /// A [`MoveElement::root`] or a [`CopyElements::root`] would make a root of an element
+    /// that is no package (SACM-CMD-005).
+    ///
+    /// Every root of a document is a package
+    /// ([`ElementKind::is_package`](crate::model::ElementKind::is_package)). Move or copy
+    /// the element under a package instead.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, MoveElement};
@@ -2423,9 +2397,10 @@ pub enum EditError {
         /// The element's kind.
         kind: ElementKind,
     },
-    /// A [`MoveElement`] would move an element into itself or into an
-    /// element it contains (SACM-CMD-005). Choose a parent outside the
-    /// element's subtree.
+    /// A [`MoveElement`] would move an element into itself or into an element it contains
+    /// (SACM-CMD-005).
+    ///
+    /// Choose a parent outside the element's subtree.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, EditError, MoveElement};
@@ -2449,10 +2424,12 @@ pub enum EditError {
         /// The parent given: the element or an element inside it.
         parent: ElementId,
     },
-    /// A [`MoveElement::with_position`] is past the end (SACM-CMD-009): the
-    /// position is the element's index after the move, from 0 to the number
-    /// of the parent's other children (or the other roots). Give at most
-    /// `children`, or leave the position out to move after the last.
+    /// A [`MoveElement::with_position`] is past the end (SACM-CMD-009).
+    ///
+    /// - **The position** is the element's index after the move, from 0 to the number of
+    ///   the parent's other children (or the other roots).
+    /// - **Fix.** Give at most `children`, or leave the position out to move after the
+    ///   last.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, MoveElement};
@@ -2477,13 +2454,15 @@ pub enum EditError {
         /// many other roots): the largest position allowed.
         children: usize,
     },
-    /// A [`MoveElement::new`] or a [`CopyElements::new`] would make a child of an
-    /// element that keeps a type attribute as preserved content (SACM-CMD-005,
-    /// LIB-COMPAT-019): an `xmi:type` or `xsi:type` that a read kept on a root
-    /// because it names another class than the root's element name (D-ROOT-NAME,
-    /// ADR 0033). On a child a type attribute gives the class (XMI 2.5.1 rule 2g),
-    /// so the element could not be written with both. Keep it a root, or move or
-    /// copy its children instead.
+    /// A [`MoveElement::new`] or a [`CopyElements::new`] would make a child of an element
+    /// that keeps a type attribute as preserved content (SACM-CMD-005, LIB-COMPAT-019).
+    ///
+    /// - **The attribute** is an `xmi:type` or `xsi:type` that a read kept on a root
+    ///   because it names another class than the root's element name (D-ROOT-NAME,
+    ///   ADR 0033).
+    /// - **Why.** On a child a type attribute gives the class (XMI 2.5.1 rule 2g), so the
+    ///   element could not be written with both.
+    /// - **Fix.** Keep it a root, or move or copy its children instead.
     ///
     /// ```
     /// use sacm::edit::{self, EditError, MoveElement};
@@ -2512,20 +2491,20 @@ pub enum EditError {
         /// Its value exactly as held, such as `p:Bundle`.
         value: String,
     },
-    /// A text the operation would store holds a character XML 1.0 cannot
-    /// represent (SACM-XML-003, LIB-EDIT-025): one outside its `Char`
-    /// production, such as U+0000, another C0 control other than TAB, LF and
-    /// CR, U+FFFE or U+FFFF. No file can carry it, so no edit stores it.
-    /// Remove the character.
+    /// A text the operation would store holds a character XML 1.0 cannot represent
+    /// (SACM-XML-003, LIB-EDIT-025).
     ///
+    /// - **Which characters.** Those outside XML's `Char` production, such as U+0000,
+    ///   another C0 control other than TAB, LF and CR, U+FFFE or U+FFFF.
+    /// - **Why.** No file can carry it, so no edit stores it. Remove the character.
     /// - **Last.** Every other refusal comes first.
-    /// - **First character.** The texts are checked in the order
-    ///   [`xmi::write`](crate::xmi::write) checks them, and the first such
-    ///   character of the first text holding one is named, as
+    /// - **Writer's order.** The texts are checked in the order
+    ///   [`xmi::write`](crate::xmi::write) checks them.
+    /// - **First character.** The first such character of the first text holding one is
+    ///   named, as
     ///   [`WriteError::UnrepresentableCharacter`](crate::xmi::WriteError::UnrepresentableCharacter)
     ///   names it.
-    /// - **Only what is stored.** A remove, or a set of the value held, is
-    ///   not checked.
+    /// - **Only what is stored.** A remove, or a set of the value held, is not checked.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, EditError};
@@ -2554,10 +2533,12 @@ pub enum EditError {
     /// ```
     #[non_exhaustive]
     UnrepresentableCharacter {
-        /// The element that would hold the text: the element a set changes;
-        /// the new element of a create, with its given id or the id it
-        /// would be generated; for [`SetTaggedValue`], the tagged value it
-        /// sets or would create.
+        /// The element that would hold the text.
+        ///
+        /// - **A set:** the element it changes.
+        /// - **A create:** the new element, with its given id or the id it would be
+        ///   generated.
+        /// - **[`SetTaggedValue`]:** the tagged value it sets or would create.
         element: ElementId,
         /// The first such character.
         character: char,
@@ -2570,32 +2551,23 @@ pub enum EditError {
 }
 
 impl EditError {
-    /// The catalog code of the refusal: SACM-CMD-001 for
-    /// [`ParentNotFound`](Self::ParentNotFound), SACM-CMD-005 for
-    /// [`InvalidParent`](Self::InvalidParent), SACM-ID-002 for
-    /// [`InvalidId`](Self::InvalidId), SACM-CMD-004 for
-    /// [`DuplicateId`](Self::DuplicateId), SACM-MULT-001 for
-    /// [`TooFewReferences`](Self::TooFewReferences) and
-    /// [`TooManyReferences`](Self::TooManyReferences), SACM-ID-002 for
-    /// [`InvalidReference`](Self::InvalidReference), SACM-CMD-001 for
-    /// [`ReferenceNotFound`](Self::ReferenceNotFound), SACM-REF-002 for
-    /// [`WrongReferenceType`](Self::WrongReferenceType), SACM-CMD-001 for
-    /// [`ElementNotFound`](Self::ElementNotFound),
-    /// [`ReferenceNotHeld`](Self::ReferenceNotHeld),
-    /// [`HrefNotHeld`](Self::HrefNotHeld) and
-    /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
-    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and
-    /// [`DerivedEnd`](Self::DerivedEnd), SACM-CMD-009
-    /// for [`InvalidOrder`](Self::InvalidOrder), SACM-CMD-002 for
-    /// [`Referenced`](Self::Referenced), SACM-CMD-003 for
-    /// [`PreviewExpired`](Self::PreviewExpired), SACM-CMD-006 for
-    /// [`NotEmpty`](Self::NotEmpty), SACM-CMD-007 for
-    /// [`CrossPackageReference`](Self::CrossPackageReference), SACM-CMD-005
-    /// for [`InvalidRoot`](Self::InvalidRoot),
-    /// [`ParentInSubtree`](Self::ParentInSubtree) and
-    /// [`KeptRootType`](Self::KeptRootType), SACM-CMD-009 for
-    /// [`PositionOutOfRange`](Self::PositionOutOfRange), and SACM-XML-003
-    /// for [`UnrepresentableCharacter`](Self::UnrepresentableCharacter).
+    /// The catalog code of the refusal.
+    ///
+    /// | Code | Refusals |
+    /// |---|---|
+    /// | SACM-CMD-001 | [`ParentNotFound`](Self::ParentNotFound), [`ReferenceNotFound`](Self::ReferenceNotFound), [`ElementNotFound`](Self::ElementNotFound), [`ReferenceNotHeld`](Self::ReferenceNotHeld), [`HrefNotHeld`](Self::HrefNotHeld), [`ChildNotFound`](Self::ChildNotFound) |
+    /// | SACM-CMD-002 | [`Referenced`](Self::Referenced) |
+    /// | SACM-CMD-003 | [`PreviewExpired`](Self::PreviewExpired) |
+    /// | SACM-CMD-004 | [`DuplicateId`](Self::DuplicateId) |
+    /// | SACM-CMD-005 | [`InvalidParent`](Self::InvalidParent), [`InvalidRoot`](Self::InvalidRoot), [`ParentInSubtree`](Self::ParentInSubtree), [`KeptRootType`](Self::KeptRootType) |
+    /// | SACM-CMD-006 | [`NotEmpty`](Self::NotEmpty) |
+    /// | SACM-CMD-007 | [`CrossPackageReference`](Self::CrossPackageReference) |
+    /// | SACM-CMD-008 | [`FeatureNotApplicable`](Self::FeatureNotApplicable), [`DerivedEnd`](Self::DerivedEnd) |
+    /// | SACM-CMD-009 | [`InvalidOrder`](Self::InvalidOrder), [`PositionOutOfRange`](Self::PositionOutOfRange) |
+    /// | SACM-ID-002 | [`InvalidId`](Self::InvalidId), [`InvalidReference`](Self::InvalidReference) |
+    /// | SACM-MULT-001 | [`TooFewReferences`](Self::TooFewReferences), [`TooManyReferences`](Self::TooManyReferences) |
+    /// | SACM-REF-002 | [`WrongReferenceType`](Self::WrongReferenceType) |
+    /// | SACM-XML-003 | [`UnrepresentableCharacter`](Self::UnrepresentableCharacter) |
     #[must_use]
     pub fn code(&self) -> Code {
         match self {

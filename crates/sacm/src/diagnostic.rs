@@ -67,6 +67,8 @@ use template::Template;
 
 /// How serious a diagnostic is: `Info < Warning < Error`.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::diagnostic::Severity;
 ///
@@ -118,6 +120,8 @@ impl fmt::Display for Severity {
 ///   arrives with the matrix row that emits it.
 /// - **The full rules.** The [catalog] gives each code's whole meaning; a
 ///   constant's docs give what a caller most often needs.
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::diagnostic::Code;
@@ -475,6 +479,12 @@ catalog! {
     /// | a `ModelElement` with no name (§8.6 `name:LangString[1]`) | Error | SACM23-VAL-018 | give the element a name |
     /// | a `ModelElement` with more than one description (§8.6 `description:Description[0..1]`); every description is kept, and a strict save is not refused | Warning | SACM23-VAL-011 | merge them into one |
     /// | an asserted relationship with no `source` (§11.13 `source:ArgumentAsset[1..*]`) or no `target` (`target:ArgumentAsset[1]`): one per missing end | Error | SACM23-VAL-005 | give the missing end |
+    ///
+    /// - **Why two descriptions are a finding.** formal/23-05-08 §8.6 allows a
+    ///   `ModelElement` one description; the machine-readable model ptc/22-03-13
+    ///   allows any number (D-DESC-MULT).
+    /// - **What the crate does.** It keeps every description, so a file with
+    ///   several round-trips, and reports the text's bound as a Warning.
     ///
     /// It is also the code of:
     ///
@@ -953,6 +963,8 @@ impl<'de> serde::Deserialize<'de> for Code {
 /// Values order Text, then Count, then Prose, then by value. Later releases
 /// may add kinds, so match it with a fallback arm.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::diagnostic::ArgumentValue;
 ///
@@ -1026,6 +1038,8 @@ impl fmt::Display for ArgumentValue {
 /// - **Order.** That in which they first appear in its English sentence.
 /// - **Names and kinds.** The catalog lists each template's (ADR 0030
 ///   amendment 3).
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::diagnostic::ArgumentValue;
@@ -1103,6 +1117,8 @@ impl fmt::Display for Argument {
 /// Only the crate builds one; read it through [`template`](Self::template)
 /// and [`arguments`](Self::arguments), or through the accessors of the
 /// refusal that holds it.
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::xmi::{self, ReadError, ReadOptions};
@@ -1524,6 +1540,18 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
 ///
 /// The column counts Unicode scalar values (`char`s), not bytes. Locations
 /// order by line, then column.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// // The end tag does not match: the refusal is at its `<`.
+/// let error = xmi::read(b"<r>\n</s>", &ReadOptions::default()).unwrap_err();
+/// let at = error.location().expect("the refusal is located");
+/// assert_eq!((at.line(), at.column()), (2, 1));
+/// assert_eq!(at.to_string(), "line 2, column 1");
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -1697,6 +1725,31 @@ impl<'de> serde::Deserialize<'de> for Specification {
 /// sorts before `"2"`.
 ///
 /// Two diagnostics compare `Equal` exactly when they are equal.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::diagnostic::{Code, Severity};
+/// use sacm::validation;
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// // A Claim with no name.
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name content="Arguments"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+/// let findings = validation::validate(&document);
+/// let finding = &findings[0];
+/// assert_eq!((finding.code(), finding.severity()), (Code::MULTIPLICITY_VIOLATION, Severity::Error));
+/// assert_eq!(finding.affected()[0].as_str(), "c1");
+/// assert_eq!(
+///     finding.to_string(),
+///     "error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim \"c1\" has no name (name:LangString[1])"
+/// );
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Diagnostic {
     code: Code,

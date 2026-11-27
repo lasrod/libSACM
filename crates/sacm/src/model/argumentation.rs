@@ -127,6 +127,8 @@ impl FromStr for AssertionDeclaration {
 /// quotes it as Rust's `{:?}` does, so line breaks and other control
 /// characters are escaped and the message stays on one line.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::model::AssertionDeclaration;
 ///

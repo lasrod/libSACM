@@ -45,9 +45,8 @@ pub(super) enum Plan<'o> {
     Unchanged,
     /// An operation that changes a feature of `element` to `value`.
     Set {
-        /// The element to change: the operation's, or one the plan found,
-        /// such as the tagged value a [`SetTaggedValue`](super::SetTaggedValue)
-        /// sets.
+        /// The element to change: the operation's, or one the plan found, such as the
+        /// tagged value a [`SetTaggedValue`](super::SetTaggedValue) sets.
         element: Cow<'o, ElementId>,
         /// The new value of the feature.
         value: Value<'o>,
@@ -308,9 +307,8 @@ pub(super) enum Features<'o> {
     Texts {
         /// The `content`.
         content: &'o MultiLangString,
-        /// The `key`, given exactly for a `TaggedValue`: the operation's,
-        /// or the one a [`SetTaggedValue`](super::SetTaggedValue) builds
-        /// from its plain key.
+        /// The `key`, given exactly for a `TaggedValue`: the operation's, or the one a
+        /// [`SetTaggedValue`](super::SetTaggedValue) builds from its plain key.
         key: Option<Cow<'o, MultiLangString>>,
     },
     /// The name, flags and reference ends of an argumentation kind that
@@ -323,9 +321,8 @@ pub(super) enum Features<'o> {
         /// Each end, one the kind owns, with the ids it holds, within its
         /// bounds; an end with none holds nothing.
         references: Vec<(ReferenceEnd, &'o [ElementId])>,
-        /// The cross-document references of one of those ends, if the
-        /// create gives any, within the end's bounds beside its ids (ADR
-        /// 0040 amendment 1, A5).
+        /// The cross-document references of one of those ends, if the create gives any,
+        /// within the end's bounds beside its ids (ADR 0040 amendment 1, A5).
         hrefs: Option<(ReferenceEnd, &'o [Href])>,
     },
     /// The name, string-valued attributes and `location` of an
@@ -374,9 +371,10 @@ pub(super) enum Value<'o> {
     /// The ids an end the element's kind owns is to hold, within its bounds;
     /// its cross-document references are kept.
     References(ReferenceEnd, Vec<ElementId>),
-    /// The ids and the cross-document references an end the element's kind
-    /// owns is to hold, within its bounds: what
-    /// [`SetReferences`](super::SetReferences) sets, replacing both lists
+    /// The ids and the cross-document references an end the element's kind owns is to
+    /// hold, within its bounds.
+    ///
+    /// It is what [`SetReferences`](super::SetReferences) sets, replacing both lists
     /// (ADR 0040 D7, amendment 1 A5).
     Replaced(ReferenceEnd, Vec<ElementId>, Vec<Href>),
     /// The cross-document references an end the element's kind owns is to
