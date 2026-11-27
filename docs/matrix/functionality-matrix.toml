@@ -9517,7 +9517,7 @@ title = "Edits never remove an id that is still named"
 requirement = "No edit removes an `xmi:id` that, after it, a reference end of an element or an `xsd:IDREF`/`xsd:IDREFS` token of XMI metadata (as a strict save checks it, SACM23-XMI-019) still names, and no copy brings in XMI metadata naming an id the target lacks. `DeleteElement` (under every policy), `SetContent`, `SetKey`, `SetLocation` and `SetTaggedValue` refuse to remove the `xmi:id` of a name, `content`, `key`, `location` or `value`, or one in its XMI metadata, that a reference end names, as `EditError::PartReference`; they refuse to leave a metadata token naming a removed id, and `CopyElements` one naming no id of the target, as `EditError::MetadataReference`; both SACM-REF-001. A reference to a deleted element stays the delete policies'. The checks come after every other check and before LIB-EDIT-025's text check; `check`, `preview` and `apply` agree; a refusal changes nothing. So a document that a strict read and a strict write accept writes strictly after any accepted edits, while it has a root; what a copy brings from a source a strict write refuses stays a documented limit."
 source = "XML Schema Part 1 §3.3.4 Validation Root Valid (ID/IDREF) clause 1 \"There must be no ID/IDREF binding in the item's [ID/IDREF table] whose [binding] is the empty set.\"; XMI 2.5.1 §7.6.2 (pp. 14-15) \"This attribute allows an XML element to refer to another XML element within the same document using the XML IDREF mechanism.\"; SACM 2.3 §2.2 (p. 4) \"import and export XMI documents that conform with the SACM XML Schema\"; D-VAL-LAYER; D-ATOMIC; ADR 0042 D3, D5, D6; ADR 0019 amendment 5; ADR 0030 amendment 10; the maintainer's direction of 2026-11-27 (an edit never leaves an app unable to save); found by slice 0089's probes"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-005", "LIB-EDIT-012", "LIB-EDIT-013", "LIB-EDIT-014", "LIB-EDIT-018", "LIB-EDIT-023", "LIB-EDIT-025", "SACM23-ART-005", "SACM23-XMI-019", "SACM23-XMI-031", "LIB-COMPAT-007", "LIB-API-006"]
 acceptance = [
   "Deleting an element that XMI metadata names is refused under every delete policy as `EditError::MetadataReference`; the document is unchanged and still writes strictly.",
@@ -9556,6 +9556,7 @@ tests = [
   "crates/sacm/tests/freed_ids.rs::lib_edit_026_an_operation_read_from_json_is_refused_alike",
   "crates/sacm/tests/freed_ids.rs::lib_edit_026_accepted_edits_keep_a_strictly_writable_document_strictly_writable",
 ]
+verification = "docs/verification/0090-named-ids.md"
 
 [[row]]
 id = "LIB-DOC-010"

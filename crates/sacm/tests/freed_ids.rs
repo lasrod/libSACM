@@ -1315,6 +1315,10 @@ fn expression_value_xmi(id: &str, content: &str, expression: &str) -> String {
 
 /// The `expression` of a value the set removes or replaces goes with it: it
 /// refuses nothing, while one the element still holds after the set does.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the accepted and the refused cases read best side by side"
+)]
 fn expressions_that_go_with_the_text() {
     let ev = expression_value_xmi;
     let input = in_xmi(
@@ -1391,6 +1395,28 @@ fn expressions_that_go_with_the_text() {
         ),
         part("t1", "expression", "tv2"),
         "{ROW}: the key naming the freed content value tv2"
+    );
+    // Another end of the edited element, its own citation of v2, still
+    // counts.
+    let input = in_xmi(
+        "",
+        "",
+        &claim(
+            "c1",
+            "",
+            "<description xmi:id=\"d1\" isCitation=\"true\" citedElement=\"v2\"><content>\
+             <value xmi:id=\"v1\" content=\"a\"/><value xmi:id=\"v2\" content=\"b\"/></content>\
+             </description>",
+        ),
+    );
+    let start = writable("a description citing its own value", &input);
+    assert_eq!(
+        refused(
+            &mut start.clone(),
+            SetContent::new("d1", LangString::new("x"))
+        ),
+        part("d1", "citedElement", "v2"),
+        "{ROW}: the description citing its freed value v2"
     );
     // The name names its own location value lv, which the remove frees.
     let input = format!(
