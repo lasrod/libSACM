@@ -1,20 +1,29 @@
-//! The read limits (LIB-SEC-003, LIB-SEC-007; ADR 0041 D1, D2, amendments 1
-//! and 2): [`Limits`], [`Limit`], the pre-parse scan that checks the nesting
-//! depth, the namespace bindings in scope, the namespace copies and the
-//! attributes of each element before roxmltree parses, and the [`Budget`] of
-//! what a read keeps besides the parsed tree.
+//! The read limits (LIB-SEC-003, LIB-SEC-007; ADR 0041 D1, D2, amendments 1 and 2).
 //!
-//! The scan is one linear pass in document order. It skips comments, CDATA
-//! sections, processing instructions (the XML declaration included), quoted
-//! attribute values and character data. At each start tag it checks, in this
-//! order, the depth, the distinct bindings in scope, the running total of
-//! bindings in scope at the elements that declare one, which roxmltree 0.21
-//! copies into its namespace table and which count against the node limit,
-//! and then the element's attributes, the first namespace declaration of
-//! each prefix not counted. A self-closing tag pops at once. It stops
-//! without refusing at `<!` other than a comment or a CDATA section (a
-//! DOCTYPE, which the parser refuses), at a construct that is not closed,
-//! and at an end tag with nothing open: the parser refuses what is left.
+//! - **[`Limits`] and [`Limit`].** What a caller sets, and which limit a refusal names.
+//! - **The pre-parse scan.** It checks the nesting depth, the namespace bindings in
+//!   scope, the namespace copies and the attributes of each element before roxmltree
+//!   parses.
+//! - **The [`Budget`].** What a read keeps besides the parsed tree.
+//!
+//! The scan is one linear pass in document order.
+//!
+//! - **It skips** comments, CDATA sections, processing instructions (the XML
+//!   declaration included), quoted attribute values and character data.
+//! - **At each start tag** it runs the checks below, in order. A self-closing tag pops
+//!   at once.
+//! - **It stops without refusing** at `<!` other than a comment or a CDATA section (a
+//!   DOCTYPE, which the parser refuses), at a construct that is not closed, and at an
+//!   end tag with nothing open. The parser refuses what is left.
+//!
+//! The checks at a start tag:
+//!
+//! 1. The depth.
+//! 2. The distinct bindings in scope.
+//! 3. The running total of bindings in scope at the elements that declare one. roxmltree
+//!    0.21 copies these into its namespace table, and they count against the node limit.
+//! 4. The element's attributes, the first namespace declaration of each prefix not
+//!    counted.
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};

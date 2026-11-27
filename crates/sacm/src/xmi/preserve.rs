@@ -1,18 +1,22 @@
-//! Preserved content as the reader takes it from the parsed tree
-//! (LIB-COMPAT-003, ADR 0033): an element with its subtree becomes a
-//! [`Fragment`] of flat pre-order events, and an attribute an [`Attr`],
-//! with namespace URIs, prefixes, local names and values exactly as written.
+//! Preserved content as the reader takes it from the parsed tree (LIB-COMPAT-003,
+//! ADR 0033).
 //!
-//! Nothing here reads SACM: the caller decides what is preserved and checks
-//! the `xmi:id`s inside it. The walk uses a stack, not recursion, so a deep
-//! subtree cannot exhaust the call stack.
+//! - **Shapes.** An element with its subtree becomes a [`Fragment`] of flat pre-order
+//!   events, and an attribute an [`Attr`], with namespace URIs, prefixes, local names
+//!   and values exactly as written.
+//! - **No SACM here.** The caller decides what is preserved and checks the `xmi:id`s
+//!   inside it.
+//! - **No recursion.** The walk uses a stack, so a deep subtree cannot exhaust the call
+//!   stack.
 //!
-//! The namespace text each keeps counts against a read's size limit
-//! (LIB-SEC-003, ADR 0041 D2 and amendment 1): the bytes of each namespace
-//! URI a kept name holds, and `prefix + URI + 10` for each binding a kept
-//! start tag declares, about what a written declaration ` xmlns:p="u"`
-//! takes. A fragment counts it into the read's budget element by element, as
-//! it is built; an attribute gives it to the caller.
+//! The namespace text each keeps counts against a read's size limit (LIB-SEC-003,
+//! ADR 0041 D2 and amendment 1):
+//!
+//! - **A kept name.** The bytes of each namespace URI it holds.
+//! - **A kept start tag.** `prefix + URI + 10` for each binding it declares, about what
+//!   a written declaration ` xmlns:p="u"` takes.
+//! - **Who counts.** A fragment counts it into the read's budget element by element, as
+//!   it is built; an attribute gives it to the caller.
 
 use roxmltree::{Attribute, Node};
 

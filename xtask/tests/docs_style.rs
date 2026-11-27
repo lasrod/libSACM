@@ -74,6 +74,19 @@ const MAX_LINES: usize = 4;
 /// The characters of one display line.
 const DISPLAY_WIDTH: usize = 100;
 
+/// The source directories whose `//!` blocks are module docs (LIB-DOC-011).
+const MODULE_SOURCES: [&str; 2] = ["crates/sacm/src", "crates/sacm-cli/src"];
+
+/// The docs/sacm references the paragraph rule applies to whole (LIB-DOC-013).
+const SACM_REFERENCES: [&str; 3] = [
+    "docs/sacm/diagnostics.md",
+    "docs/sacm/compliance-points.md",
+    "docs/sacm/decisions.md",
+];
+
+/// The generated metamodel inventory; only its introduction is checked.
+const INVENTORY: &str = "docs/sacm/metamodel-inventory.md";
+
 /// The functionality matrix, from the repository root.
 const MATRIX: &str = "docs/matrix/functionality-matrix.md";
 
@@ -346,6 +359,27 @@ fn long_blocks(lines: &[(usize, String)], max: usize) -> Vec<Long> {
 /// The long blocks of a snippet, numbered from line 1.
 fn long_in(snippet: &str) -> Vec<Long> {
     long_blocks(&markdown_lines(snippet), MAX_LINES)
+}
+
+/// The long blocks of the document `rel`, of numbered `lines`, as
+/// `rel:line (N lines[, list item])` problems.
+fn long_block_problems(rel: &str, lines: &[(usize, String)]) -> Vec<String> {
+    long_blocks(lines, MAX_LINES)
+        .into_iter()
+        .map(|(line, length, block)| match block {
+            Paragraph => format!("{rel}:{line} ({length} lines)"),
+            ListItem => format!("{rel}:{line} ({length} lines, list item)"),
+        })
+        .collect()
+}
+
+/// The path of `path` from the repository root, with `/` separators.
+fn repository_relative(path: &Path) -> String {
+    path.strip_prefix(repository_root())
+        .unwrap_or(path)
+        .display()
+        .to_string()
+        .replace('\\', "/")
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +740,143 @@ pub mod a;
         [(11, 5, Paragraph)],
         "LIB-DOC-009: a long paragraph of the crate root is reported at its source line; \
          the doctest is code"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-011: no prose paragraph or list item over four lines in module docs
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_doc_011_no_paragraph_or_list_item_in_the_module_docs_runs_over_four_lines() {
+    // Control: a module's `//!` block is read as the crate root's is, and
+    // a long paragraph and a long list item in it are reported at their
+    // source lines.
+    let module = "\
+//! The module.
+//!
+//! One,
+//! two,
+//! three,
+//! four,
+//! five.
+//!
+//! - one,
+//!   two,
+//!   three,
+//!   four,
+//!   five.
+
+/// An item's docs are not the module's.
+pub fn f() {}
+";
+    assert_eq!(
+        long_block_problems("m.rs", &inner_doc_lines(module)),
+        ["m.rs:3 (5 lines)", "m.rs:9 (5 lines, list item)"],
+        "LIB-DOC-011: a module's long paragraph and long list item are reported as \
+         `file:line (N lines[, list item])`"
+    );
+
+    let mut files = Vec::new();
+    for dir in MODULE_SOURCES {
+        let before = files.len();
+        rust_files(&repository_root().join(dir), &mut files);
+        assert!(
+            files.len() > before,
+            "LIB-DOC-011: the sources under {dir} must be found"
+        );
+    }
+    let mut problems = Vec::new();
+    let mut documented = 0;
+    for path in &files {
+        let rel = repository_relative(path);
+        if rel == CRATE_ROOT {
+            // LIB-DOC-009 checks the crate root.
+            continue;
+        }
+        let text =
+            fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let lines = inner_doc_lines(&text);
+        if !lines.is_empty() {
+            documented += 1;
+        }
+        problems.extend(long_block_problems(&rel, &lines));
+    }
+    assert!(
+        documented > 10,
+        "LIB-DOC-011: the module docs must be found in the `//!` blocks under \
+         {MODULE_SOURCES:?}; found {documented} files with one"
+    );
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-011: no prose paragraph or list item in a module's `//!` docs may run over \
+         {MAX_LINES} display lines of {DISPLAY_WIDTH} characters (docs/style.md). Found: {problems:#?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-013: no prose paragraph or list item over four lines in docs/sacm
+// ---------------------------------------------------------------------------
+
+/// The introduction of a Markdown document: its numbered lines before its
+/// first line that starts with `## `, or `None` if it has no such line.
+fn introduction(text: &str) -> Option<Vec<(usize, String)>> {
+    let lines = markdown_lines(text);
+    let end = lines.iter().position(|(_, line)| line.starts_with("## "))?;
+    Some(lines[..end].to_vec())
+}
+
+#[test]
+fn lib_doc_013_no_paragraph_or_list_item_in_the_sacm_references_runs_over_four_lines() {
+    // Controls: the introduction ends at the first `## ` heading, not at a
+    // deeper one, and its lines keep their numbers.
+    let generated = "# Title\n\nIntro.\n### Deeper\nStill intro.\n## Section\nOne,\ntwo,\nthree,\nfour,\nfive.\n## Next\n";
+    let intro = introduction(generated);
+    assert_eq!(
+        intro.as_ref().map(Vec::len),
+        Some(5),
+        "LIB-DOC-013: the introduction is the text before the first line starting with `## `"
+    );
+    assert_eq!(
+        intro
+            .as_deref()
+            .map(|lines| long_block_problems("i.md", lines)),
+        Some(Vec::new()),
+        "LIB-DOC-013: a long paragraph after the introduction is not the introduction's"
+    );
+    let long_intro = "# Title\n\nOne,\ntwo,\nthree,\nfour,\nfive.\n## Section\n";
+    assert_eq!(
+        introduction(long_intro)
+            .as_deref()
+            .map(|lines| long_block_problems("i.md", lines)),
+        Some(vec!["i.md:3 (5 lines)".to_owned()]),
+        "LIB-DOC-013: a long paragraph in the introduction is reported at its line"
+    );
+    assert_eq!(
+        introduction("# Title\n\nNo section.\n"),
+        None,
+        "LIB-DOC-013: a document without a `## ` heading has no introduction to check"
+    );
+
+    let mut problems = Vec::new();
+    for rel in SACM_REFERENCES {
+        match read_optional(rel) {
+            Some(text) => problems.extend(long_block_problems(rel, &markdown_lines(&text))),
+            None => problems.push(format!("{rel}: missing")),
+        }
+    }
+    match read_optional(INVENTORY).map(|text| introduction(&text)) {
+        Some(Some(lines)) => problems.extend(long_block_problems(INVENTORY, &lines)),
+        Some(None) => problems.push(format!(
+            "{INVENTORY}: no `## ` heading ends its introduction"
+        )),
+        None => problems.push(format!("{INVENTORY}: missing")),
+    }
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-013: no prose paragraph or list item in {SACM_REFERENCES:?}, or in the \
+         introduction of {INVENTORY}, may run over {MAX_LINES} display lines of \
+         {DISPLAY_WIDTH} characters (docs/style.md). Found: {problems:#?}"
     );
 }
 

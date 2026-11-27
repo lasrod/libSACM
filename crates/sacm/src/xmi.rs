@@ -1,63 +1,40 @@
-//! Reading and writing SACM 2.3 XMI documents.
+//! Read and write SACM 2.3 XMI documents.
 //!
-//! [`read`] takes the bytes of an XMI document and returns a [`ReadOutput`] or
-//! a [`ReadError`]. [`write`](fn@write) takes a [`Document`] and returns its XMI text or
-//! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
+//! # Entry points
 //!
-//! In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage`,
-//! `ArtifactPackage` and `TerminologyPackage` roots, bare or inside an
-//! `xmi:XMI` element, and what they hold of twenty-five kinds: the four
-//! package kinds in an `AssuranceCasePackage`; `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
-//! `ArtifactReference`, `ArgumentGroup`, `AssertedInference`,
-//! `AssertedEvidence`, `AssertedContext`, `AssertedArtifactSupport` and
-//! `AssertedArtifactContext` elements in an `ArgumentPackage`; every one of
-//! these kinds and `Technique`, `Participant`, `ArtifactGroup`, `Property`,
-//! `Artifact`, `Event`, `Resource` and `Activity` elements in an
-//! `ArtifactPackage`; `Property` elements in the `property` role of
-//! each of the seven `ArtifactAsset` kinds among them; and `TerminologyPackage`,
-//! `Category`, `Term`, `Expression` and `TerminologyGroup` elements in a
-//! `TerminologyPackage` and in an `ArtifactPackage`. Each is
-//! read with its id (generated when it has no `xmi:id`), `gid`,
-//! `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and name, an
-//! Assertion's `assertionDeclaration` and `metaClaim`, an asserted
-//! relationship's `isCounter`, `reasoning`, `source` and `target`, an
-//! `ArgumentReasoning`'s `structure`, an `ArtifactReference`'s
-//! `referencedArtifactElement`, an `ArgumentGroup`'s members
-//! (`argumentElement`), an `ArtifactGroup`'s members (`artifactElement`), an
-//! Artifact's `version` and `date`, an Event's `date`, a Resource's
-//! `location`, an Activity's `startTime` and `endTime`, a Term's or an
-//! Expression's `value` and `category`, a Category's `category`, a Term's
-//! `origin` and `externalReference`, an Expression's `element`, a
-//! `TerminologyGroup`'s members (`terminologyElement`), and the
-//! descriptions, implementation constraints, notes and tagged values of
-//! each, with their `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12,
-//! §9.2, §10.3, §10.4, §10.8-§10.11, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3,
-//! §12.6-§12.13). The
-//! date-typed values are held exactly as written (D-DATE). A reference is held as the id it names, and one that names no
-//! element is kept (see [References](fn@read#references)). Content that is
-//! not SACM 2.3 where it stands, such as a vendor attribute or child
-//! element, is kept as written as preserved content of its element, with
-//! SACM-XMI-003 (see [Preserved content](fn@read#preserved-content)), and a
-//! tolerant read keeps most of what a strict read refuses the same way, with
-//! a Warning (see [Modes](#modes) for which). Nothing is dropped.
+//! | Function | Takes | Returns |
+//! |---|---|---|
+//! | [`read`] | the bytes of an XMI document, and [`ReadOptions`] | a [`ReadOutput`] (the [`Document`] and its diagnostics) or a [`ReadError`] |
+//! | [`write`](fn@write) | a [`Document`], and [`WriteOptions`] | its XMI text or a [`WriteError`] |
 //!
-//! `write` writes every element of a document, with its `gid`, its flags and
-//! references, its name, its `content` and `key` and, on an Assertion, its
-//! `assertionDeclaration`, and the preserved content `read` kept, in
-//! document order, in one deterministic form. A document returned by this
-//! release's `read` always writes in tolerant mode, and what `write` writes
-//! for a document built with [`edit::apply`](crate::edit::apply) reads back
-//! with the same ids, kinds, names, contents, keys, declarations, parents and
-//! order.
+//! # Rules
+//!
+//! - **No I/O.** The caller reads and writes the file.
+//! - **What is read and written.** The four package kinds, as roots (bare or inside an
+//!   `xmi:XMI` element) or nested, with their elements, interfaces and bindings.
+//!   [`read`] lists every role and feature.
+//! - **Nothing is dropped.** Content that is not SACM 2.3 where it stands, such as a
+//!   vendor attribute or child element, is kept as written, with SACM-XMI-003; see
+//!   [Preserved content](fn@read#preserved-content).
+//! - **A reference is the id it names.** One that names no element is kept; see
+//!   [References](fn@read#references).
+//! - **Values are held as written,** the date-typed ones included (D-DATE).
+//! - **An id is generated** for an element with no `xmi:id`.
+//! - **Deterministic output.** `write` writes every element and the preserved content
+//!   `read` kept, in document order, in one form.
+//! - **Round trip.** A document `read` returned always writes in tolerant mode. What
+//!   `write` writes for a document built with [`edit::apply`](crate::edit::apply) reads
+//!   back with the same ids, kinds, names, contents, keys, declarations, parents and order.
 //!
 //! # Modes
 //!
-//! Both take a [`Mode`] in their options (ADR 0022, ADR 0035). [`ReadOptions`]
-//! and [`WriteOptions`] both default to strict: a read refuses what it cannot
-//! read conformantly, and a write refuses what is not schema-valid, apart
-//! from XMI metadata it writes as read. Ask for [`Mode::Tolerant`] to open a
-//! well-formed SACM file that a strict read refuses for a defect it can keep
-//! (the table below lists what a tolerant read still refuses).
+//! Both take a [`Mode`] in their options, strict by default (ADR 0022, ADR 0035).
+//!
+//! - **Strict read.** Refuses what it cannot read conformantly.
+//! - **Strict write.** Refuses what is not schema-valid, apart from XMI metadata it
+//!   writes as read.
+//! - **[`Mode::Tolerant`].** Opens a well-formed SACM file that a strict read refuses
+//!   for a defect it can keep. The table lists what a tolerant read still refuses.
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
@@ -65,14 +42,15 @@
 //! | `read` keeps as preserved content | content that does not conform where it stands, with SACM-XMI-003 as an Error | the same, with SACM-XMI-003 as a Warning; a root in an older SACM revision's or a SACM-like namespace is read as SACM 2.3, with SACM-XMI-008 or SACM-XMI-002; and every other strict refusal, at its construct, with one Warning at the strict refusal's location: SACM-ENUM-001, SACM-MULT-001 (the first occurrence is read), SACM-XMI-005, SACM-ID-002 (an element gets a generated id), and SACM-XMI-003 for content on or in `xmi:XMI` |
 //! | `write` refuses | no root; preserved content ([`WriteError::PreservedContent`]); output that would not be schema-valid: an `xmi:id` that is no `NCName` or a reference to no `xmi:id` it writes ([`WriteError::Invalid`]); a character XML 1.0 cannot represent | no root; a character XML 1.0 cannot represent |
 //!
-//! A strict write checks schema validity only: SACM 2.3 clause 2 asks for
-//! XMI "that conform with the SACM XML Schema", whose schemas ignore
-//! multiplicities (XMI 2.5.1 §7.8.2). It never runs
-//! [`validation::validate`](crate::validation::validate), so a draft, such
-//! as a package with no name, saves strictly; an application calls
-//! `validate` for model checks. A tolerant read never reports an Error, so
-//! an application shows its Warnings, and saving in tolerant mode keeps what
-//! it preserved.
+//! - **A strict write checks schema validity only.** SACM 2.3 clause 2 asks for XMI
+//!   "that conform with the SACM XML Schema", whose schemas ignore multiplicities
+//!   (XMI 2.5.1 §7.8.2).
+//! - **It never validates.** It does not run
+//!   [`validation::validate`](crate::validation::validate), so a draft, such as a
+//!   package with no name, saves strictly. An application calls `validate` for model
+//!   checks.
+//! - **A tolerant read never reports an Error.** An application shows its Warnings, and
+//!   saving in tolerant mode keeps what it preserved.
 //!
 //! ```
 //! use sacm::diagnostic::{Code, Severity};

@@ -1,18 +1,19 @@
-//! The create operations of the Terminology package: `TerminologyPackage`, its
-//! interface and binding (SACM23-TERM-007, SACM23-TERM-008; ADR 0039),
-//! `Category`, `Term`, `Expression` and `TerminologyGroup` (SACM23-TERM-001
-//! to SACM23-TERM-006; LIB-EDIT-001, ADR 0019, ADR 0028, ADR 0034 amendment
-//! 3).
+//! The create operations of the Terminology package.
 //!
-//! There is one create per class. Each runs ADR 0019's four checks through
-//! the containment table, so a parent is legal exactly when a composite role
-//! of its class admits the new kind: a TerminologyPackage goes in an
-//! AssuranceCasePackage, a TerminologyPackage or an ArtifactPackage, or is a
-//! root, and the other kinds go in a TerminologyPackage or an
-//! ArtifactPackage. The reference ends then get ADR 0028's reference checks,
-//! each phase over the ends in [`ReferenceEnd::ALL`] order. A Term's or an
-//! Expression's `value` is required (§10.9 `value:String[1]`) and held as
-//! given.
+//! - **Kinds.** `TerminologyPackage`, its interface and binding (SACM23-TERM-007,
+//!   SACM23-TERM-008; ADR 0039), `Category`, `Term`, `Expression` and
+//!   `TerminologyGroup` (SACM23-TERM-001 to SACM23-TERM-006).
+//! - **One create per class.** Each runs ADR 0019's four checks through the containment
+//!   table: a parent is legal exactly when a composite role of its class admits the
+//!   new kind.
+//! - **Parents.** A TerminologyPackage goes in an AssuranceCasePackage, a
+//!   TerminologyPackage or an ArtifactPackage, or is a root. The other kinds go in a
+//!   TerminologyPackage or an ArtifactPackage.
+//! - **References.** The reference ends then get ADR 0028's reference checks, each
+//!   phase over the ends in [`ReferenceEnd::ALL`] order.
+//! - **`value`.** A Term's or an Expression's is required (§10.9 `value:String[1]`) and
+//!   held as given.
+//! - **Rows and design.** LIB-EDIT-001; ADR 0019, ADR 0028, ADR 0034 amendment 3.
 
 use super::EditError;
 use super::argumentation::{binding_operation, interface_operation, plan_referencing};

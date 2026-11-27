@@ -1,22 +1,21 @@
-//! Preserved content: what an element read from XMI, or the document outside
-//! its elements, holds as written instead of read: content that is not SACM
-//! 2.3 where it stands (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a
-//! construct a strict read refuses, such as a value that is no literal (ADR
-//! 0035).
+//! Preserved content: what an element read from XMI, or the document outside its
+//! elements, holds as written instead of read.
 //!
-//! XMI metadata, such as `xmi:uuid` or an `xmi:Extension`, is held in the same
-//! shape, apart from it: it conforms, so both saves write it back and it is
-//! never preserved content (SACM23-XMI-019, ADR 0042).
-//!
-//! Only [`xmi::read`](crate::xmi::read) makes it; the public API sees it only
-//! as [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content)
-//! and [`Document::has_preserved_content`](super::Document::has_preserved_content),
-//! a strict write's refusal and a comparison's difference. It is held parsed,
-//! not as XML text, so it compares exactly and can declare the namespaces it
-//! needs wherever it is written.
-//!
-//! A fragment is a flat list of pre-order events, so cloning, comparing,
-//! dropping and writing one never recurses, however deep it is.
+//! - **What it is.** Content that is not SACM 2.3 where it stands (LIB-COMPAT-003,
+//!   ADR 0033) or, in tolerant mode, a construct a strict read refuses, such as a value
+//!   that is no literal (ADR 0035).
+//! - **XMI metadata is not preserved content.** `xmi:uuid` or an `xmi:Extension` is held
+//!   in the same shape, apart from it. It conforms, so both saves write it back
+//!   (SACM23-XMI-019, ADR 0042).
+//! - **Only [`xmi::read`](crate::xmi::read) makes it.**
+//! - **What the public API sees:**
+//!   [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content),
+//!   [`Document::has_preserved_content`](super::Document::has_preserved_content), a
+//!   strict write's refusal and a comparison's difference.
+//! - **Held parsed, not as XML text.** So it compares exactly and can declare the
+//!   namespaces it needs wherever it is written.
+//! - **No recursion.** A fragment is a flat list of pre-order events, so cloning,
+//!   comparing, dropping and writing one never recurses, however deep it is.
 
 use super::{ElementId, ReferenceEnd};
 

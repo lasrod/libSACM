@@ -1,44 +1,56 @@
-//! Comparing documents by their SACM content: [`semantic_compare`] lists
-//! every [`Difference`] between two documents, and `==` on two
-//! [`Document`]s is true exactly when there is none. [`changes`] lists only
-//! the ids created, changed and deleted between them, as [`Changes`]: a
-//! batch's net lists, with the created ids in document order rather than
-//! creation order (LIB-RT-005). With the `serde` feature, `Changes`
-//! serializes as a record.
+//! Find what differs between two documents, by their SACM content.
 //!
-//! Elements are matched by id across the whole document, so an element that
-//! moved to another parent is one [`Difference::Parent`], not a removal and an
-//! addition. For each element both documents hold, the comparison checks its
-//! kind, parent, `gid`, its `isCitation` and `isAbstract` flags and the ids
-//! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), the
-//! `isCounter` flag and the ids of the `metaClaim`, `reasoning`, `source`,
-//! `target`, `structure`, `referencedArtifactElement` and group
-//! `argumentElement` ends of the argumentation kinds and the
-//! `artifactElement` end of an `ArtifactGroup` (§11.2, §11.9, §11.10,
-//! §11.12, §11.13, §12.3), a package's `interface`, an interface's
-//! `implements` and a binding's `participantPackage` (§11.5, §11.6, §12.4,
-//! §12.5; ptc/22-03-13), the cross-document references (`href`s) of each end
-//! ([`Difference::Hrefs`], ADR 0040; the multi-valued `metaClaim`, `source`,
-//! `referencedArtifactElement`, `argumentElement` and `artifactElement` in
-//! order, with repeats), its name, the
-//! `xmi:id` of its name
-//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
-//! `content` and `key` with their ids
-//! ([`SacmElement::content`](crate::model::SacmElement::content) and the
-//! like), an `Artifact`'s `version`, the `date` of an `Artifact` or an
-//! `Event`, a `Resource`'s `location` with its ids, an `Activity`'s
-//! `startTime` and `endTime` (§12.7, §12.9, §12.10, §12.11), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
-//! (SACM 2.3 §11.10), the relative order of its children, its XMI metadata
-//! (SACM23-XMI-019, ADR 0042) and its preserved content (LIB-COMPAT-003,
-//! ADR 0033), exactly and in order; it also checks the relative order of the
-//! roots, and the metadata and preserved content outside every element. Values are compared exactly: a missing
-//! name differs from an empty one, and a missing `content` from an empty
-//! one.
+//! # Entry points
 //!
-//! Order is compared because equal documents must write equal bytes, though
-//! SACM 2.3 orders no composition and no reference end. To compare without
-//! order, drop the two order variants, and compare the multi-valued ends
-//! sorted:
+//! | Use | What it gives |
+//! |---|---|
+//! | [`semantic_compare`] | Every [`Difference`] between two documents. |
+//! | `==` on two [`Document`]s | True exactly when `semantic_compare` finds none. |
+//! | [`changes`] | Only the ids created, changed and deleted between them, as [`Changes`]. |
+//!
+//! # Rules
+//!
+//! - **Matched by id** across the whole document. An element that moved to another
+//!   parent is one [`Difference::Parent`], not a removal and an addition.
+//! - **Exact.** A missing name differs from an empty one, and a missing `content` from
+//!   an empty one.
+//! - **Order counts,** because equal documents must write equal bytes, though SACM 2.3
+//!   orders no composition and no reference end. The example below compares without it.
+//! - **`Changes` is a batch's net lists,** with the created ids in document order rather
+//!   than creation order (LIB-RT-005). With the `serde` feature it serializes as a
+//!   record.
+//!
+//! # What is compared
+//!
+//! For each element both documents hold, exactly and in order:
+//!
+//! | What | Detail |
+//! |---|---|
+//! | Identity and place | its kind, its parent, and the relative order of its children |
+//! | `SACMElement` features (§8.2) | `gid`, `isCitation`, `isAbstract`, and the ids `citedElement` and `abstractForm` hold |
+//! | Argumentation (§11.2, §11.9, §11.10, §11.12, §11.13) | `isCounter`, the [`assertionDeclaration`](crate::model::AssertionDeclaration), and the ids of `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` and a group's `argumentElement` |
+//! | `ArtifactGroup` (§12.3) | the ids of `artifactElement` |
+//! | Packages (§11.5, §11.6, §12.4, §12.5; ptc/22-03-13) | a package's `interface`, an interface's `implements` and a binding's `participantPackage` |
+//! | Cross-document references (ADR 0040) | the `href`s of each end, as [`Difference::Hrefs`]; those of a multi-valued end in order, with repeats |
+//! | Name and texts | its name and the `xmi:id` of its name ([`SacmElement::name_id`](crate::model::SacmElement::name_id)); its `content` and `key` with their ids ([`SacmElement::content`](crate::model::SacmElement::content) and the like) |
+//! | Artifact values (§12.7, §12.9, §12.10, §12.11) | an `Artifact`'s `version`, the `date` of an `Artifact` or an `Event`, a `Resource`'s `location` with its ids, an `Activity`'s `startTime` and `endTime` |
+//! | XMI metadata | as read (SACM23-XMI-019, ADR 0042) |
+//! | Preserved content | as read (LIB-COMPAT-003, ADR 0033) |
+//!
+//! For the document: the relative order of the roots, and the metadata and preserved
+//! content outside every element.
+//!
+//! Not compared:
+//!
+//! - **The id counters.** The per-kind counters [`edit::apply`](crate::edit::apply) uses
+//!   to generate ids such as `claim_1` are not SACM content, and XMI does not carry them.
+//! - **Formatting, attribute order and namespace prefixes.** A [`Document`] does not
+//!   hold them, so two files that differ only in them read into equal documents.
+//!   Preserved content is the exception: it holds them and is compared exactly.
+//!
+//! # Comparing without order
+//!
+//! Drop the two order variants, and compare the multi-valued ends sorted:
 //!
 //! ```
 //! use sacm::compare::{Difference, semantic_compare};
@@ -84,13 +96,6 @@
 //! assert!(same_ignoring_order);
 //! # Ok::<(), sacm::edit::EditError>(())
 //! ```
-//!
-//! Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
-//! uses to generate ids such as `claim_1`. They are not SACM content, and XMI
-//! does not carry them. Formatting, attribute order and
-//! namespace prefixes are not held by a [`Document`] at all, except in
-//! preserved content, which is compared exactly, so two files that differ
-//! only in them elsewhere read into equal documents.
 //!
 //! # Examples
 //!

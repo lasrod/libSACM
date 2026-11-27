@@ -1,50 +1,46 @@
-//! The SACM document model: [`Document`], element identity, element kinds,
-//! element names, assertion declarations and the first value types.
+//! Inspect a document and its elements.
 //!
-//! A [`Document`] owns one interchange unit: its root packages and every
-//! element under them. Each element has an [`ElementId`] (its `xmi:id`) and an
-//! [`ElementKind`] (its concrete SACM class), and is read through a
-//! [`SacmElement`] view that borrows the document. In SACM every
-//! [`ModelElement`](AbstractClass::ModelElement) has a `name`;
-//! [`SacmElement::name`] returns it, or `None` when the document holds the
-//! element without one. Every Assertion (a Claim or an asserted relationship)
-//! has an `assertionDeclaration`, which [`SacmElement::assertion_declaration`]
-//! returns.
+//! # Entry points
 //!
-//! [`ElementKind`], [`AbstractClass`] and [`MetamodelPackage`] describe the
-//! SACM 2.3 metamodel itself: which class a kind is, which package defines it,
-//! and which abstract classes it specializes.
+//! | Type | What it is |
+//! |---|---|
+//! | [`Document`] | One interchange unit: its root packages and every element under them. |
+//! | [`SacmElement`] | A view of one element, which borrows the document. |
+//! | [`ElementId`] | An element's identity: its `xmi:id`. |
+//! | [`ElementKind`] | An element's concrete SACM class. |
+//! | [`AbstractClass`], [`MetamodelPackage`] | The SACM 2.3 metamodel: which abstract classes a kind specializes, and which package defines it. |
+//! | [`LangString`], [`MultiLangString`], [`AssertionDeclaration`] | Values, which you construct directly. |
+//! | [`Flag`], [`ReferenceEnd`] | The name of a flag or a reference end, for the edits that set them. |
+//! | [`Revision`] | A document's current state within the process, from [`Document::revision`]. |
 //!
-//! Every element may have a `gid` ([`SacmElement::gid`]), and every
-//! `ModelElement` may hold descriptions, implementation constraints, notes
-//! and tagged values ([`SacmElement::descriptions`] and the like), the
-//! `UtilityElement`s whose text is their [`content`](SacmElement::content).
-//! Every element also has the §8.2 flags [`SacmElement::is_citation`] and
-//! [`SacmElement::is_abstract`], and may reference another element through
-//! [`SacmElement::cited_element`] and [`SacmElement::abstract_form`]. A
-//! reference is the [`ElementId`] it names, resolved with [`Document::get`].
+//! # Rules
 //!
-//! The argumentation kinds reference each other (§11). Every Assertion may
-//! have meta-claims ([`SacmElement::meta_claims`]). An asserted relationship,
-//! such as an `AssertedInference`, relates its
-//! [`sources`](SacmElement::sources) to its [`target`](SacmElement::target),
-//! optionally through an `ArgumentReasoning`
-//! ([`reasoning`](SacmElement::reasoning)), and may be marked as countering
-//! its declared purpose ([`is_counter`](SacmElement::is_counter)). An `ArgumentReasoning` may name
-//! the package that details it ([`structure`](SacmElement::structure)).
-//! [`Flag`] and [`ReferenceEnd`] name a flag and a reference end, for the
-//! edits that set them ([`SetFlag`](crate::edit::SetFlag),
-//! [`SetReferences`](crate::edit::SetReferences) and the like).
+//! - **Only a `Document` holds elements.** Read one with [`Document::get`]; change it
+//!   with [`edit::apply`](crate::edit::apply).
+//! - **A reference is the [`ElementId`] it names,** resolved with [`Document::get`].
+//! - **Values are not elements.** They have no id and no kind of their own. The `xmi:id`
+//!   of a `name`, `content`, `key` or `location` is kept with its owner
+//!   ([`SacmElement::name_id`], [`SacmElement::content_id`]).
+//! - **A name may be missing.** In SACM every
+//!   [`ModelElement`](AbstractClass::ModelElement) has a `name`; [`SacmElement::name`]
+//!   returns `None` when the document holds the element without one.
+//! - **A `Revision` is for previews.** [`edit::apply_preview`](crate::edit::apply_preview)
+//!   compares it.
 //!
-//! [`Document::revision`] returns the document's [`Revision`], which
-//! identifies its current state within the process, for
-//! [`edit::apply_preview`](crate::edit::apply_preview).
+//! # What an element holds
 //!
-//! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
-//! values, not elements: they have no id and no kind of their own (the
-//! `xmi:id` of a `name`, `content`, `key` or `location` is kept with its owner:
-//! [`SacmElement::name_id`], [`SacmElement::content_id`]), and you construct
-//! them directly, unlike elements, which only a [`Document`] holds.
+//! | Which elements | What | Read with |
+//! |---|---|---|
+//! | every element (§8.2) | `gid` | [`SacmElement::gid`] |
+//! | every element (§8.2) | `isCitation`, `isAbstract` | [`SacmElement::is_citation`], [`SacmElement::is_abstract`] |
+//! | every element (§8.2) | `citedElement`, `abstractForm` | [`SacmElement::cited_element`], [`SacmElement::abstract_form`] |
+//! | every `ModelElement` | descriptions, implementation constraints, notes and tagged values: the `UtilityElement`s | [`SacmElement::descriptions`] and the like |
+//! | a `UtilityElement` | its text | [`content`](SacmElement::content) |
+//! | every Assertion: a Claim or an asserted relationship | `assertionDeclaration`, meta-claims | [`SacmElement::assertion_declaration`], [`SacmElement::meta_claims`] |
+//! | an asserted relationship, such as an `AssertedInference` | its sources and target, an optional `ArgumentReasoning`, and whether it counters its declared purpose | [`sources`](SacmElement::sources), [`target`](SacmElement::target), [`reasoning`](SacmElement::reasoning), [`is_counter`](SacmElement::is_counter) |
+//! | an `ArgumentReasoning` | the package that details it | [`structure`](SacmElement::structure) |
+//!
+//! [`SacmElement`] lists the rest.
 //!
 //! # Examples
 //!

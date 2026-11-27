@@ -1,24 +1,35 @@
-//! Editing: operations as values, applied to a document with [`apply`].
+//! Change a document: an operation is a plain value, applied with [`apply`].
 //!
-//! An operation is a plain value that says what to change. [`apply`] checks
-//! it completely against the document and then either makes the change and
-//! returns a [`Mutation`] (the operation, and the ids it created, changed and
-//! deleted), or refuses with an [`EditError`]. **A refused operation changes
-//! nothing**: not the elements, not the written XMI, not the ids generated
-//! next, and not the document's [`revision`](Document::revision). [`check`]
-//! gives the answer `apply` would give, without changing the document, and
-//! [`preview`] also gives the `Mutation` it would return; [`preview_batch`]
-//! and [`preview_all`] give the [`BatchMutation`] of a batch.
+//! # Entry points
 //!
-//! The public mutations are [`apply`], [`apply_preview`], [`batch`] and
-//! [`apply_all`], and each is all or nothing (D-ATOMIC):
-//! - [`apply`] applies one operation;
-//! - [`apply_preview`] applies a [`Preview`] taken with [`preview`], unless
-//!   the document has changed since (SACM-CMD-003);
-//! - [`batch`] applies the operations a closure gives as one change, and
-//!   [`apply_all`] a list of them, so that a later operation can use an id an
-//!   earlier one generated. On a refusal passed on, an error or a panic, the
-//!   document is as it was.
+//! | Function | What it does |
+//! |---|---|
+//! | [`apply`] | Applies one operation and returns its [`Mutation`], or refuses with an [`EditError`]. |
+//! | [`check`] | Says whether `apply` would accept an operation, without changing the document. |
+//! | [`preview`] | Also gives the `Mutation` that `apply` would return, as a [`Preview`]. |
+//! | [`apply_preview`] | Applies a `Preview`, unless the document has changed since (SACM-CMD-003). |
+//! | [`batch`], [`apply_all`] | Apply several operations as one change: a closure's, or a list. |
+//! | [`preview_batch`], [`preview_all`] | Give the [`BatchMutation`] a batch would return. |
+//!
+//! The operations are listed below: those that [create](#operations-that-create-an-element)
+//! an element, those that [change](#operations-that-change-an-element) one,
+//! [`DeleteElement`], [`MoveElement`] and [`CopyElements`].
+//!
+//! # Rules
+//!
+//! - **Atomic.** `apply`, `apply_preview`, `batch` and `apply_all` are each all or
+//!   nothing (D-ATOMIC). A refused operation changes nothing: not the elements, the
+//!   written XMI, the ids generated next or the document's [`revision`](Document::revision).
+//! - **Batches.** A later operation can use an id an earlier one generated. On a
+//!   refusal passed on, an error or a panic, the document is as it was.
+//! - **What changed.** A [`Mutation`] holds the operation and the ids it created,
+//!   changed and deleted.
+//! - **No dangling reference.** Every id an edit newly references must name an element
+//!   of the document, of a kind its end admits.
+//! - **Content is not refused.** An empty name or a duplicate gid is accepted;
+//!   [`validation::validate`](crate::validation::validate) reports it (D-VAL-LAYER).
+//! - **Refusals are ordered.** The first check that fails is the result;
+//!   [Refusals](#refusals) lists the checks of each operation.
 //!
 //! # Operations that create an element
 //!
@@ -63,55 +74,57 @@
 //! | [`CreateExpression`] | an `Expression` (§10.10), with its `value` and its optional categories and `element` ids | no | [`new`](CreateExpression::new) |
 //! | [`CreateTerminologyGroup`] | a `TerminologyGroup` (§10.3), with its optional members (`terminologyElement`) | no | [`new`](CreateTerminologyGroup::new) |
 //!
-//! A root is added after the document's last root; a child after its parent's
-//! last child. A parent is legal exactly when SACM lets its class contain the
-//! new element (it has a composite role for that kind), the same rules
-//! [`xmi::read`](crate::xmi::read) uses. So a Claim goes in an
-//! ArgumentPackage, not directly in an AssuranceCasePackage, and a Technique
-//! in an ArtifactPackage. A package's interface or binding is a legal parent
-//! wherever its package is: it holds its package's roles.
+//! Where the new element goes:
 //!
-//! **The name is required**, because SACM gives every `ModelElement` exactly
-//! one name (§8.6 `name:LangString[1]`). Every operation that creates one
-//! takes it as a [`LangString`](crate::model::LangString), stored exactly as
-//! given, or as plain text, which is a `LangString` with no `lang`: `"C1"`
-//! and `LangString::new("C1")` give the same name. Any plain value is
-//! accepted, `LangString::default()` included; an
-//! empty name is still a name. An `ExpressionLangString` name must have an
-//! `expression` that names a `Term` or an `Expression` (checks 5a to 8
-//! below).
+//! - **Position.** A root is added after the document's last root; a child after its
+//!   parent's last child.
+//! - **Legal parents.** A parent is legal exactly when SACM lets its class contain the
+//!   new kind, the rules [`xmi::read`](crate::xmi::read) uses. A Claim goes in an
+//!   ArgumentPackage, not directly in an AssuranceCasePackage.
+//! - **Interfaces and bindings.** A package's interface or binding is a legal parent
+//!   wherever its package is: it holds its package's roles.
 //!
-//! The four `UtilityElement`s (descriptions, implementation constraints,
-//! notes and tagged values) have no name. They go in any `ModelElement`, in
-//! the role of their kind, and take their `content` (and a `TaggedValue` its
-//! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
-//! exactly as given; a `LangString` converts into one with one value. A
-//! `UtilityElement` contains no elements, so it is never a parent.
+//! What it takes:
 //!
-//! An `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup`, an
-//! `ArtifactGroup` and the relationships reference other elements (ADR 0027,
-//! ADR 0028). An asserted relationship takes its sources (at least one, in
-//! order, repeats kept) and its target when it is created, as SACM requires
-//! (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`), and an
-//! `ArtifactAssetRelationship` its sources and targets (at least one each,
-//! §12.14 `source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`). Every
-//! id they reference must name an element of the document, so an edit never
-//! makes a dangling reference; the id of a name, `content`, `key`, `location` or `value`
-//! names no element. And each referenced element must have the type SACM
-//! declares for its end, so an edit never makes a wrongly typed reference
-//! either (D-VAL-LAYER): an `ArgumentAsset` for a source or the target, an
-//! `ArgumentReasoning` for the reasoning, an `ArgumentPackage` for the
-//! structure, an `ArtifactElement` (any element but a `UtilityElement`) for
-//! a `referencedArtifactElement`, an `ArgumentationElement` for a member of
-//! an `ArgumentGroup`, an `ArtifactElement` for a member of an
-//! `ArtifactGroup`, and an `ArtifactAsset` for a source or target of an
-//! `ArtifactAssetRelationship`. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
-//! an `AssertedEvidence`, `AssertedArtifactSupport` or
-//! `AssertedArtifactContext` be `ArtifactReference`s, are content: a create
-//! does not refuse them, and
-//! [`validation::validate`](crate::validation::validate) reports them
-//! (SACM23-VAL-016). The `metaClaim`, `citedElement` and `abstractForm` of
-//! an element are set after it is created, with [`SetReferences`].
+//! - **The name is required.** SACM gives every `ModelElement` exactly one name (§8.6
+//!   `name:LangString[1]`). It is a [`LangString`](crate::model::LangString), stored as
+//!   given, or plain text: `"C1"` and `LangString::new("C1")` give the same name.
+//! - **Any plain name is accepted,** `LangString::default()` included: an empty name is
+//!   still a name. An `ExpressionLangString` name must have an `expression` that names
+//!   a `Term` or an `Expression` (checks 5a to 8 of [Creates](#creates)).
+//! - **`UtilityElement`s have no name.** A description, implementation constraint, note
+//!   or tagged value goes in any `ModelElement`, in the role of its kind. It contains no
+//!   elements, so it is never a parent.
+//! - **`content` and `key`.** Each is a [`MultiLangString`](crate::model::MultiLangString),
+//!   stored exactly as given; a `LangString` converts into one with one value.
+//!
+//! What it references (ADR 0027, ADR 0028):
+//!
+//! - **An asserted relationship** takes its sources (at least one, in order, repeats
+//!   kept) and its target when it is created (§11.13 `source:ArgumentAsset[1..*]`,
+//!   `target:ArgumentAsset[1]`).
+//! - **An `ArtifactAssetRelationship`** takes its sources and targets, at least one each
+//!   (§12.14 `source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`).
+//! - **Every referenced id names an element** of the document. The id of a name,
+//!   `content`, `key`, `location` or `value` names no element.
+//! - **Every referenced element has the type of its end** (D-VAL-LAYER); the table
+//!   below gives it.
+//! - **Narrower rules are content.** §11.15, §11.17 and §11.18 ask that the ends of an
+//!   `AssertedEvidence`, `AssertedArtifactSupport` or `AssertedArtifactContext` be
+//!   `ArtifactReference`s. A create does not refuse them; `validate` reports them
+//!   (SACM23-VAL-016).
+//! - **Set later.** The `metaClaim`, `citedElement` and `abstractForm` of an element are
+//!   set after it is created, with [`SetReferences`].
+//!
+//! | End | Type of the referenced element |
+//! |---|---|
+//! | `source` or `target` of an asserted relationship | `ArgumentAsset` |
+//! | `reasoning` | `ArgumentReasoning` |
+//! | `structure` | `ArgumentPackage` |
+//! | `referencedArtifactElement` | `ArtifactElement` (any element but a `UtilityElement`) |
+//! | member of an `ArgumentGroup` | `ArgumentationElement` |
+//! | member of an `ArtifactGroup` | `ArtifactElement` |
+//! | `source` or `target` of an `ArtifactAssetRelationship` | `ArtifactAsset` |
 //!
 //! # Operations that change an element
 //!
@@ -136,38 +149,35 @@
 //! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id or of one href removed | [`new`](RemoveReference::new), [`new_href`](RemoveReference::new_href) |
 //! | [`ReorderElements`] | the order of an element's children, or of the roots | [`new`](ReorderElements::new), [`roots`](ReorderElements::roots) |
 //!
-//! Each names the element it changes by id, and replaces one feature
-//! exactly as given (ADR 0029). The value of a name, gid, flag, declaration,
-//! `content`, key, `version`, `date`, `location`, `startTime` or `endTime`
-//! is never refused (D-DATE): an empty name, a duplicate gid, an
-//! empty `content` or an `asCited` declaration on an element that cites
-//! nothing are content, which
-//! [`validation::validate`](crate::validation::validate) reports
-//! (D-VAL-LAYER). A flag and its reference are set independently, such as
-//! `isCitation` and `citedElement`. A reference end stays within its bounds
-//! (`source` `[1..*]`, an asserted relationship's `target` `[1]`, an
-//! `ArtifactAssetRelationship`'s `target` `[1..*]`, the other single-valued
-//! ends `[0..1]`), and every id it newly holds names an element of a kind it
-//! admits; an id it already holds is kept, even a dangling or wrongly typed
-//! one, so an end read from a file can be repaired one id at a time.
-//!
-//! Ids are kept by position: a replaced name keeps its `xmi:id`, and a
-//! replaced `content`, `key` or `location` keeps the id of its element and, for each
-//! value, the id of the value at its position. The ids beyond the new
-//! length, every id of a removed `content`, and an id no reference holds
-//! any more are freed, so a later create may generate them.
-//!
-//! An operation that sets the value held changes nothing: the document is
-//! not written, and [`Mutation::changed_ids`] is empty. Otherwise it is the
-//! element, or for [`ReorderElements::new`] the parent; a root reorder
-//! changes no element, so it reports none.
+//! - **One feature, by id.** Each names the element it changes by id, and replaces one
+//!   feature exactly as given (ADR 0029).
+//! - **A value is never refused** (D-DATE): a name, gid, flag, declaration, `content`,
+//!   key, `version`, `date`, `location`, `startTime` or `endTime`. An empty name or
+//!   `content`, a duplicate gid or an `asCited` declaration on an element that cites
+//!   nothing is content, which `validate` reports (D-VAL-LAYER).
+//! - **A flag and its reference are independent,** such as `isCitation` and `citedElement`.
+//! - **A reference end stays within its bounds:** `source` `[1..*]`, an asserted
+//!   relationship's `target` `[1]`, an `ArtifactAssetRelationship`'s `target` `[1..*]`,
+//!   the other single-valued ends `[0..1]`.
+//! - **Only new ids are checked.** Every id an end newly holds names an element of a
+//!   kind it admits. An id it already holds is kept, even a dangling or wrongly typed
+//!   one, so an end read from a file can be repaired one id at a time.
+//! - **Ids are kept by position.** A replaced name keeps its `xmi:id`. A replaced
+//!   `content`, `key` or `location` keeps the id of its element and, for each value, the
+//!   id of the value at its position.
+//! - **Freed ids.** The ids beyond the new length, every id of a removed `content`, and
+//!   an id no reference holds any more are freed, so a later create may generate them.
+//! - **Setting the value held changes nothing.** The document is not written, and
+//!   [`Mutation::changed_ids`] is empty.
+//! - **Otherwise `changed_ids` is the element,** or for [`ReorderElements::new`] the
+//!   parent. A root reorder changes no element, so it reports none.
 //!
 //! # Deleting an element
 //!
-//! [`DeleteElement`] deletes an element of any kind, everything it contains,
-//! and what its three policies allow, and never leaves a reference dangling
-//! (LIB-EDIT-005, LIB-EDIT-006, ADR 0031). Each policy refuses by default,
-//! so nothing cascades unless asked (D-POLICY):
+//! [`DeleteElement`] deletes an element of any kind, everything it contains, and what
+//! its three policies allow. It never leaves a reference dangling (LIB-EDIT-005,
+//! LIB-EDIT-006, ADR 0031). Each policy refuses by default, so nothing cascades unless
+//! asked (D-POLICY):
 //!
 //! | Policy | Refuses (default) | Allows | What it does |
 //! |---|---|---|---|
@@ -176,31 +186,33 @@
 //! | [`PackageDeletePolicy`]: an element that contains elements other than `UtilityElement`s | [`RejectIfNonEmpty`](PackageDeletePolicy::RejectIfNonEmpty) | [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively) | deletes the element and everything it contains |
 //! | [`CrossPackageReferencePolicy`]: a reference like that, whose holder's nearest package is not that of the element it names | [`RejectIfExternalReferencesExist`](CrossPackageReferencePolicy::RejectIfExternalReferencesExist) | [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy) | leaves the reference to the reference policy |
 //!
-//! [`preview`] lists the references to deleted elements, which the delete
-//! removes, as [`DanglingReference`]s.
-//!
-//! A delete does not rewind the per-kind counter, so generation stays
-//! deterministic: the next generated id is still the smallest unused number
-//! above the counter. A freed id may be used again: a caller may give it
-//! with `with_id`, and a freed id the caller gave may be generated later. An
-//! application that needs ids unique across its history gives its own.
+//! - **Ask first.** [`preview`] lists the references to deleted elements, which the
+//!   delete removes, as [`DanglingReference`]s.
+//! - **The counter is not rewound.** The next generated id is still the smallest unused
+//!   number above the per-kind counter, so generation stays deterministic.
+//! - **A freed id may be used again.** A caller may give it with `with_id`, and a freed
+//!   id the caller gave may be generated later. An application that needs ids unique
+//!   across its history gives its own.
 //!
 //! # Moving and copying elements
 //!
-//! [`MoveElement`] moves an element, with everything it contains and its
-//! preserved content, under another parent or to the roots; [`CopyElements`]
-//! copies elements of a source document, each with everything it contains,
-//! under a parent or as roots (LIB-EDIT-017, LIB-EDIT-018, ADR 0036). The
-//! containment table decides the legal parents, as for a create, and a root
-//! must be a package.
+//! | Operation | What it does |
+//! |---|---|
+//! | [`MoveElement`] | Moves an element, with everything it contains and its preserved content, under another parent or to the roots. |
+//! | [`CopyElements`] | Copies elements of a source document, each with everything it contains, under a parent or as roots. |
 //!
-//! A move keeps every id, reference and feature, and the ids generated
-//! next; it changes the element's parent, its role and the order. A
-//! preserved child of either parent keeps its place after the typed child
-//! it followed. Its [`Mutation::changed_ids`] are what `semantic_compare`
-//! reports: the element when its parent changes, and a parent whose child
-//! order or preserved placement changes, in pre-order after. A move to the
-//! place the element holds changes nothing.
+//! The containment table decides the legal parents, as for a create, and a root must be
+//! a package (LIB-EDIT-017, LIB-EDIT-018, ADR 0036).
+//!
+//! A move:
+//!
+//! - **Keeps** every id, reference and feature, and the ids generated next.
+//! - **Changes** the element's parent, its role and the order. A preserved child of
+//!   either parent keeps its place after the typed child it followed.
+//! - **Reports what `semantic_compare` reports** in [`Mutation::changed_ids`]: the
+//!   element when its parent changes, and a parent whose child order or preserved
+//!   placement changes, in pre-order after.
+//! - **Changes nothing** when it moves the element to the place it holds.
 //!
 //! [`MoveElement`] checks, in this order:
 //!
@@ -213,16 +225,18 @@
 //! | 5. under a parent: the element keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019) | [`EditError::KeptRootType`] | SACM-CMD-005 |
 //! | 6. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
 //!
-//! A copy captures its source elements when it is built: an id the source
-//! lacks is [`EditError::ElementNotFound`] from [`CopyElements::new`] or
-//! [`CopyElements::root`]. Each
-//! copy keeps its id when that is an `NCName` free in the target; otherwise
-//! it gets a generated id that avoids every id the copy keeps or names. A
-//! reference to a copied element names its copy, and every other reference
-//! is kept as written, so it must resolve in the target. The
-//! [`Mutation::created_ids`] pair with [`CopyElements::source_ids`], and a
-//! copy changes and deletes nothing. [`CopyElements`] checks, in this
-//! order:
+//! A copy:
+//!
+//! - **Captures its source elements when it is built.** An id the source lacks is
+//!   [`EditError::ElementNotFound`] from [`CopyElements::new`] or [`CopyElements::root`].
+//! - **Keeps an id** that is an `NCName` free in the target. Otherwise the copy gets a
+//!   generated id that avoids every id the copy keeps or names.
+//! - **Rewrites references to copied elements,** which name the copy. Every other
+//!   reference is kept as written, so it must resolve in the target.
+//! - **Reports** [`Mutation::created_ids`], which pair with
+//!   [`CopyElements::source_ids`]. It changes and deletes nothing.
+//!
+//! [`CopyElements`] checks, in this order:
 //!
 //! | Check | Refusal | Code |
 //! |---|---|---|
@@ -241,22 +255,19 @@
 //! Undo and redo are the application's, on whole-document copies (ADR 0037,
 //! LIB-EDIT-011). The crate has no history type and no inverse operations.
 //!
-//! The rule: clone the document first, then make exactly one atomic call
-//! ([`apply`], [`apply_preview`], [`batch`] or [`apply_all`]), then push the
-//! clone only on `Ok`. Several `apply` calls in one step are not atomic, so
-//! use [`batch`] for that. One batch, or an accepted draft ([`CopyElements`]
-//! in a batch), is one step.
-//!
-//! A restored copy is `==` to the document before the change, and it writes
-//! the same XMI, preserved content included. It has its revision and its
-//! generated-id counters, so the next create may generate the id an undone
-//! create had. An application that needs ids unique across its history gives
-//! its own. A preview taken before an undone change applies again after the
-//! undo.
-//!
-//! A step costs one clone, in time and memory proportional to the document:
-//! about 1.4 to 2.3 ms and 3.3 MiB at 5,500 elements in a release build. The
-//! application chooses the limit.
+//! - **The rule.** Clone the document, make exactly one atomic call ([`apply`],
+//!   [`apply_preview`], [`batch`] or [`apply_all`]), and push the clone only on `Ok`.
+//! - **One step is one call.** Several `apply` calls are not atomic; use [`batch`]. One
+//!   batch, or an accepted draft ([`CopyElements`] in a batch), is one step.
+//! - **A restored copy is the document before the change.** It is `==` to it and writes
+//!   the same XMI, preserved content included.
+//! - **Ids may repeat.** The copy has its revision and its generated-id counters, so the
+//!   next create may generate the id an undone create had. An application that needs
+//!   ids unique across its history gives its own.
+//! - **Previews.** A preview taken before an undone change applies again after the undo.
+//! - **Cost.** A step costs one clone, in time and memory proportional to the document:
+//!   about 1.4 to 2.3 ms and 3.3 MiB at 5,500 elements in a release build. The
+//!   application chooses the limit.
 //!
 //! ```
 //! use std::collections::VecDeque;
@@ -354,12 +365,12 @@
 //!   `xmi:id` is an `xsd:ID`, XMI 2.5.1 §7.6.1), such as `claim_top` or
 //!   `_c.1`, and not already in the document.
 //! - **Generated** otherwise: `<snake_case kind>_<n>`, such as
-//!   `assurance_case_package_1`, `argument_package_1` or `claim_1`. `n` is the
-//!   smallest number above the document's counter for the kind whose id is not
-//!   already in use, whether a caller gave it or it was read from a file, and
-//!   that no reference names, so that a reference naming no element never
-//!   comes to name the new one by accident (ADR 0026). The
-//!   counter advances only when an operation succeeds with a generated id; a
+//!   `assurance_case_package_1`, `argument_package_1` or `claim_1`.
+//! - **The number `n`** is the smallest above the document's counter for the kind whose
+//!   id is not in use, given by a caller or read from a file, and that no reference
+//!   names. So a reference that names no element never comes to name the new one by
+//!   accident (ADR 0026).
+//! - **The counter** advances only when an operation succeeds with a generated id; a
 //!   caller id does not move it.
 //! - **Deterministic:** the same operations, applied to documents built or read
 //!   the same way, give the same ids; a clone generates the same ids as its
@@ -400,16 +411,16 @@
 //! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
 //! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, a kind that holds tagged values for `taggedValue`, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
 //!
-//! [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`], [`SetVersion`],
-//! [`SetDate`], [`SetStartTime`] and [`SetEndTime`] check nothing more. Every
-//! element has a gid, `isCitation` and `isAbstract`, so those skip the second
-//! check too. [`SetName`], [`SetContent`], [`SetKey`] and [`SetLocation`]
-//! then check the `ExpressionLangStrings` they set (SACM23-BASE-009): one with
-//! no `expression` is [`EditError::TooFewReferences`] of the end
-//! `expression`, and each `expression` the element does not hold already is
-//! checked as checks 6 to 8 check a new id, for the end `expression`.
-//! [`SetTaggedValue`] checks 1 and 2, then its content's
-//! `ExpressionLangString`s as [`SetContent`] does.
+//! What each checks after that:
+//!
+//! - **Nothing more:** [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`],
+//!   [`SetVersion`], [`SetDate`], [`SetStartTime`] and [`SetEndTime`]. Every element has
+//!   a gid, `isCitation` and `isAbstract`, so those skip check 2 too.
+//! - **The `ExpressionLangString`s they set** (SACM23-BASE-009): [`SetName`],
+//!   [`SetContent`], [`SetKey`], [`SetLocation`] and [`SetTaggedValue`], for its content.
+//!   - One with no `expression` is [`EditError::TooFewReferences`] of the end `expression`.
+//!   - Each `expression` the element does not hold already is checked as checks 6 to 8
+//!     below check a new id, for the end `expression`.
 //!
 //! The reference operations then check, in this order:
 //!
@@ -458,9 +469,8 @@
 //!
 //! A document built with [`apply`] validates with
 //! [`validation::validate`](crate::validation::validate) and writes with
-//! [`xmi::write`](crate::xmi::write), and what is written reads back with
-//! [`xmi::read`](crate::xmi::read) to the same ids, kinds, names, parents and
-//! order.
+//! [`xmi::write`](crate::xmi::write). What is written reads back with
+//! [`xmi::read`](crate::xmi::read) to the same ids, kinds, names, parents and order.
 //!
 //! # Examples
 //!
