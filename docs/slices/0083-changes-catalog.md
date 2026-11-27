@@ -1,8 +1,8 @@
 ---
 slice: 0083
 name: changes-catalog
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-RT-005, LIB-DIAG-006]
 mode: pr
 ---
@@ -41,3 +41,5 @@ Library rows: acceptance by the lead from the design brief (session scratchpad
 - 2026-11-27 verification: FAIL on both rows, test gaps only (document preserved content in
   `changes`; the generator's refusals of malformed sources). Fix round: the tests and the
   source wording to the builder; CHANGELOG wording with the verifier's text.
+- 2026-11-27 verification: re-verify PASS on both rows (a3bab18). Record
+  `docs/verification/0083-changes-catalog.md`. Rows `verified`.
