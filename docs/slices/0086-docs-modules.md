@@ -1,8 +1,8 @@
 ---
 slice: 0086
 name: docs-modules
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-DOC-011, LIB-DOC-013]
 mode: pr
 ---
@@ -42,3 +42,5 @@ decisions.md is settled policy: restructured only, every decision keeps its mean
   held as written, nothing dropped, the Refusals link). Fix round: the verifier's texts, four
   cuts in `edit` and `xmi`, two callouts in docs/sacm, a false comment in
   relationship_validation.rs; the moves of reference detail logged for LIB-DOC-012.
+- 2026-11-27 verification: re-verify PASS on both rows (0d09a5d). Record
+  `docs/verification/0086-docs-modules.md`. Rows `verified`.

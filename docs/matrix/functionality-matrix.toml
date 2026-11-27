@@ -9254,7 +9254,7 @@ title = "Module docs follow the style guide"
 requirement = "Every module's rustdoc (`edit`, `validation`, `xmi`, `compare`, `model`, `diagnostic` and their public submodules) follows the LIB-DOC-009 style guide: what the module is for first, then its entry points as a short list or table, then the rules a caller needs, with no restated signatures and no diagrams."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-009"]
 acceptance = [
   "Every `//!` block under crates/sacm/src and crates/sacm-cli/src follows docs/style.md: a test finds no prose paragraph or list item over four display lines in them.",
@@ -9274,6 +9274,7 @@ code = [
 tests = [
   "xtask/tests/docs_style.rs::lib_doc_011_no_paragraph_or_list_item_in_the_module_docs_runs_over_four_lines",
 ]
+verification = "docs/verification/0086-docs-modules.md"
 
 [[row]]
 id = "LIB-DOC-012"
@@ -9294,7 +9295,7 @@ title = "The docs/sacm references follow the style guide"
 requirement = "The references in docs/sacm follow the LIB-DOC-009 style guide: diagnostics.md, compliance-points.md, and the prose of decisions.md. The decisions table of decisions.md is settled policy and keeps its rows and wording; tests read it. The tables that tools and tests read (the code tables and the message templates of diagnostics.md) keep their shape; their Meaning cells may be tightened without changing meaning. The metamodel inventory is generated and compared by a test; only its introduction is in scope."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-009"]
 acceptance = [
   "A test finds no prose paragraph or list item over four display lines in docs/sacm/diagnostics.md, compliance-points.md and decisions.md, or in the introduction of metamodel-inventory.md.",
@@ -9308,6 +9309,7 @@ code = [
 tests = [
   "xtask/tests/docs_style.rs::lib_doc_013_no_paragraph_or_list_item_in_the_sacm_references_runs_over_four_lines",
 ]
+verification = "docs/verification/0086-docs-modules.md"
 
 [[row]]
 id = "LIB-DOC-010"
