@@ -1115,7 +1115,7 @@ fn lib_edit_020_the_builders_replace_and_the_accessors_give_what_was_given() {
     assert_eq!(
         CreateArgumentPackageBinding::new("case", LangString::new("B"), ["p", "q"])
             .participant_package_hrefs(),
-        [],
+        [] as [Href; 0],
         "{EDIT_ROW}: a binding created with ids gives hrefs"
     );
     let interface = CreateArgumentPackageInterface::root(LangString::new("I"), "p");

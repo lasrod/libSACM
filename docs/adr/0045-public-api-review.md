@@ -10,8 +10,13 @@ still costs only a minor version (0.5.0). Assurance Forge reported its use in
 lasrod/libSACM#113.
 
 ## Decision
+- **Checked, no change needed:** C-CASE, C-CONV, C-GETTER, C-FEATURE; C-COMMON-TRAITS and
+  C-SEND-SYNC (every public type is `Send`, `Sync` and `Debug`, LIB-API-005); C-GOOD-ERR
+  (every error type implements `Error` and `Display`); C-SERDE (behind the `serde` feature);
+  C-STRUCT-PRIVATE; C-STABLE (no `roxmltree` type in the public API); `#[non_exhaustive]` on
+  the enums and options that will grow; `#[must_use]` on getters and builders.
 - **Fixed:** names take `impl Into<LangString>` (LIB-API-022); uniform traits and
-  conversions (LIB-API-023); collection and result helpers (LIB-API-024); one spelling for
+  conversions, and an `Href` that compares with text as an `ElementId` does (LIB-API-023); collection and result helpers (LIB-API-024); one spelling for
   the href form, `new_href` and `href()` (LIB-API-025).
 - **Argument rule:** a lookup takes an id as `&impl AsRef<str>` and other text as `&str`.
   A constructor takes an id as `impl Into<ElementId>`, text as `impl Into<String>`, and a
@@ -33,7 +38,9 @@ lasrod/libSACM#113.
   - D6. SACM primitive values are strings, kept exactly as written.
   - D7. `test-support` items are outside the stable API; semver checks run with
     `--features serde` only (LIB-QA-006).
-- **Deferred, additive:** `EditError::template()` and `arguments()` (LIB-API-026, candidate).
+- **Deferred, additive:** `EditError::template()` and `arguments()` (LIB-API-026, candidate);
+  `FromStr` and `Default` for `Mode`; `IntoIterator` by value and `Extend` for
+  `MultiLangString` (C-COLLECT); reading from an `io::Read` (C-RW-VALUE).
 
 ## Consequences
 After 1.0, changes to the public surface follow semver. Changing D1 or D3 would be a breaking

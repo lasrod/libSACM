@@ -18,7 +18,7 @@
 //!
 //! "Unchanged" means `==` and the same `revision()`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 
 use sacm::compare::{Changes, Difference};
@@ -914,6 +914,22 @@ fn lib_api_023_flag_and_reference_end_display_their_name() {
     ] {
         assert_eq!(shown, expected, "{API_023}: Display of a named value");
     }
+    // Width and alignment apply, as to a `str`.
+    assert_eq!(
+        format!("{:>12}", Flag::IsCounter),
+        "   isCounter",
+        "{API_023}: Flag's Display ignores width and alignment"
+    );
+    assert_eq!(
+        format!("{:>12}", ReferenceEnd::MetaClaim),
+        "   metaClaim",
+        "{API_023}: ReferenceEnd's Display ignores width and alignment"
+    );
+    assert_eq!(
+        format!("{:>12}", Mode::Strict),
+        "      strict",
+        "{API_023}: Mode's Display ignores width and alignment"
+    );
 }
 
 #[test]
@@ -990,6 +1006,54 @@ fn lib_api_023_ids_and_hrefs_convert_into_string() {
         let into: String = found.clone().into();
         assert_eq!(into, found.as_str(), "{API_023}: Href.into() of {value:?}");
     }
+
+    // An href compares equal to a `str` with the same value, exactly.
+    let plain = href(API_023, "other.sacm#c1");
+    assert!(
+        plain == "other.sacm#c1",
+        "{API_023}: Href == &str of the same value"
+    );
+    assert!(
+        "other.sacm#c1" == plain,
+        "{API_023}: &str == Href of the same value"
+    );
+    assert!(
+        *"other.sacm#c1" == plain,
+        "{API_023}: str == Href of the same value"
+    );
+    assert!(
+        plain != "other.sacm#C1",
+        "{API_023}: Href == &str ignoring case"
+    );
+    // Each direction tells a different value apart, so none is always true.
+    assert!(
+        plain == *"other.sacm#c1",
+        "{API_023}: Href == str of the same value"
+    );
+    assert!(
+        plain != *"other.sacm#C1",
+        "{API_023}: Href == str ignoring case"
+    );
+    assert!(
+        "other.sacm#C1" != plain,
+        "{API_023}: &str == Href ignoring case"
+    );
+    assert!(
+        *"other.sacm#C1" != plain,
+        "{API_023}: str == Href ignoring case"
+    );
+    // `Borrow<str>`: a set of hrefs is queried with a `&str`.
+    let hrefs: HashSet<Href> = [plain.clone(), href(API_023, "sacm:Claim other.sacm#c2")]
+        .into_iter()
+        .collect();
+    assert!(
+        hrefs.contains("other.sacm#c1") && hrefs.contains("sacm:Claim other.sacm#c2"),
+        "{API_023}: HashSet<Href> does not find an href by its &str"
+    );
+    assert!(
+        !hrefs.contains("other.sacm#c2"),
+        "{API_023}: HashSet<Href> finds a &str that is no href in it"
+    );
 }
 
 #[test]

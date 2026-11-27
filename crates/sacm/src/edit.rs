@@ -1690,11 +1690,15 @@ impl Mutation {
         &self.deleted
     }
 
-    /// Whether the operation created, changed and deleted no id: it set the
-    /// value held, or it only reordered the roots.
+    /// Whether the mutation lists no id: the operation created, changed and
+    /// deleted no element. That is so when it set a feature to the value it
+    /// already held, or when it only reordered the roots.
     ///
     /// A reorder of the roots lists no id, so its mutation is empty although
-    /// the document changed, as for [`BatchMutation::is_empty`].
+    /// the document changed, as for [`BatchMutation::is_empty`], and unlike
+    /// [`compare::Changes::is_empty`](crate::compare::Changes::is_empty). To
+    /// learn whether the document changed, compare it with a clone taken
+    /// before, or use [`compare::changes`](crate::compare::changes).
     ///
     /// # Examples
     ///

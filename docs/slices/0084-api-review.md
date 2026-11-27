@@ -39,3 +39,8 @@ Library rows: the Rust API Guidelines checklist; acceptance by the lead from the
   rename moved callers in three test files (names in assertion messages too) and the docs.
   ADR 0045 D3 reworded to match the variants ("`{id, left, right}` for most"). Rows
   `implemented`.
+- 2026-11-27 verification: PASS on all five rows, eight non-blocking findings. Fix round:
+  `Href` compares with `str` now (adding it after 1.0 would break inference), a padding
+  test, the verifier's wording in `Mutation::is_empty` and `LangString`, the CHANGELOG
+  Breaking entry for name inference, ADR 0045's checked list and deferred items, an ADR 0040
+  rename note; one follow-up.

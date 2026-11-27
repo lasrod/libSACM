@@ -7,7 +7,9 @@ use std::fmt;
 use super::{ElementId, Href};
 
 /// Text with an optional language tag, where the text may also be absent:
-/// SACM's `LangString` (SACM 2.3 §8.3).
+/// SACM's `LangString` (SACM 2.3 §8.3). Plain text converts into one with no
+/// `lang`: `LangString::from("C1") == LangString::new("C1")`, so an
+/// operation's `name` takes `"C1"` as well.
 ///
 /// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6), read
 /// with [`SacmElement::name`](crate::model::SacmElement::name), and for each

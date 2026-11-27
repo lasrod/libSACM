@@ -22,6 +22,12 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - The cross-document form of `AddReference` and `RemoveReference` is built with `new_href`, not
   `href`, and read with `href()`, not `cross_document()`, as for the other href forms. The JSON
   is unchanged [LIB-API-025].
+- Every operation's `name` takes `impl Into<LangString>`, so a name whose type was inferred
+  from the parameter now needs it written: `CreateClaim::new("p", Default::default())` is
+  `CreateClaim::new("p", LangString::default())`, and a name given as `x.into()` or
+  deserialized in place needs `LangString` as its type [LIB-API-022].
+- `Href` now compares with `str` and `&str`, so `[]` compared with a slice of `Href`s needs
+  its type, as for `ElementId` [LIB-API-023].
 - `ElementId` now compares with `str` and `&str`, so the element type of an empty array is
   no longer inferred: `assert_eq!(mutation.created_ids(), [])` needs
   `[] as [ElementId; 0]`, or `.is_empty()`; `id == x.into()` likewise needs the target
@@ -60,7 +66,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `name` takes `impl Into<LangString>`, so `CreateClaim::new("p", "The system is safe")` works
   [LIB-API-022].
 - `Display` and `Ord` for `Flag` and `ReferenceEnd`; `Mode::as_str` and `Display`; `From<ElementId>`
-  and `From<Href>` for `String`; `FromStr` and `TryFrom` for `Href` [LIB-API-023].
+  and `From<Href>` for `String`; `FromStr` and `TryFrom` for `Href`; `Href` compares with `str`
+  [LIB-API-023].
 - `MultiLangString::iter`, `iter_mut` and `IntoIterator`; `Mutation::is_empty`;
   `ReadOutput::into_parts` [LIB-API-024].
 

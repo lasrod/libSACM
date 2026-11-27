@@ -1,5 +1,6 @@
 //! Cross-document references (SACM23-XMI-027, SACM23-XMI-029, ADR 0040).
 
+use std::borrow::Borrow;
 use std::fmt;
 use std::str::FromStr;
 
@@ -24,7 +25,8 @@ use super::ElementKind;
 /// 2n), held as `sacm:<Class>` and one space: [`kind`](Self::kind) gives the
 /// class. The URI reference is never decoded or normalised: `a%20b.xmi#c`
 /// stays as written.
-/// Equality, ordering and hashing are those of the string. It parses from
+/// Equality, ordering and hashing are those of the string, and it
+/// compares equal to a `str` with the same value. It parses from
 /// text ([`FromStr`], [`TryFrom`]) exactly as [`Href::new`] checks it, and
 /// converts into its [`String`]. No file is
 /// opened: [`document`](Self::document) and [`fragment`](Self::fragment) let
@@ -267,6 +269,50 @@ impl fmt::Display for Href {
 impl AsRef<str> for Href {
     fn as_ref(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl Borrow<str> for Href {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl PartialEq<str> for Href {
+    /// Whether the href's value is `other`, exactly: case and white space
+    /// count.
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for Href {
+    /// Whether the href's value is `other`, exactly.
+    ///
+    /// ```
+    /// use sacm::model::Href;
+    ///
+    /// let href = Href::new("other.sacm#c1")?;
+    /// assert!(href == "other.sacm#c1" && "other.sacm#c1" == href);
+    /// assert!(href != "other.sacm#C1");
+    /// # Ok::<(), sacm::model::HrefError>(())
+    /// ```
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<Href> for str {
+    /// Whether `other`'s value is this string, exactly.
+    fn eq(&self, other: &Href) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl PartialEq<Href> for &str {
+    /// Whether `other`'s value is this string, exactly.
+    fn eq(&self, other: &Href) -> bool {
+        *self == other.as_str()
     }
 }
 
