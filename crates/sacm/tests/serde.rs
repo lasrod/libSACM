@@ -209,7 +209,7 @@ const CREATE_COUNT: usize = 38;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERROR_COUNT: usize = 25;
+const EDIT_ERROR_COUNT: usize = 27;
 const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
@@ -241,6 +241,9 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("KeptRootType", "SACM-CMD-005"),
     // The refusal of slice 0088 (LIB-EDIT-025).
     ("UnrepresentableCharacter", "SACM-XML-003"),
+    // The refusals of slice 0090 (LIB-EDIT-026).
+    ("PartReference", "SACM-REF-001"),
+    ("MetadataReference", "SACM-REF-001"),
 ];
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
@@ -1257,7 +1260,58 @@ fn edit_error_samples() -> Vec<EditError> {
             .collect();
         samples.push(refusal(&doc, SetContent::new("n1", content)));
     }
+    // The refusals of slice 0090 (LIB-EDIT-026): removing a content value
+    // that a citation names, deleting an element that xmi:XMI names, and
+    // deleting a tagged value whose value an xmi:Extension names.
+    samples.extend([
+        refusal(&named_ids_start(NAMED_VALUE), SetContent::remove("d1")),
+        refusal(&named_ids_start(NAMED_ELEMENT), DeleteElement::new("c1")),
+        refusal(
+            &named_ids_start(&named_ids_fixture()),
+            DeleteElement::new("t1"),
+        ),
+    ]);
     samples
+}
+
+/// The document of the first `PartReference` sample (slice 0090): `c2`
+/// cites `d1v`, the value id of the content of `c1`'s Description `d1`.
+const NAMED_VALUE: &str = r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+  <name content="P"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name content="C1"/>
+    <description xmi:id="d1"><content><value xmi:id="d1v" content="x"/></content></description>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="true" citedElement="d1v"><name content="C2"/></argumentElement>
+</sacm:ArgumentPackage>
+"#;
+
+/// The document of the first `MetadataReference` sample (slice 0090):
+/// `xmi:XMI` names the Claim `c1`.
+const NAMED_ELEMENT: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:idref="c1">
+  <sacm:ArgumentPackage xmi:id="p">
+    <name content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="C1"/></argumentElement>
+  </sacm:ArgumentPackage>
+</xmi:XMI>
+"#;
+
+/// The worked fixture of slice 0090, `named-ids-valid.sacm.xmi`.
+fn named_ids_fixture() -> String {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/sacm23/xmi/named-ids-valid.sacm.xmi"
+    );
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("{API_006}: setup: cannot read {path}: {error}"))
+}
+
+/// `input`, read strictly.
+fn named_ids_start(input: &str) -> Document {
+    match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{API_006}: setup: a slice-0090 document does not read: {error}"),
+    }
 }
 
 /// [`ERROR_START`] with the TerminologyPackage `terms` under `case`, holding

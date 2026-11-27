@@ -130,3 +130,10 @@ Rejected: keeping them as ids (refuses schema-valid files); counting their token
 references (a copy would refuse for text that names nothing).
 
 *Amendment 2 status: accepted (the lead, 2026-11-27, under SACM 2.3 §2.4; the maintainer's rule that compliance comes first).*
+
+## Amendment 3 (2026-11-28): no edit leaves a metadata IDREF dangling
+
+D6 gains: no edit leaves a metadata IDREF dangling; it refuses as `MetadataReference`
+(LIB-EDIT-026).
+
+*Amendment 3 status: accepted (the lead, 2026-11-28).*

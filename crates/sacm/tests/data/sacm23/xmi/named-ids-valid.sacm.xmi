@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-EDIT-026: ids that are still named. XMI metadata names elements and part ids (xmi:XMI and an xmi:documentation name the Claims c1 and c3, an xmi:Difference the Claim c4 and the package p, an xmi:Extension in d1's content the value d1v2, one in c2 the value t1v), and citations name part ids (c2 the value d1v1, c3 the name c1n, r2 the location value r1lv). A strict read gives no diagnostic and a strict write accepts it; validate reports SACM-REF-001 for the citations of part ids. Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmi:idref="c1">
+  <xmi:documentation xmi:idref="c3"/>
+  <xmi:Difference target="c4" container="p"/>
+  <sacm:ArgumentPackage xmi:id="p">
+    <name content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name xmi:id="c1n" content="C1"/>
+      <description xmi:id="d1">
+        <content xmi:id="d1c">
+          <xmi:Extension extender="probe" xmi:idref="d1v2"/>
+          <value xmi:id="d1v1" lang="en" content="First"/>
+          <value xmi:id="d1v2" lang="sv" content="Second"/>
+        </content>
+      </description>
+      <taggedValue xmi:id="t1">
+        <key xmi:id="t1k"><value xmi:id="t1kv" content="ASIL"/></key>
+        <content><value xmi:id="t1v" content="D"/></content>
+      </taggedValue>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="true" citedElement="d1v1">
+      <name content="C2"/>
+      <xmi:Extension extender="probe" xmi:idref="t1v"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3" isCitation="true" citedElement="c1n">
+      <name content="C3"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c4"><name content="C4"/></argumentElement>
+  </sacm:ArgumentPackage>
+  <sacm:ArtifactPackage xmi:id="e">
+    <name content="Evidence"/>
+    <artifactElement xmi:type="sacm:Resource" xmi:id="r1">
+      <name content="R1"/>
+      <location xmi:id="r1l"><value xmi:id="r1lv" content="file:///r1.pdf"/></location>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Resource" xmi:id="r2" isCitation="true" citedElement="r1lv"><name content="R2"/></artifactElement>
+  </sacm:ArtifactPackage>
+</xmi:XMI>

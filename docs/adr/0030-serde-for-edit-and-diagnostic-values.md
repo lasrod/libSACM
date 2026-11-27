@@ -203,3 +203,11 @@ LIB-EDIT-025. `EditError::UnrepresentableCharacter` is `{"type", "code", "elemen
 Additive under amendment 1.
 
 *Amendment 9 status: accepted (the maintainer, 2026-11-27).*
+
+## Amendment 10 (2026-11-28): named-id refusals
+
+LIB-EDIT-026. `PartReference` is `{"type", "code", "holder", "end", "id"}`, as `Referenced`.
+`MetadataReference` is `{"type", "code", "holder", "element", "attribute", "id"}`, with
+`holder` a string or `null`. Every key is required. Additive under amendment 1.
+
+*Amendment 10 status: accepted (the lead, 2026-11-28).*

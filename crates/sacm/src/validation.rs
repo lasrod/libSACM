@@ -95,6 +95,7 @@ mod gid;
 mod homogeneity;
 mod ids;
 mod metadata;
+pub(crate) use metadata::{Found, tokens, walk_document, walk_fragments};
 mod modularity;
 mod multi_lang;
 mod names;

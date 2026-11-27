@@ -3,6 +3,7 @@
 //! `IDREF` and `IDREFS` attributes must name ids the output writes.
 
 use std::collections::BTreeSet;
+use std::ops::ControlFlow;
 
 use crate::diagnostic::template::{ID_002_METADATA_ID_NOT_AN_NCNAME, REF_001_METADATA_DANGLING};
 use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
@@ -91,53 +92,81 @@ impl Type {
     }
 }
 
-/// SACM23-XMI-019: the XMI metadata of `document` as XMI.xsd types it, for a
-/// strict save (ADR 0042). Each `xmi:id` in metadata that is not an `NCName`
-/// is one SACM-ID-002 Error, with clause 7.6.1; each distinct token of an
-/// `IDREF` or `IDREFS` attribute of an element of metadata that names no
-/// `xmi:id` of the document is one SACM-REF-001 Error, per attribute: the
-/// `xmi:idref` of `xmi:XMI`, and those of the elements XMI.xsd defines, by
-/// their type. Both affect the element that holds the metadata, if one does;
-/// a dangling one affects the token too. What an extension holds is not
-/// checked otherwise, which is a documented limit.
-pub(super) fn unwritten(document: &Document, found: &mut Vec<Diagnostic>) {
-    if let Some(metadata) = document.document_metadata() {
-        let wrapper = QName {
-            namespace: Some(XMI_NS.to_owned()),
-            prefix: Some("xmi".to_owned()),
-            local: "XMI".to_owned(),
-        };
-        let written = wrapper.written();
-        for attr in &metadata.attributes {
-            let name = &attr.name;
-            if name.namespace.as_deref() != Some(XMI_NS) {
-                continue;
-            }
-            match name.local.as_str() {
-                "id" => check_id(&written, &attr.value, None, found),
-                "idref" => check_references(document, attr, &written, None, found),
-                _ => {}
-            }
-        }
-        check_fragments(document, metadata, None, found);
-    }
-    for element in document.elements() {
-        for metadata in element.metadata_parts() {
-            check_fragments(document, metadata, Some(element.id()), found);
+/// The element of XMI metadata that carries an `xmi:id` or a reference: the
+/// document's `xmi:XMI`, or an element of a fragment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Carrier<'a> {
+    /// `xmi:XMI`, whose attributes the document keeps as its metadata.
+    Xmi,
+    /// An element of a fragment of metadata, by its name.
+    Element(&'a QName),
+}
+
+impl Carrier<'_> {
+    /// The carrier's name as written, such as `xmi:Extension`.
+    pub(crate) fn written(self) -> String {
+        match self {
+            Self::Xmi => "xmi:XMI".to_owned(),
+            Self::Element(name) => name.written(),
         }
     }
 }
 
-/// Checks the elements of `metadata`, which `holder` holds, or the document
-/// for `None`: each `xmi:id` in them, and the references of each element
-/// XMI.xsd types, walked from the top of each fragment by type. Nothing in a
-/// Difference's `target` is checked (SACM23-XMI-031).
-fn check_fragments(
-    document: &Document,
-    metadata: &Preserved,
-    holder: Option<&ElementId>,
-    found: &mut Vec<Diagnostic>,
-) {
+/// What the walk of XMI metadata finds, as a strict write checks it
+/// (SACM23-XMI-019).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Found<'a> {
+    /// An `xmi:id`, with its value as held.
+    Id {
+        /// The element that carries it.
+        carrier: Carrier<'a>,
+        /// Its value as held.
+        value: &'a str,
+    },
+    /// An attribute that XMI.xsd types `IDREF` or `IDREFS` on its carrier.
+    Reference {
+        /// The element that carries it.
+        carrier: Carrier<'a>,
+        /// The attribute; [`tokens`] splits its value.
+        attribute: &'a Attr,
+    },
+}
+
+/// Walks the document's own XMI metadata (`document`): the `xmi:id` and
+/// `xmi:idref` of `xmi:XMI`, in input order, then its fragments as
+/// [`walk_fragments`] does. Stops at the first `Break`.
+pub(crate) fn walk_document<'a, B>(
+    document: &'a Preserved,
+    visit: &mut impl FnMut(Found<'a>) -> ControlFlow<B>,
+) -> ControlFlow<B> {
+    for attr in &document.attributes {
+        let name = &attr.name;
+        if name.namespace.as_deref() != Some(XMI_NS) {
+            continue;
+        }
+        match name.local.as_str() {
+            "id" => visit(Found::Id {
+                carrier: Carrier::Xmi,
+                value: &attr.value,
+            })?,
+            "idref" => visit(Found::Reference {
+                carrier: Carrier::Xmi,
+                attribute: attr,
+            })?,
+            _ => {}
+        }
+    }
+    walk_fragments(document, visit)
+}
+
+/// Walks the fragments of `metadata`, each from its top by XMI.xsd type: each
+/// `xmi:id`, and each `IDREF` or `IDREFS` attribute of an element XMI.xsd
+/// types, in event order, then attribute order. Nothing in a Difference's
+/// `target` is visited (SACM23-XMI-031). Stops at the first `Break`.
+pub(crate) fn walk_fragments<'a, B>(
+    metadata: &'a Preserved,
+    visit: &mut impl FnMut(Found<'a>) -> ControlFlow<B>,
+) -> ControlFlow<B> {
     for placed in &metadata.children {
         let Item::Element(fragment) = &placed.item else {
             continue;
@@ -164,14 +193,20 @@ fn check_fragments(
                     if region == Region::Skip {
                         continue;
                     }
-                    let written = name.written();
+                    let carrier = Carrier::Element(name);
                     for attr in attributes {
                         let attribute = &attr.name;
                         if attribute.namespace.as_deref() == Some(XMI_NS) && attribute.local == "id"
                         {
-                            check_id(&written, &attr.value, holder, found);
+                            visit(Found::Id {
+                                carrier,
+                                value: &attr.value,
+                            })?;
                         } else if kind.is_some_and(|kind| kind.is_reference(attr)) {
-                            check_references(document, attr, &written, holder, found);
+                            visit(Found::Reference {
+                                carrier,
+                                attribute: attr,
+                            })?;
                         }
                     }
                 }
@@ -180,6 +215,55 @@ fn check_fragments(
                 }
                 Event::Text(_) => {}
             }
+        }
+    }
+    ControlFlow::Continue(())
+}
+
+/// The tokens of the value of an `IDREF` or `IDREFS` attribute, split on XML
+/// white space, in order.
+pub(crate) fn tokens(value: &str) -> impl Iterator<Item = &str> {
+    value.split(is_xml_space).filter(|token| !token.is_empty())
+}
+
+/// SACM23-XMI-019: the XMI metadata of `document` as XMI.xsd types it, for a
+/// strict save (ADR 0042). Each `xmi:id` in metadata that is not an `NCName`
+/// is one SACM-ID-002 Error, with clause 7.6.1; each distinct token of an
+/// `IDREF` or `IDREFS` attribute of an element of metadata that names no
+/// `xmi:id` of the document is one SACM-REF-001 Error, per attribute: the
+/// `xmi:idref` of `xmi:XMI`, and those of the elements XMI.xsd defines, by
+/// their type. Both affect the element that holds the metadata, if one does;
+/// a dangling one affects the token too. What an extension holds is not
+/// checked otherwise, which is a documented limit.
+pub(super) fn unwritten(document: &Document, found: &mut Vec<Diagnostic>) {
+    if let Some(metadata) = document.document_metadata() {
+        let _ = walk_document(metadata, &mut |item| {
+            record(document, item, None, found);
+            ControlFlow::<()>::Continue(())
+        });
+    }
+    for element in document.elements() {
+        for metadata in element.metadata_parts() {
+            let _ = walk_fragments(metadata, &mut |item| {
+                record(document, item, Some(element.id()), found);
+                ControlFlow::<()>::Continue(())
+            });
+        }
+    }
+}
+
+/// The finding of `item`, metadata that `holder` holds, or the document for
+/// `None`, if it is one.
+fn record(
+    document: &Document,
+    item: Found<'_>,
+    holder: Option<&ElementId>,
+    found: &mut Vec<Diagnostic>,
+) {
+    match item {
+        Found::Id { carrier, value } => check_id(&carrier.written(), value, holder, found),
+        Found::Reference { carrier, attribute } => {
+            check_references(document, attribute, &carrier.written(), holder, found);
         }
     }
 }
@@ -218,11 +302,7 @@ fn check_references(
 ) {
     let attribute = attr.name.written();
     let mut reported = BTreeSet::new();
-    for token in attr
-        .value
-        .split(is_xml_space)
-        .filter(|token| !token.is_empty())
-    {
+    for token in tokens(&attr.value) {
         if document.is_id_in_use(token) || !reported.insert(token) {
             continue;
         }

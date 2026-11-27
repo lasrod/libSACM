@@ -46,6 +46,9 @@ use crate::model::{
 /// - **A strict write refuses what it copies** where it would refuse the source:
 ///   preserved content, or XMI metadata whose `xmi:id` is no `NCName`
 ///   ([`xmi::write`](crate::xmi::write#round-trip)).
+/// - **Metadata names an id of the target.** Each `IDREF` token of copied XMI metadata
+///   must name an `xmi:id` of the target after the copy; otherwise it is
+///   [`EditError::MetadataReference`], naming the copy (LIB-EDIT-026).
 ///
 /// # Examples
 ///

@@ -196,3 +196,26 @@ LIB-EDIT-025; the maintainer's decision of 2026-11-27.
   refused": such a character is not content.
 
 *Amendment 4 status: accepted (the maintainer, 2026-11-27).*
+
+## Amendment 5 (2026-11-28): edits never remove an id that is still named
+
+LIB-EDIT-026; the maintainer's direction of 2026-11-27 (an edit never leaves an app unable to
+save), applied by the lead.
+- **Rule.** No edit removes an `xmi:id` that a reference end or a metadata IDREF token still
+  names after it, and no copy brings in metadata naming an id the target lacks. A strict write
+  refuses an IDREF with no ID (XML Schema Part 1 §3.3.4).
+- **Refusals.** `PartReference { holder, end, id }` and
+  `MetadataReference { holder, element, attribute, id }`, both SACM-REF-001, the code the write
+  gives.
+- **Scope.** Deletes and the four text sets remove ids; copies bring metadata.
+- **Tokens.** The strict write's own XMI.xsd walk; one implementation.
+- **Policies unchanged (ADR 0031).** A part-id reference is already SACM-REF-001, so a delete
+  refuses rather than scrubbing it. Metadata is never edited (ADR 0042 D3), so every policy
+  refuses; an opt-in removal can be added later.
+- **Order.** After every other check, before amendment 4's text check: references first, then
+  metadata, in pre-order.
+- **Not checked.** Preserved content and `href`s.
+- **Guarantee.** Strict-writable in, strict-writable out, while there is a root; what a copy
+  brings from a source a strict write refuses stays a documented limit.
+
+*Amendment 5 status: accepted (the lead, 2026-11-28, under the maintainer's direction of 2026-11-27).*

@@ -179,6 +179,23 @@ pub(super) enum EditErrorRecord {
         #[serde(deserialize_with = "serde::Deserialize::deserialize")]
         position: Option<usize>,
     },
+    /// [`EditError::PartReference`].
+    PartReference {
+        code: Code,
+        holder: ElementId,
+        end: Name,
+        id: ElementId,
+    },
+    /// [`EditError::MetadataReference`]; `holder` is required, `null` for
+    /// the document's own metadata.
+    MetadataReference {
+        code: Code,
+        #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+        holder: Option<ElementId>,
+        element: String,
+        attribute: String,
+        id: ElementId,
+    },
 }
 
 impl From<EditError> for EditErrorRecord {
@@ -337,6 +354,24 @@ impl From<EditError> for EditErrorRecord {
                 character,
                 attribute,
                 position,
+            },
+            EditError::PartReference { holder, end, id } => Self::PartReference {
+                code,
+                holder,
+                end: end.to_owned(),
+                id,
+            },
+            EditError::MetadataReference {
+                holder,
+                element,
+                attribute,
+                id,
+            } => Self::MetadataReference {
+                code,
+                holder,
+                element,
+                attribute,
+                id,
             },
         }
     }
@@ -560,6 +595,34 @@ impl TryFrom<EditErrorRecord> for EditError {
                     character,
                     attribute,
                     position,
+                },
+            ),
+            R::PartReference {
+                code,
+                holder,
+                end,
+                id,
+            } => (
+                code,
+                Self::PartReference {
+                    holder,
+                    end: end_name(&end)?,
+                    id,
+                },
+            ),
+            R::MetadataReference {
+                code,
+                holder,
+                element,
+                attribute,
+                id,
+            } => (
+                code,
+                Self::MetadataReference {
+                    holder,
+                    element,
+                    attribute,
+                    id,
                 },
             ),
         };
@@ -828,6 +891,8 @@ mod tests {
             EditError::UnrepresentableCharacter { .. } => {
                 sampled!(EDIT_ERRORS, "UnrepresentableCharacter")
             }
+            EditError::PartReference { .. } => sampled!(EDIT_ERRORS, "PartReference"),
+            EditError::MetadataReference { .. } => sampled!(EDIT_ERRORS, "MetadataReference"),
         }
     }
 

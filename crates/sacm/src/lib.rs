@@ -111,10 +111,12 @@
 //! Every change is an operation given to [`edit::apply`]. The [`edit`] module
 //! lists them all.
 //!
-//! - **Atomic.** A refused operation changes nothing, and no edit creates a dangling reference.
-//! - **Savable.** An edit refuses text XML 1.0 cannot represent, so a document read and
-//!   edited writes in tolerant mode while it has a root, and one built by edits alone
-//!   writes in strict mode too.
+//! - **Atomic.** A refused operation changes nothing.
+//! - **No new dangling reference.** No edit makes a reference, or XMI metadata, name an
+//!   id the document lacks; one read from a file stays until fixed.
+//! - **Savable.** No edit stores text XML 1.0 cannot represent. A document read and
+//!   edited writes in tolerant mode while it has a root, and in strict mode too if a
+//!   strict write accepted it before ([round trip](xmi::write#round-trip)).
 //! - **Ask first.** [`edit::check`] says whether an operation would be accepted;
 //!   [`edit::preview`] says what it would do.
 //! - **Batches.** [`edit::batch`] and [`edit::apply_all`] apply several operations as one change.

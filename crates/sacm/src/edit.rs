@@ -25,7 +25,8 @@
 //! - **What changed.** A [`Mutation`] holds the operation and the ids it created,
 //!   changed and deleted.
 //! - **No dangling reference.** Every id an edit newly references must name an element
-//!   of the document, of a kind its end admits.
+//!   of the document, of a kind its end admits, and no edit removes an id that a
+//!   reference or XMI metadata still names (LIB-EDIT-026).
 //! - **Content is not refused.** An empty name or a duplicate gid is accepted;
 //!   [`validation::validate`](crate::validation::validate) reports it (D-VAL-LAYER).
 //! - **Refusals are ordered.** The first check that fails is the result.
@@ -172,6 +173,7 @@
 //!   id of the value at its position.
 //! - **Freed ids.** The ids beyond the new length, every id of a removed `content`, and
 //!   an id no reference holds any more are freed, so a later create may generate them.
+//!   One that a reference or XMI metadata still names is refused (LIB-EDIT-026).
 //! - **Setting the value held changes nothing.** The elements are unchanged, though the
 //!   document gets a new revision, and [`Mutation::is_empty`] is true
 //!   ([`BatchMutation::is_empty`] for a batch).
@@ -184,8 +186,8 @@
 //! # Deleting an element
 //!
 //! [`DeleteElement`] deletes an element of any kind, everything it contains, and what its three
-//! policies allow. It never leaves a typed reference dangling; XMI metadata that names a deleted
-//! element is kept as it is (LIB-EDIT-005, LIB-EDIT-006, ADR 0031). Each policy refuses by
+//! policies allow. It never leaves a typed reference or XMI metadata naming an id it
+//! removes (LIB-EDIT-005, LIB-EDIT-006, LIB-EDIT-026, ADR 0031). Each policy refuses by
 //! default, so nothing cascades unless asked (D-POLICY):
 //!
 //! | Policy | Refuses (default) | Allows | What it does |
@@ -398,6 +400,7 @@ mod copy;
 mod create;
 mod delete;
 mod move_element;
+mod named;
 mod plan;
 mod preview;
 #[cfg(feature = "serde")]
@@ -514,6 +517,11 @@ use plan::{Features, Outcome, Plan};
 ///   - One with no `expression` is [`EditError::TooFewReferences`] of the end `expression`.
 ///   - Each `expression` the element does not hold already is checked as checks 6 to 8
 ///     below check a new id, for the end `expression`.
+/// - **Then, the ids they remove** (LIB-EDIT-026): [`SetContent`], [`SetKey`],
+///   [`SetLocation`] and [`SetTaggedValue`] remove the ids of values past the new length,
+///   and the `remove` forms all of the text's (SACM-REF-001).
+///   - One that a reference end names is [`EditError::PartReference`].
+///   - Then one that XMI metadata names is [`EditError::MetadataReference`].
 /// - **Last, the text they store** (LIB-EDIT-025). A character XML 1.0 cannot represent
 ///   is [`EditError::UnrepresentableCharacter`] (SACM-XML-003). A set of the value held
 ///   stores nothing, so it is not checked. The operations:
@@ -559,6 +567,8 @@ use plan::{Features, Outcome, Plan};
 /// | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
 /// | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
 /// | 4. under `RejectIfNonEmpty`: the first interface or binding in pre-order that the delete removes for its bound (left with no `implements`, or fewer than two distinct participants) and that holds an element other than a `UtilityElement`, a preserved child element or a proxy (LIB-EDIT-019) | [`EditError::NotEmpty`] naming it | SACM-CMD-006 |
+/// | 5. no remaining element's reference end names the `xmi:id` of a deleted name or text, by holder in pre-order, then end, then position | [`EditError::PartReference`] | SACM-REF-001 |
+/// | 6. no XMI metadata outside the deleted elements names an id they held: the document's first, then each remaining element's in pre-order | [`EditError::MetadataReference`] | SACM-REF-001 |
 ///
 /// ## Moves
 ///
@@ -585,6 +595,7 @@ use plan::{Features, Outcome, Plan};
 /// | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 /// | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
 /// | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
+/// | 7. each copied element, in pre-order: each `IDREF` token of its XMI metadata names an `xmi:id` of the target after the copy | [`EditError::MetadataReference`] (the copy's id) | SACM-REF-001 |
 ///
 /// An id the source lacks is refused earlier, when the copy is built
 /// ([`CopyElements::new`], [`CopyElements::root`]).
@@ -1031,6 +1042,9 @@ fn plan_unchecked_text<'o>(
     if let Plan::Create(new) = &plan {
         check_new_expressions(document, &new.features)?;
     }
+    // After every other check, before the text check: no id that is still
+    // named is removed (LIB-EDIT-026).
+    named::check(document, &plan)?;
     Ok(plan)
 }
 
@@ -2550,6 +2564,91 @@ pub enum EditError {
         /// otherwise.
         position: Option<usize>,
     },
+    /// An edit would remove the `xmi:id` of a name or text, or of its XMI metadata, that a
+    /// reference end of a remaining element names (SACM-REF-001, LIB-EDIT-026).
+    ///
+    /// - **Which ids.** That of a name, `content`, `key`, `location` or `value`, or one in
+    ///   its XMI metadata. A strict write would refuse the dangling reference.
+    /// - **Every delete policy refuses it.** The policies decide only references to
+    ///   deleted elements.
+    /// - **Fix.** Remove the reference first ([`RemoveReference`], [`SetReferences`]).
+    ///
+    /// ```
+    /// use sacm::edit::{self, EditError, SetContent};
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+    ///   <name content="P"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    ///     <name content="C1"/>
+    ///     <description xmi:id="d1"><content><value xmi:id="d1v" content="x"/></content></description>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="true" citedElement="d1v">
+    ///     <name content="C2"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let mut doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let error = edit::apply(&mut doc, SetContent::remove("d1")).unwrap_err();
+    /// assert!(matches!(error, EditError::PartReference { end: "citedElement", .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the citedElement of \"c2\" names \"d1v\", the xmi:id of a name or text, and after \
+    ///      the edit the document would have no such xmi:id"
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    PartReference {
+        /// The id of the element that holds the reference.
+        holder: ElementId,
+        /// The end, by its XMI name, such as `citedElement`.
+        end: &'static str,
+        /// The id the reference names, which the edit would remove.
+        id: ElementId,
+    },
+    /// An edit would leave a token of an `xsd:IDREF` or `xsd:IDREFS` attribute of XMI
+    /// metadata naming no `xmi:id` of the document (SACM-REF-001, LIB-EDIT-026).
+    ///
+    /// - **Which edits.** A delete or a text edit that removes the id, or a copy that brings
+    ///   in metadata naming an id the target lacks.
+    /// - **Which tokens.** Those a strict write checks (SACM23-XMI-019).
+    /// - **Fix.** No edit changes metadata: keep the element, or change the metadata in the
+    ///   file.
+    ///
+    /// ```
+    /// use sacm::edit::{self, DeleteElement, EditError};
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:idref="c1">
+    ///   <sacm:ArgumentPackage xmi:id="p">
+    ///     <name content="P"/>
+    ///     <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="C1"/></argumentElement>
+    ///   </sacm:ArgumentPackage>
+    /// </xmi:XMI>"#;
+    /// let mut doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let error = edit::apply(&mut doc, DeleteElement::new("c1")).unwrap_err();
+    /// assert!(matches!(error, EditError::MetadataReference { holder: None, .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the attribute \"xmi:idref\" of the element \"xmi:XMI\", kept as XMI metadata, \
+    ///      names \"c1\", and after the edit the document would have no such xmi:id"
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    MetadataReference {
+        /// The element whose XMI metadata holds the token (for a copy, the copy's id in the
+        /// target); `None` for the document's own metadata, on or under `xmi:XMI`.
+        holder: Option<ElementId>,
+        /// The metadata element carrying the attribute, as written, such as `xmi:Extension`.
+        element: String,
+        /// The attribute, as written, such as `xmi:idref`.
+        attribute: String,
+        /// The id the token names.
+        id: ElementId,
+    },
 }
 
 impl EditError {
@@ -2568,6 +2667,7 @@ impl EditError {
     /// | SACM-CMD-009 | [`InvalidOrder`](Self::InvalidOrder), [`PositionOutOfRange`](Self::PositionOutOfRange) |
     /// | SACM-ID-002 | [`InvalidId`](Self::InvalidId), [`InvalidReference`](Self::InvalidReference) |
     /// | SACM-MULT-001 | [`TooFewReferences`](Self::TooFewReferences), [`TooManyReferences`](Self::TooManyReferences) |
+    /// | SACM-REF-001 | [`PartReference`](Self::PartReference), [`MetadataReference`](Self::MetadataReference) |
     /// | SACM-REF-002 | [`WrongReferenceType`](Self::WrongReferenceType) |
     /// | SACM-XML-003 | [`UnrepresentableCharacter`](Self::UnrepresentableCharacter) |
     #[must_use]
@@ -2598,6 +2698,7 @@ impl EditError {
             Self::NotEmpty { .. } => Code::CMD_PACKAGE_NOT_EMPTY,
             Self::CrossPackageReference { .. } => Code::CMD_EXTERNAL_REFERENCES,
             Self::UnrepresentableCharacter { .. } => Code::XML_UNREPRESENTABLE_CHARACTER,
+            Self::PartReference { .. } | Self::MetadataReference { .. } => Code::REF_DANGLING,
         }
     }
 }
@@ -2815,6 +2916,32 @@ impl fmt::Display for EditError {
                     " given to the element {:?} holds U+{:04X}, which XML 1.0 cannot represent",
                     element.as_str(),
                     u32::from(*character)
+                )
+            }
+            Self::PartReference { holder, end, id } => write!(
+                f,
+                "the {end} of {:?} names {:?}, the xmi:id of a name or text, and after the edit \
+                 the document would have no such xmi:id",
+                holder.as_str(),
+                id.as_str()
+            ),
+            Self::MetadataReference {
+                holder,
+                element,
+                attribute,
+                id,
+            } => {
+                write!(
+                    f,
+                    "the attribute {attribute:?} of the element {element:?}, kept as XMI metadata"
+                )?;
+                if let Some(holder) = holder {
+                    write!(f, " of {:?}", holder.as_str())?;
+                }
+                write!(
+                    f,
+                    ", names {:?}, and after the edit the document would have no such xmi:id",
+                    id.as_str()
                 )
             }
         }
