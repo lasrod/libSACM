@@ -186,3 +186,11 @@ LIB-API-013 and LIB-EDIT-023. All of it is additive under amendment 1.
   key is required.
 
 *Amendment 7 status: accepted (the maintainer, 2026-11-27).*
+
+## Amendment 8 (2026-11-27): Changes
+
+LIB-RT-005. Additive under amendment 1. `compare::Changes` is `{"created_ids",
+"changed_ids", "deleted_ids", "document_changed"}`; every key is required, and it is a
+record. `Changes` joins the Types list.
+
+*Amendment 8 status: accepted (the maintainer, 2026-11-27).*

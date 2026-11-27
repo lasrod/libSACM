@@ -1321,6 +1321,37 @@ fn diagnostic_details_from_record(
     )))
 }
 
+/// Every diagnostic code and message template of this release, as JSON
+/// (LIB-DIAG-006): for generating translation keys and failing CI on one an
+/// application does not word.
+///
+/// The same text is `src/diagnostic/catalog.json` in the published crate;
+/// its shape is in the [diagnostics catalog][catalog]. `"format"` changes
+/// only on a breaking change.
+///
+/// - `codes`: each code, sorted, with the severities it is reported with;
+///   `error` too when it refuses a read, a write or an edit, and none when it
+///   is no longer reported.
+/// - `templates`: each template, sorted by id, with its code, its carrier
+///   (`Diagnostic`, `ReadError::<Variant>` or `WriteError::<Variant>`), its
+///   arguments (`name`, and `kind` `text`, `count` or `prose`) and its
+///   English pattern.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::diagnostic::CATALOG_JSON;
+///
+/// let catalog: serde_json::Value = serde_json::from_str(CATALOG_JSON)?;
+/// assert_eq!(catalog["format"], 1);
+/// let codes = catalog["codes"].as_array().map_or(0, Vec::len);
+/// assert!(codes > 0);
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+///
+/// [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
+pub const CATALOG_JSON: &str = include_str!("diagnostic/catalog.json");
+
 /// Whether any of `diagnostics` has [`Severity::Error`].
 ///
 /// A document with an Error diagnostic does not conform to SACM; Warning and

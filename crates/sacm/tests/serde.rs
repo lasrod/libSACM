@@ -92,6 +92,9 @@ use sacm::model::{
 use sacm::model::Href;
 // The operation of slice 0082 (LIB-EDIT-023).
 use sacm::edit::SetTaggedValue;
+// The changes between two documents of slice 0083 (LIB-RT-005, ADR 0030
+// amendment 8).
+use sacm::compare::Changes;
 use sacm::validation;
 use sacm::xmi::{self, ReadOptions};
 use serde::Serialize;
@@ -1678,6 +1681,8 @@ fn lib_api_006_every_listed_type_implements_serialize_and_deserialize() {
     assert_serde::<Code>();
     assert_serde::<Severity>();
     assert_serde::<SourceLocation>();
+    // Slice 0083 (LIB-RT-005, ADR 0030 amendment 8).
+    assert_serde::<Changes>();
 }
 
 #[test]
@@ -3076,6 +3081,10 @@ fn assert_every_golden_changed(change: Change<'_>) {
             "dangling-references.json",
             assert_changed_copies::<Vec<DanglingReference>>("dangling-references.json", change),
         ),
+        (
+            "changes.json",
+            assert_changed_copies::<Vec<Changes>>("changes.json", change),
+        ),
     ];
     for (name, count) in counts {
         assert!(
@@ -3234,6 +3243,11 @@ fn lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_i
         (
             "dangling-references.json",
             assert_changed_copies::<Vec<DanglingReference>>("dangling-references.json", &plain),
+        ),
+        // Every key of a `Changes` is required (ADR 0030 amendment 8).
+        (
+            "changes.json",
+            assert_changed_copies::<Vec<Changes>>("changes.json", &plain),
         ),
     ];
     for (name, count) in counts {

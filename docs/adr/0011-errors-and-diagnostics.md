@@ -130,3 +130,16 @@ LIB-API-013; lasrod/libSACM#113 A9.
   unchanged.
 
 *Amendment 4 status: accepted (the maintainer, 2026-11-27).*
+
+## Amendment 5 (2026-11-27): the machine-readable catalog
+
+LIB-DIAG-006; lasrod/libSACM#113 A10.
+- `src/diagnostic/catalog.json`, also `diagnostic::CATALOG_JSON`, lists:
+  - every `Code`, with the severities it is reported with (`error` for a refusal);
+  - every template, with its code, carrier, arguments (name and kind) and English.
+- `cargo xtask catalog` generates it from the crate's sources and the code rows of
+  docs/sacm/diagnostics.md. A test keeps it equal.
+- `"format": 1` changes only on a breaking change under ADR 0030 amendment 1. The English is
+  not promised.
+
+*Amendment 5 status: accepted (the maintainer, 2026-11-27).*

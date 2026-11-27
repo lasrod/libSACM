@@ -8874,10 +8874,35 @@ area = "DIAG"
 milestone = "M7"
 title = "A machine-readable catalog of codes and templates"
 requirement = "Every code and template, with its severity, argument names, argument kinds (prose included) and English text, is available as JSON that a consumer can use to generate translation keys and to fail its CI on a code it does not word. A test keeps it equal to the crate's own templates."
-source = "lasrod/libSACM#113 A10"
+source = "lasrod/libSACM#113 A10; D-DIAG; ADR 0011 amendment 5; ADR 0030 amendment 3"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-API-017", "LIB-DIAG-004"]
+status = "implemented"
+depends_on = ["LIB-API-017", "LIB-DIAG-004", "LIB-API-013"]
+acceptance = [
+  "`crates/sacm/src/diagnostic/catalog.json`, also `sacm::diagnostic::CATALOG_JSON`, holds `format` 1, the specifications, every code with its severities and every template with its code, carrier, arguments (name and kind: text, count, prose) and English, sorted.",
+  "`cargo xtask catalog` writes it from template.rs, diagnostic.rs and the code rows of diagnostics.md; a test fails when the checked-in file differs.",
+  "Every listed code and specification deserializes as the crate's; every template reads back as a record of its carrier; every diagnostic and refusal of the fixtures matches its entry.",
+]
+code = [
+  "crates/sacm/src/diagnostic.rs",
+  "crates/sacm/src/diagnostic/catalog.json",
+  "xtask/src/catalog.rs",
+  "xtask/src/lib.rs",
+  "xtask/Cargo.toml",
+  "docs/sacm/diagnostics.md",
+  "docs/adr/0011-errors-and-diagnostics.md",
+]
+tests = [
+  "crates/sacm/tests/catalog_json.rs::lib_diag_006_catalog_json_is_the_shipped_file",
+  "crates/sacm/tests/catalog_json.rs::lib_diag_006_the_catalog_holds_the_value_position_template",
+  "crates/sacm/tests/catalog_json.rs::lib_diag_006_every_listed_code_and_specification_is_the_crate_s",
+  "crates/sacm/tests/catalog_json.rs::lib_diag_006_every_catalog_template_reads_back_as_a_record_of_its_carrier",
+  "crates/sacm/tests/catalog_json.rs::lib_diag_006_every_diagnostic_and_refusal_of_the_fixtures_matches_its_catalog_entry",
+  "xtask/tests/catalog.rs::lib_diag_006_the_checked_in_catalog_is_what_xtask_catalog_writes",
+  "xtask/tests/catalog.rs::lib_diag_006_xtask_catalog_writes_the_file",
+  "xtask/tests/catalog.rs::lib_diag_006_generate_gives_the_documented_shape",
+  "xtask/tests/catalog.rs::lib_diag_006_severities_come_from_the_code_rows",
+]
 
 [[row]]
 id = "LIB-API-021"
@@ -8985,10 +9010,38 @@ area = "RT"
 milestone = "M7"
 title = "Which elements differ between two documents"
 requirement = "A comparison of two documents can be summarised per id: the elements created, changed and deleted, so a caller that replaces a whole document can record exactly what changed."
-source = "lasrod/libSACM#113 A11"
+source = "lasrod/libSACM#113 A11; D-ID; ADR 0020 amendment 1; ADR 0032 (net ids); ADR 0030 amendment 8"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-RT-002"]
+status = "implemented"
+depends_on = ["LIB-RT-001", "LIB-EDIT-014"]
+acceptance = [
+  "`compare::changes(before, after)` lists created ids (only `after`, its pre-order), changed ids (both, with a difference of their own in `semantic_compare`, `after`'s pre-order) and deleted ids (only `before`, its pre-order); a move changes the element, a reorder its parent, a new id is a deletion and a creation.",
+  "`document_changed()` is true exactly when the root order, document metadata or document preserved content differs; `is_empty()` is exactly `before == after`.",
+  "It agrees with `semantic_compare` over the fixtures and edits, with a batch's net ids over random runs, and swaps created and deleted when the documents are swapped.",
+  "It is linear and does not recurse at 20,000 elements, flat and deep.",
+  "`Changes` serializes as `{created_ids, changed_ids, deleted_ids, document_changed}`, matching the golden sample.",
+]
+code = [
+  "crates/sacm/src/compare.rs",
+  "crates/sacm/src/lib.rs",
+  "docs/adr/0020-semantic-comparison.md",
+  "docs/adr/0030-serde-for-edit-and-diagnostic-values.md",
+]
+tests = [
+  "crates/sacm/tests/changes.rs::lib_rt_005_changes_of_equal_documents_are_empty",
+  "crates/sacm/tests/changes.rs::lib_rt_005_created_changed_and_deleted_follow_the_document_order",
+  "crates/sacm/tests/changes.rs::lib_rt_005_a_move_changes_the_element_and_not_its_parents",
+  "crates/sacm/tests/changes.rs::lib_rt_005_a_reorder_changes_the_parent_and_a_root_reorder_the_document",
+  "crates/sacm/tests/changes.rs::lib_rt_005_a_change_of_content_or_ids_alone_changes_the_element",
+  "crates/sacm/tests/changes.rs::lib_rt_005_an_element_matched_by_id_with_another_kind_is_changed",
+  "crates/sacm/tests/changes.rs::lib_rt_005_a_new_id_is_a_deletion_and_a_creation",
+  "crates/sacm/tests/changes.rs::lib_rt_005_changes_agree_with_semantic_compare",
+  "crates/sacm/tests/changes.rs::lib_rt_005_swapping_the_documents_swaps_created_and_deleted",
+  "crates/sacm/tests/changes.rs::lib_rt_005_twenty_thousand_elements_compare_in_linear_time",
+  "crates/sacm/tests/changes.rs::lib_rt_005_changes_json_matches_the_golden_sample",
+  "crates/sacm/tests/changes.rs::lib_rt_005_changes_is_a_send_sync_value_type",
+  "crates/sacm/tests/batch.rs::lib_rt_005_over_random_sequences_changes_equal_the_batch_s_net_ids",
+]
 
 [[row]]
 id = "LIB-DOC-009"
