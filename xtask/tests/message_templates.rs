@@ -46,7 +46,9 @@
 //!   without is one `[public-constructor]` problem.
 //!
 //! The prose arguments of the crate's templates (LIB-DIAG-004) are exactly
-//! the eight of the slice 0081 design, [`PROSE_ARGUMENTS`].
+//! the eight of the slice 0081 design and the `attribute` of
+//! `SACM-XML-003/unrepresentable-character-in-value` (slice 0082,
+//! LIB-API-013), [`PROSE_ARGUMENTS`].
 //!
 //! As in `interim_refusals.rs`, each check is a function that returns the
 //! problems it finds, each starting with a stable code in brackets. The
@@ -86,8 +88,10 @@ const HEADING: &str = "## Message templates";
 /// 17, Write 7; and slice 0075a adds `SACM-XMI-015/not-xmi-element` and
 /// `/emf-xmi-namespace` (Unread; LIB-COMPAT-002, ADR 0044 D1): Read 76,
 /// Unread 19, Write 7; and slice 0077 adds `SACM-SEC-003/attributes` (Read;
-/// LIB-SEC-007, ADR 0041 amendment 2): Read 77, Unread 19, Write 7.
-const REFUSAL_TEMPLATES: usize = 103;
+/// LIB-SEC-007, ADR 0041 amendment 2): Read 77, Unread 19, Write 7; and
+/// slice 0082 adds `SACM-XML-003/unrepresentable-character-in-value` (Write;
+/// LIB-API-013): Read 77, Unread 19, Write 8.
+const REFUSAL_TEMPLATES: usize = 104;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
@@ -121,8 +125,9 @@ const ROW_DIAG_004: &str = "LIB-DIAG-004";
 const ROW_DIAG_005: &str = "LIB-DIAG-005";
 
 /// The prose arguments, each its template and argument name (LIB-DIAG-004,
-/// acceptance 2): English that the crate or its XML parser wrote.
-const PROSE_ARGUMENTS: [(&str, &str); 8] = [
+/// acceptance 2): English that the crate or its XML parser wrote; and the
+/// `attribute` of the value template of slice 0082 (LIB-API-013).
+const PROSE_ARGUMENTS: [(&str, &str); 9] = [
     ("SACM-SEC-002/unheld-element", "error"),
     ("SACM-SEC-002/unheld-outside", "error"),
     ("SACM-SEC-002/unheld-root", "error"),
@@ -131,6 +136,10 @@ const PROSE_ARGUMENTS: [(&str, &str); 8] = [
     ("SACM-XML-002/byte-order-mark", "encoding"),
     ("SACM-XML-002/detected-encoding", "encoding"),
     ("SACM-XML-003/unrepresentable-character", "attribute"),
+    (
+        "SACM-XML-003/unrepresentable-character-in-value",
+        "attribute",
+    ),
 ];
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
@@ -1590,7 +1599,7 @@ fn lib_diag_004_the_prose_arguments_are_exactly_those_of_the_design() {
     assert_eq!(
         prose_of(&declared),
         expected,
-        "{ROW_DIAG_004}: {SACM_SRC}/{TEMPLATES} does not declare exactly the eight prose \
+        "{ROW_DIAG_004}: {SACM_SRC}/{TEMPLATES} does not declare exactly the nine prose \
          arguments"
     );
     let (listed, problems) = catalog_templates(&read(CATALOG));
@@ -1598,7 +1607,7 @@ fn lib_diag_004_the_prose_arguments_are_exactly_those_of_the_design() {
     assert_eq!(
         prose_of(&listed),
         expected,
-        "{ROW_DIAG_004}: {CATALOG} does not mark exactly the eight prose arguments (prose)"
+        "{ROW_DIAG_004}: {CATALOG} does not mark exactly the nine prose arguments (prose)"
     );
     // No diagnostic template has a prose argument.
     let diagnostic_prose: Vec<&str> = declared
@@ -1725,8 +1734,9 @@ fn lib_diag_005_diagnostic_rs_makes_its_constructors_public_only_under_test_supp
         .map(|(name, _)| name)
         .collect();
     names.sort();
-    // The six of today, so that the check is known to see them: `Code::new`,
-    // `SourceLocation::new`, `Diagnostic::new` and the three `with_*`.
+    // The seven of today, so that the check is known to see them:
+    // `Code::new`, `SourceLocation::new`, `Diagnostic::new` and the four
+    // `with_*`, `with_specification` since slice 0082 (LIB-API-013).
     assert_eq!(
         names,
         [
@@ -1735,10 +1745,11 @@ fn lib_diag_005_diagnostic_rs_makes_its_constructors_public_only_under_test_supp
             "new",
             "with_affected",
             "with_clause",
-            "with_location"
+            "with_location",
+            "with_specification"
         ],
         "{ROW_DIAG_005}: the public constructors of {SACM_SRC}/{DIAGNOSTIC_SOURCE} are not the \
-         six the design names"
+         seven the design names"
     );
     let problems = public_constructor_problems(source);
     assert!(

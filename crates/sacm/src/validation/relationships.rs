@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use crate::diagnostic::template::{MULT_001_MISSING, REF_002_NOT_AN_ARTIFACT_REFERENCE};
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{AbstractClass, Document, ElementKind, ReferenceEnd, SacmElement};
 
 /// SACM23-VAL-005: each asserted relationship with no `source` is one
@@ -92,7 +92,7 @@ fn missing_end(
         ends.requirement,
         arguments,
     )
-    .set_clause(ends.clause)
+    .set_clause(Specification::Sacm23, ends.clause)
     .set_affected([element.id().clone()])
 }
 
@@ -157,7 +157,7 @@ pub(super) fn artifact_reference_kinds(document: &Document, found: &mut Vec<Diag
                         "SACM23-VAL-016",
                         arguments,
                     )
-                    .set_clause(clause)
+                    .set_clause(Specification::Sacm23, clause)
                     .set_affected([element.id().clone(), id.clone()]),
                 );
             }

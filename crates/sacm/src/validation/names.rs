@@ -1,7 +1,7 @@
 //! Rules about names (formal/23-05-08 §8.6).
 
 use crate::diagnostic::template::MULT_001_MISSING;
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{AbstractClass, Document};
 
 /// SACM23-VAL-018: each `ModelElement` with no name is one SACM-MULT-001
@@ -25,7 +25,7 @@ pub(super) fn missing_name(document: &Document, found: &mut Vec<Diagnostic>) {
                     "SACM23-VAL-018",
                     arguments,
                 )
-                .set_clause("8.6")
+                .set_clause(Specification::Sacm23, "8.6")
                 .set_affected([id.clone()]),
             );
         }

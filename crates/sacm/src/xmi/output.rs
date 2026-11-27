@@ -549,11 +549,12 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
     }
     let mut plan = Vec::new();
     for element in document.elements() {
-        if let Some((attribute, character)) = unrepresentable(element) {
+        if let Some((attribute, position, character)) = unrepresentable(element) {
             return Err(WriteError::unrepresentable_character(
                 element.id().clone(),
                 character,
                 attribute,
+                position,
             ));
         }
         let kind = element.kind();
@@ -589,8 +590,9 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 }
 
 /// The first value `element` holds that XML 1.0 cannot represent, as the
-/// attribute that holds it and its first such character, checked in this
-/// order: its id, its gid, its `version`, `date`, `startTime`, `endTime`,
+/// attribute that holds it, the value's index among the values of its
+/// `content`, `key` or `location` (`None` outside them), and its first such
+/// character, checked in this order: its id, its gid, its `version`, `date`, `startTime`, `endTime`,
 /// `value` and `externalReference`, its name's `lang` and `content`, then each value of its
 /// `content`, then of its `key` and then of its `location`, `lang` before
 /// `content`. The ids of a name, `content`, `key`, `location` or `value`
@@ -600,23 +602,29 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 /// refuses a character XML 1.0 cannot represent, and the ids are element
 /// ids, which `xmi::read` or a checked `with_id` gave, or ids `xmi::read`
 /// read from a reference, and each of those is representable.
-fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
+fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, Option<usize>, char)> {
     let name = element.name();
     let fields = [
-        (WriteAttribute::Id, Some(element.id().as_str())),
-        (WriteAttribute::Gid, element.gid()),
-        (WriteAttribute::Version, element.version()),
-        (WriteAttribute::Date, element.date()),
-        (WriteAttribute::StartTime, element.start_time()),
-        (WriteAttribute::EndTime, element.end_time()),
-        (WriteAttribute::Value, element.value()),
+        (WriteAttribute::Id, None, Some(element.id().as_str())),
+        (WriteAttribute::Gid, None, element.gid()),
+        (WriteAttribute::Version, None, element.version()),
+        (WriteAttribute::Date, None, element.date()),
+        (WriteAttribute::StartTime, None, element.start_time()),
+        (WriteAttribute::EndTime, None, element.end_time()),
+        (WriteAttribute::Value, None, element.value()),
         (
             WriteAttribute::ExternalReference,
+            None,
             element.external_reference(),
         ),
-        (WriteAttribute::NameLang, name.and_then(LangString::lang)),
+        (
+            WriteAttribute::NameLang,
+            None,
+            name.and_then(LangString::lang),
+        ),
         (
             WriteAttribute::NameContent,
+            None,
             name.and_then(LangString::content),
         ),
     ];
@@ -642,15 +650,21 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
             .text(role)
             .map_or(&[][..], |text| text.value().values())
             .iter()
-            .flat_map(move |value| [(lang, value.lang()), (content, value.content())])
+            .enumerate()
+            .flat_map(move |(position, value)| {
+                [
+                    (lang, Some(position), value.lang()),
+                    (content, Some(position), value.content()),
+                ]
+            })
     });
     fields
         .into_iter()
         .chain(values)
-        .find_map(|(attribute, value)| {
+        .find_map(|(attribute, position, value)| {
             value
                 .and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
-                .map(|character| (attribute, character))
+                .map(|character| (attribute, position, character))
         })
 }
 

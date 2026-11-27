@@ -171,3 +171,18 @@ LIB-DIAG-004 and LIB-DIAG-005; the maintainer's decisions on lasrod/libSACM#113.
 - **Withdrawn:** the consequence "Once users can build their own diagnostic codes (LIB-DIAG-003) …". LIB-DIAG-003 is retired; only the crate builds diagnostics (LIB-DIAG-005).
 
 *Amendment 6 status: accepted (the maintainer, 2026-11-26).*
+
+## Amendment 7 (2026-11-27): specification, position, SetTaggedValue
+
+LIB-API-013 and LIB-EDIT-023. All of it is additive under amendment 1.
+- A `Diagnostic` writes `specification` after `clause`: `"SACM 2.3"`, `"XMI 2.5.1"` or
+  `null`. It may be left out on input (R3); unknown text is refused (R5). `Specification`
+  joins the Types list.
+- `WriteError::UnrepresentableCharacter` writes `position` after `attribute`: the value's
+  index, or `null`. It may be left out on input, the one optional key under R10. An
+  unrepresentable character inside a value uses the template
+  `SACM-XML-003/unrepresentable-character-in-value`, which names the index.
+- `SetTaggedValue` is `{"type", "element", "key", "content"}`. `key` is a string, and every
+  key is required.
+
+*Amendment 7 status: accepted (the maintainer, 2026-11-27).*

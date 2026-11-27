@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use crate::diagnostic::template::{ID_002_METADATA_ID_NOT_AN_NCNAME, REF_001_METADATA_DANGLING};
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Attr, Document, ElementId, Event, Item, Preserved, QName, XMI_NS, is_ncname};
 
 /// The row the findings enforce.
@@ -189,7 +189,7 @@ fn check_id(element: &str, value: &str, holder: Option<&ElementId>, found: &mut 
             ROW,
             arguments,
         )
-        .set_clause("7.6.1")
+        .set_clause(Specification::Xmi251, "7.6.1")
         .set_affected(holder.cloned()),
     );
 }

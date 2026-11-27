@@ -8,7 +8,9 @@
 //!   SACM-XMI-014 none since slice 0073a, which retires it, and
 //!   SACM-XMI-007 none since slice 0073b, which reads its links;
 //!   LIB-SEC-003 reaches `/namespaces`), and `LimitExceeded` last (LIB-SEC-003,
-//!   acceptance 14). The samples are real
+//!   acceptance 14). `write-errors.json` holds a second
+//!   `UnrepresentableCharacter`, in a value, with its `position` (slice
+//!   0082, LIB-API-013). The samples are real
 //!   refusals of `xmi::read` and `xmi::write`, because the variants are
 //!   `#[non_exhaustive]`. Serializing them pretty gives each file's bytes
 //!   plus a final line feed; reading each file gives values `==` to them,
@@ -28,8 +30,8 @@
 use std::fmt::Debug;
 use std::path::Path;
 
-use sacm::edit::{self, CreateArgumentPackage};
-use sacm::model::{Document, LangString};
+use sacm::edit::{self, CreateArgumentPackage, CreateNote, Operation};
+use sacm::model::{Document, LangString, MultiLangString};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteAttribute, WriteError, WriteOptions};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -226,7 +228,8 @@ fn tolerant_document(input: &str) -> Document {
     }
 }
 
-/// One refusal per `WriteError` variant, in declaration order.
+/// One refusal per `WriteError` variant, in declaration order, and after the
+/// first `UnrepresentableCharacter` a second, in a value (slice 0082).
 fn write_samples() -> Vec<WriteError> {
     let mut unrepresentable = Document::new();
     if let Err(error) = edit::apply(
@@ -244,7 +247,7 @@ fn write_samples() -> Vec<WriteError> {
         "<sacm:ArgumentPackage{NS} xmlns:v=\"urn:vendor\" xmi:id=\"p\" v:colour=\"red\">\
          <name content=\"p\"/></sacm:ArgumentPackage>"
     ));
-    [Document::new(), unrepresentable, invalid, preserved]
+    let mut samples: Vec<WriteError> = [Document::new(), unrepresentable, invalid, preserved]
         .iter()
         .map(
             |document| match xmi::write(document, &WriteOptions::default()) {
@@ -252,7 +255,30 @@ fn write_samples() -> Vec<WriteError> {
                 Err(error) => error,
             },
         )
-        .collect()
+        .collect();
+    // Slice 0082 (LIB-API-013): after the first `UnrepresentableCharacter`,
+    // one in a value, with its position: the Note `n1` whose second content
+    // value holds U+0004, written tolerantly.
+    let mut in_value = Document::new();
+    let content: MultiLangString = [LangString::new("ok"), LangString::new("bad\u{4}")]
+        .into_iter()
+        .collect();
+    for operation in [
+        Operation::from(CreateArgumentPackage::root(LangString::new("P")).with_id("p")),
+        CreateNote::new("p", content).with_id("n1").into(),
+    ] {
+        if let Err(error) = edit::apply(&mut in_value, operation) {
+            panic!("{ROW}: setup: {error}");
+        }
+    }
+    match xmi::write(
+        &in_value,
+        &WriteOptions::default().with_mode(Mode::Tolerant),
+    ) {
+        Ok(text) => panic!("{ROW}: setup: a tolerant write writes {text}"),
+        Err(error) => samples.insert(2, error),
+    }
+    samples
 }
 
 fn write_variant(error: &WriteError) -> &'static str {
@@ -309,10 +335,12 @@ fn lib_api_017_write_errors_json_holds_one_value_per_variant_and_reads_back() {
         [
             ("NoRoot", "SACM-XMI-001"),
             ("UnrepresentableCharacter", "SACM-XML-003"),
+            // The value refusal of slice 0082 (LIB-API-013).
+            ("UnrepresentableCharacter", "SACM-XML-003"),
             ("Invalid", "SACM-XMI-016"),
             ("PreservedContent", "SACM-XMI-006"),
         ],
-        "{ROW}: setup: the samples are not one per variant"
+        "{ROW}: setup: the samples are not one per variant, and the value refusal"
     );
     assert_golden("write-errors.json", &samples);
 }

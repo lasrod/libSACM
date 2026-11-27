@@ -94,7 +94,28 @@ pub(super) fn run<E>(
 ) -> Result<BatchMutation, E> {
     // A private copy, swapped in on success: an `Err` or a panic in the
     // closure leaves `document` as it was (ADR 0032).
-    let mut working = document.clone();
+    let (mut working, mutation) = run_on(document, document.clone(), operations)?;
+    working.renew_revision();
+    *document = working;
+    Ok(mutation)
+}
+
+/// What [`run`] would return, run on a copy that is then dropped: the body
+/// of [`edit::preview_batch`](super::preview_batch) (LIB-EDIT-024).
+pub(super) fn preview<E>(
+    document: &Document,
+    operations: impl FnOnce(&mut Batch<'_>) -> Result<(), E>,
+) -> Result<BatchMutation, E> {
+    run_on(document, document.clone(), operations).map(|(_, mutation)| mutation)
+}
+
+/// Runs `operations` on `working`, a copy of `before`, and returns it with
+/// the batch's mutation: the one code path of [`run`] and [`preview`].
+fn run_on<E>(
+    before: &Document,
+    mut working: Document,
+    operations: impl FnOnce(&mut Batch<'_>) -> Result<(), E>,
+) -> Result<(Document, BatchMutation), E> {
     let mut batch = Batch {
         document: &mut working,
         mutations: Vec::new(),
@@ -102,15 +123,14 @@ pub(super) fn run<E>(
     };
     operations(&mut batch)?;
     let mutations = batch.mutations;
-    let net = NetIds::of(document, &working, &mutations);
-    working.renew_revision();
-    *document = working;
-    Ok(BatchMutation {
+    let net = NetIds::of(before, &working, &mutations);
+    let mutation = BatchMutation {
         mutations,
         created: net.created,
         changed: net.changed,
         deleted: net.deleted,
-    })
+    };
+    Ok((working, mutation))
 }
 
 /// What a committed batch did: each accepted operation's [`Mutation`], and
@@ -199,6 +219,37 @@ impl BatchMutation {
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
+    }
+
+    /// Whether the batch changed nothing, net: it created, changed and
+    /// deleted no id.
+    ///
+    /// [`mutations`](Self::mutations) may still hold some, such as a create
+    /// and a delete of one element, and a committed batch still gives the
+    /// document a new revision. A reorder of the roots lists no id, so a
+    /// batch that only reorders the roots is empty although the document
+    /// changed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, BatchError, CreateArgumentPackage, CreateClaim, DeleteElement};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// let batch = edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+    ///     tx.apply(CreateClaim::new("p", LangString::new("Temporary")).with_id("tmp"))?;
+    ///     tx.apply(DeleteElement::new("tmp"))?;
+    ///     Ok(())
+    /// })?;
+    /// assert_eq!(batch.mutations().len(), 2);
+    /// assert!(batch.is_empty());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.created.is_empty() && self.changed.is_empty() && self.deleted.is_empty()
     }
 }
 

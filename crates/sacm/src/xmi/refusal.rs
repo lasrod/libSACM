@@ -731,6 +731,9 @@ mod record {
             element: ElementId,
             character: char,
             attribute: WriteAttribute,
+            // Left out, as 0.4.0 wrote it: `None` (LIB-API-013).
+            #[serde(default)]
+            position: Option<usize>,
         },
         Invalid {
             code: Code,
@@ -759,6 +762,7 @@ mod record {
                     element,
                     character,
                     attribute,
+                    position,
                     ..
                 } => Self::UnrepresentableCharacter {
                     code,
@@ -767,6 +771,7 @@ mod record {
                     element,
                     character,
                     attribute,
+                    position,
                 },
                 WriteError::Invalid { diagnostics, .. } => Self::Invalid {
                     code,
@@ -807,10 +812,12 @@ mod record {
                     element,
                     character,
                     attribute,
+                    position,
                 } => Self::UnrepresentableCharacter {
                     element,
                     character,
                     attribute,
+                    position,
                     details: write("UnrepresentableCharacter", code, &template, arguments)?,
                 },
                 WriteErrorRecord::Invalid {

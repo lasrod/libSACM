@@ -163,7 +163,7 @@ use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
 use super::{Limit, Mode, ReadError, ReadOptions};
 use crate::diagnostic::template::{self, Template};
-use crate::diagnostic::{Argument, Details, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Details, Diagnostic, Severity, Specification};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
     Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, Proxy as HeldProxy, QName,
@@ -545,7 +545,8 @@ struct Keep {
     severity: Severity,
     /// The matrix row the Warning enforces.
     requirement: &'static str,
-    clause: Option<&'static str>,
+    /// The clause the Warning enforces, with the specification it is in.
+    clause: Option<(Specification, &'static str)>,
     /// The template of the message.
     template: &'static Template,
     /// The arguments before the holder's.
@@ -565,7 +566,7 @@ impl Keep {
     fn held(
         offset: usize,
         requirement: &'static str,
-        clause: Option<&'static str>,
+        clause: Option<(Specification, &'static str)>,
         template: &'static Template,
         arguments: Vec<Argument>,
     ) -> Self {
@@ -611,7 +612,7 @@ impl Keep {
         Self::held(
             offset,
             TOLERANT_ROW,
-            Some("9.5.2"),
+            Some((Specification::Xmi251, "9.5.2")),
             &template::MULT_001_REPEAT_KEPT,
             vec![
                 Argument::text("property", property),
@@ -628,7 +629,7 @@ impl Keep {
             offset,
             severity: Severity::Error,
             requirement: spelled.spelling.row(),
-            clause: Some(spelled.spelling.clause()),
+            clause: Some((Specification::Sacm23, spelled.spelling.clause())),
             template: spelled.kept(),
             arguments: spelled.arguments,
             names_holder: false,
@@ -654,8 +655,8 @@ impl Keep {
         }
         let mut diagnostic = Diagnostic::emit(template, severity, requirement, arguments)
             .set_affected([holder.id.clone()]);
-        if let Some(clause) = clause {
-            diagnostic = diagnostic.set_clause(clause);
+        if let Some((specification, clause)) = clause {
+            diagnostic = diagnostic.set_clause(specification, clause);
         }
         (offset, diagnostic)
     }
@@ -699,7 +700,7 @@ impl DocumentKeep {
             PRESERVED_ROW,
             self.arguments,
         )
-        .set_clause("7.3.3");
+        .set_clause(Specification::Xmi251, "7.3.3");
         (self.offset, diagnostic)
     }
 }
@@ -927,7 +928,7 @@ pub(super) fn read(
             EMF_ROW,
             vec![Argument::text("name", name)],
         )
-        .set_clause("7.5.3");
+        .set_clause(Specification::Xmi251, "7.5.3");
         found.push_at(diagnostic, offset)?;
     }
     // What the document holds outside every element: its XMI metadata
@@ -1123,7 +1124,7 @@ impl<'a> Findings<'_, 'a> {
         };
         arguments.extend(holder.arguments());
         let diagnostic = Diagnostic::emit(template, severity, PRESERVED_ROW, arguments)
-            .set_clause("7.3.3")
+            .set_clause(Specification::Xmi251, "7.3.3")
             .set_affected(holder.affected());
         self.push_at(diagnostic, offset)
     }
@@ -1184,7 +1185,7 @@ impl Findings<'_, '_> {
             ..
         } = spelled;
         let diagnostic = Diagnostic::emit(template, Severity::Warning, spelling.row(), arguments)
-            .set_clause(spelling.clause())
+            .set_clause(Specification::Sacm23, spelling.clause())
             .set_affected([affected.clone()]);
         self.push_at(diagnostic, offset)
     }
@@ -1220,7 +1221,7 @@ impl Findings<'_, '_> {
         affected: Option<ElementId>,
     ) -> Result<(), ReadError> {
         let diagnostic = Diagnostic::emit(template, Severity::Warning, TOLERANT_ROW, arguments)
-            .set_clause("7.6.1")
+            .set_clause(Specification::Xmi251, "7.6.1")
             .set_affected(affected);
         self.push_at(diagnostic, node.range().start)
     }
@@ -1250,7 +1251,7 @@ impl Findings<'_, '_> {
             MISSING_ID_ROW,
             named(kind, id.as_str()),
         )
-        .set_clause("7.6.1")
+        .set_clause(Specification::Xmi251, "7.6.1")
         .set_affected([id.clone()]);
         self.push_at(diagnostic, node.range().start)?;
         Ok(id)
@@ -1275,7 +1276,7 @@ impl Findings<'_, '_> {
         affected: &str,
     ) -> Result<(), ReadError> {
         let diagnostic = Diagnostic::emit(template, Severity::Info, TRIMMED_ID_ROW, arguments)
-            .set_clause("7.6.1")
+            .set_clause(Specification::Xmi251, "7.6.1")
             .set_affected([ElementId::new(affected)]);
         self.push(diagnostic, attribute)
     }
@@ -1295,7 +1296,7 @@ impl Findings<'_, '_> {
             Mode::Tolerant => Severity::Warning,
         };
         let diagnostic = Diagnostic::emit(template, severity, MODES_ROW, arguments)
-            .set_clause("9.5.2")
+            .set_clause(Specification::Xmi251, "9.5.2")
             .set_affected([ElementId::new(id)]);
         self.push(diagnostic, attribute)
     }
@@ -1322,7 +1323,7 @@ impl Findings<'_, '_> {
             SUBCLASS_ROW,
             arguments,
         )
-        .set_clause("7.8.6")
+        .set_clause(Specification::Xmi251, "7.8.6")
         .set_affected([ElementId::new(id)]);
         self.push_at(diagnostic, declared.at)
     }
@@ -1356,7 +1357,7 @@ impl Findings<'_, '_> {
         };
         all.extend(arguments);
         let diagnostic = Diagnostic::emit(template, Severity::Info, MODES_ROW, all)
-            .set_clause("7.5.3")
+            .set_clause(Specification::Xmi251, "7.5.3")
             .set_affected(id.map(ElementId::new));
         self.push(diagnostic, attribute)
     }
@@ -1385,7 +1386,7 @@ impl Findings<'_, '_> {
             ));
         }
         let diagnostic = Diagnostic::emit(shape.read(), Severity::Warning, LEGACY_ROW, arguments)
-            .set_clause("7.8.6")
+            .set_clause(Specification::Xmi251, "7.8.6")
             .set_affected([owner.clone()]);
         self.push_at(diagnostic, offset)
     }
@@ -1426,7 +1427,7 @@ impl Findings<'_, '_> {
             Argument::text("holder_id", proxy.container.as_str()),
         ]);
         let diagnostic = Diagnostic::emit(template, severity, PROXY_ROW, arguments)
-            .set_clause("7.10.1")
+            .set_clause(Specification::Xmi251, "7.10.1")
             .set_affected([proxy.container.clone()]);
         self.push_at(diagnostic, proxy.at)
     }
@@ -2229,7 +2230,7 @@ impl<H: Holder> Kept<H> {
                     let keep = Keep::held(
                         refuse_at,
                         PRESERVED_ROW,
-                        Some("7.3.3"),
+                        Some((Specification::Xmi251, "7.3.3")),
                         &template::XMI_003_PREFIX_RENAMED,
                         arguments,
                     );
@@ -4541,7 +4542,7 @@ fn resolve_paths<'a>(
         &template::XMI_017_PATHS_PARTLY_READ
     };
     let diagnostic = Diagnostic::emit(template, Severity::Warning, EMF_ROW, arguments)
-        .set_clause("7.10.2")
+        .set_clause(Specification::Xmi251, "7.10.2")
         .set_affected([affected]);
     found.push_at(diagnostic, first_at)
 }
@@ -5525,7 +5526,7 @@ fn child_kind(
                     Fault::Keep(Keep::held(
                         at,
                         TOLERANT_ROW,
-                        Some("7.6.3"),
+                        Some((Specification::Xmi251, "7.6.3")),
                         template,
                         arguments,
                     ))

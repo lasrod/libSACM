@@ -13,6 +13,7 @@
 
 use super::DanglingReference;
 use super::set::ASSERTION_DECLARATION;
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use crate::model::{
@@ -43,8 +44,10 @@ pub(super) enum Plan<'o> {
     Unchanged,
     /// An operation that changes a feature of `element` to `value`.
     Set {
-        /// The element to change.
-        element: &'o ElementId,
+        /// The element to change: the operation's, or one the plan found,
+        /// such as the tagged value a [`SetTaggedValue`](super::SetTaggedValue)
+        /// sets.
+        element: Cow<'o, ElementId>,
         /// The new value of the feature.
         value: Value<'o>,
     },
@@ -103,7 +106,7 @@ impl Plan<'_> {
             },
             Self::Unchanged => Outcome::default(),
             Self::Set { element, .. } => Outcome {
-                changed: vec![(*element).clone()],
+                changed: vec![element.as_ref().clone()],
                 ..Outcome::default()
             },
             // The roots' order is the document's, not an element's.
@@ -147,7 +150,7 @@ impl Plan<'_> {
         match self {
             Self::Create(new) => new.commit(document),
             Self::Unchanged => {}
-            Self::Set { element, value } => value.commit(document, element),
+            Self::Set { element, value } => value.commit(document, &element),
             Self::Reorder {
                 parent,
                 order,
@@ -220,9 +223,14 @@ impl NewElement<'_> {
             Features::Name(name) => {
                 document.insert_element(parent, kind, id, Some(name.clone()), None, None)
             }
-            Features::Texts { content, key } => {
-                document.insert_element(parent, kind, id, None, Some(content.clone()), key.cloned())
-            }
+            Features::Texts { content, key } => document.insert_element(
+                parent,
+                kind,
+                id,
+                None,
+                Some(content.clone()),
+                key.map(Cow::into_owned),
+            ),
             Features::Referencing {
                 name,
                 flags,
@@ -299,8 +307,10 @@ pub(super) enum Features<'o> {
     Texts {
         /// The `content`.
         content: &'o MultiLangString,
-        /// The `key`, given exactly for a `TaggedValue`.
-        key: Option<&'o MultiLangString>,
+        /// The `key`, given exactly for a `TaggedValue`: the operation's,
+        /// or the one a [`SetTaggedValue`](super::SetTaggedValue) builds
+        /// from its plain key.
+        key: Option<Cow<'o, MultiLangString>>,
     },
     /// The name, flags and reference ends of an argumentation kind that
     /// references other elements.

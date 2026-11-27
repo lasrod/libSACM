@@ -4,6 +4,7 @@
     "severity": "error",
     "requirement_id": "SACM23-VAL-003",
     "clause": "11.10",
+    "specification": "SACM 2.3",
     "affected": [
       "c1",
       "x"
@@ -21,6 +22,7 @@
     "severity": "info",
     "requirement_id": "SACM23-XMI-020",
     "clause": null,
+    "specification": null,
     "affected": [],
     "location": null,
     "message": "a Claim has no xmi:id; it is read as claim_1",
@@ -32,6 +34,7 @@
     "severity": "warning",
     "requirement_id": "SACM23-VAL-011",
     "clause": "8.6",
+    "specification": "SACM 2.3",
     "affected": [
       "CLM_132"
     ],

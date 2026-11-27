@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::EditError;
-use super::set::{ASSERTION_DECLARATION, GID, NAME};
+use super::set::{ASSERTION_DECLARATION, GID, NAME, TAGGED_VALUE};
 use crate::diagnostic::Code;
 use crate::model::{
     AbstractClass, ElementId, ElementKind, Flag, Href, ReferenceEnd, Revision, StringAttribute,
@@ -577,9 +577,10 @@ fn end_name(text: &str) -> Result<&'static str, String> {
 }
 
 /// The XMI name of the feature `text` names: one an operation edits (ADR
-/// 0029), a flag or a reference end.
+/// 0029), the `taggedValue` role a `SetTaggedValue` sets (LIB-EDIT-023), a
+/// flag or a reference end.
 fn feature_name(text: &str) -> Result<&'static str, String> {
-    let features = [NAME, GID, ASSERTION_DECLARATION];
+    let features = [NAME, GID, ASSERTION_DECLARATION, TAGGED_VALUE];
     known(
         "feature",
         text,
@@ -732,6 +733,7 @@ mod tests {
             }
             Operation::SetContent(_) => sampled!(OPERATIONS, "SetContent"),
             Operation::SetKey(_) => sampled!(OPERATIONS, "SetKey"),
+            Operation::SetTaggedValue(_) => sampled!(OPERATIONS, "SetTaggedValue"),
             Operation::SetVersion(_) => sampled!(OPERATIONS, "SetVersion"),
             Operation::SetDate(_) => sampled!(OPERATIONS, "SetDate"),
             Operation::SetLocation(_) => sampled!(OPERATIONS, "SetLocation"),

@@ -3,7 +3,7 @@
 use crate::diagnostic::template::{
     ABS_001_IMPLEMENTATION_CONSTRAINT, ABS_001_IMPLEMENTATION_CONSTRAINTS,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{AbstractClass, Document};
 
 /// SACM23-VAL-021: each `ModelElement` with one or more
@@ -32,7 +32,7 @@ pub(super) fn implementation_constraints(document: &Document, found: &mut Vec<Di
         };
         found.push(
             Diagnostic::emit(template, Severity::Error, "SACM23-VAL-021", arguments)
-                .set_clause("8.6")
+                .set_clause(Specification::Sacm23, "8.6")
                 .set_affected([element.id().clone()]),
         );
     }

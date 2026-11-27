@@ -17,7 +17,7 @@
 //!   `SACM-XMI-015/not-xmi-element`, and on
 //!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
 //!   of their code; and the inputs and the templates no input reaches
-//!   together are the 103 refusal templates, once each.
+//!   together are the 104 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
@@ -77,6 +77,10 @@
 //! amendment 2): it adds `SACM-SEC-003/attributes`, an eighth `SACM-SEC-003`
 //! template, which gives 103.
 //!
+//! Slice 0082 gives a write refusal in a value its position (LIB-API-013):
+//! it adds `SACM-XML-003/unrepresentable-character-in-value`, which gives
+//! 104.
+//!
 //! Slice 0072 also changes the English of the three `SACM-XML-002` templates, which
 //! name ISO-8859-1 now, and the label of SACM-XMI-002 and SACM-XMI-008 with
 //! a row, `(strict mode never reads it; ROW reads it in tolerant mode)`
@@ -92,8 +96,8 @@
 
 use std::fmt::Write as _;
 
-use sacm::edit::{self, CreateArgumentPackage};
-use sacm::model::{Document, LangString};
+use sacm::edit::{self, CreateArgumentPackage, CreateNote, Operation};
+use sacm::model::{Document, LangString, MultiLangString};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteError, WriteOptions};
 
 const ROW: &str = "LIB-API-017";
@@ -119,8 +123,9 @@ const NS: &str = concat!(
 /// slice 0075a adds `SACM-XMI-015/not-xmi-element` and
 /// `SACM-XMI-015/emf-xmi-namespace` (LIB-COMPAT-002, ADR 0044 D1), and 103
 /// once slice 0077 adds `SACM-SEC-003/attributes` (LIB-SEC-007, ADR 0041
-/// amendment 2).
-const REFUSAL_TEMPLATES: usize = 103;
+/// amendment 2), and 104 once slice 0082 adds
+/// `SACM-XML-003/unrepresentable-character-in-value` (LIB-API-013).
+const REFUSAL_TEMPLATES: usize = 104;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -310,8 +315,26 @@ fn unrepresentable_name() -> Document {
     document
 }
 
-/// The 93 templates an input reaches with [`limit_cases`] (98 until slice 0073a), mostly in the
-/// catalog's grouping.
+/// A document holding the root ArgumentPackage `p` and its Note `n1`, whose
+/// second content value holds U+0004 (slice 0082, LIB-API-013).
+fn unrepresentable_value() -> Document {
+    let mut document = Document::new();
+    let content: MultiLangString = [LangString::new("ok"), LangString::new("bad\u{4}")]
+        .into_iter()
+        .collect();
+    for operation in [
+        Operation::from(CreateArgumentPackage::root(LangString::new("P")).with_id("p")),
+        CreateNote::new("p", content).with_id("n1").into(),
+    ] {
+        if let Err(error) = edit::apply(&mut document, operation) {
+            panic!("{ROW}: setup: the note is not created: {error}");
+        }
+    }
+    document
+}
+
+/// The 94 templates an input reaches with [`limit_cases`] (98 until slice 0073a, 93 until slice
+/// 0082), mostly in the catalog's grouping.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per template, reads best whole"
@@ -381,6 +404,20 @@ fn cases() -> Vec<Case> {
             ],
             "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent",
             "the element \"arguments\" cannot be written: its name's content holds U+0001, which XML 1.0 cannot represent",
+        ),
+        // A character in a value, with the value's position (slice 0082,
+        // LIB-API-013).
+        write(
+            "SACM-XML-003/unrepresentable-character-in-value",
+            unrepresentable_value(),
+            &[
+                ("element", t("n1")),
+                ("attribute", p("content value's content")),
+                ("position", n(1)),
+                ("code_point", n(4)),
+            ],
+            "the element {element:?} cannot be written: its {attribute} at index {position} holds U+{code_point:04X}, which XML 1.0 cannot represent",
+            "the element \"n1\" cannot be written: its content value's content at index 1 holds U+0004, which XML 1.0 cannot represent",
         ),
         // --- SACM-XMI-001 --------------------------------------------------------------
         read(
@@ -1376,7 +1413,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 103, once each.
+    // The inputs and the templates without one are the 104, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

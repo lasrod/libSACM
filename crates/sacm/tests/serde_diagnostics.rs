@@ -29,7 +29,7 @@
 use std::fmt::Debug;
 use std::path::Path;
 
-use sacm::diagnostic::{ArgumentValue, Code, Diagnostic, Severity, SourceLocation};
+use sacm::diagnostic::{ArgumentValue, Code, Diagnostic, Severity, SourceLocation, Specification};
 use sacm::model::ElementId;
 use sacm::validation;
 use sacm::xmi::{self, ReadError, ReadOptions, WriteError, WriteOptions};
@@ -45,12 +45,14 @@ const NS: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
 
-/// The keys of a serialized diagnostic, in order.
-const KEYS: [&str; 9] = [
+/// The keys of a serialized diagnostic, in order: `specification` right
+/// after `clause` since slice 0082 (LIB-API-013).
+const KEYS: [&str; 10] = [
     "code",
     "severity",
     "requirement_id",
     "clause",
+    "specification",
     "affected",
     "location",
     "message",
@@ -164,8 +166,18 @@ fn two_descriptions_finding() -> Diagnostic {
 }
 
 /// The values of `diagnostics.json`, as `serde.rs` builds them: two built
-/// with `new`, and the finding of `CLM_132`.
+/// with `new`, the first with the specification SACM 2.3 (LIB-API-013), and
+/// the finding of `CLM_132`.
 fn samples() -> Vec<Diagnostic> {
+    let mut samples = samples_0_1_0();
+    samples[0] = samples[0].clone().with_specification(Specification::Sacm23);
+    samples.push(two_descriptions_finding());
+    samples
+}
+
+/// The values of `diagnostics-0.1.0.json`: the first two of [`samples`],
+/// with no specification, which 0.1.0 did not write.
+fn samples_0_1_0() -> Vec<Diagnostic> {
     let location =
         SourceLocation::new(4, 20).unwrap_or_else(|| panic!("{ROW}: setup: 4:20 is a location"));
     vec![
@@ -184,7 +196,6 @@ fn samples() -> Vec<Diagnostic> {
             "SACM23-XMI-020",
             "a Claim has no xmi:id; it is read as claim_1",
         ),
-        two_descriptions_finding(),
     ]
 }
 
@@ -301,11 +312,12 @@ fn lib_api_018_diagnostics_0_1_0_json_reads_with_the_code_as_template_and_no_arg
     }
     assert_eq!(
         read,
-        samples()[..2],
+        samples_0_1_0(),
         "{ROW}: the 0.1.0 values read back to other values than the built samples"
     );
     // Written again, they are the first two values of diagnostics.json, as
-    // its text writes them: the file up to the end of its second value.
+    // its text writes them: the file up to the end of its second value, but
+    // with no specification, which a 0.1.0 value has none of (LIB-API-013).
     let current = golden("diagnostics.json");
     let Some(second_end) = current
         .match_indices("\n  },\n  {\n")
@@ -314,7 +326,11 @@ fn lib_api_018_diagnostics_0_1_0_json_reads_with_the_code_as_template_and_no_arg
     else {
         panic!("{ROW}: setup: diagnostics.json has no third value");
     };
-    let first_two = format!("{}\n]\n", &current[..second_end]);
+    let first_two = format!("{}\n]\n", &current[..second_end]).replacen(
+        "\"specification\": \"SACM 2.3\"",
+        "\"specification\": null",
+        1,
+    );
     assert_eq!(
         pretty(&read),
         first_two,
@@ -615,11 +631,12 @@ fn lib_api_018_the_invalid_write_error_s_diagnostics_carry_their_templates() {
         ("SACM-REF-001/dangling", expected.clone()),
         "{ROW}: the template and arguments of the Invalid refusal's diagnostic"
     );
-    // The third value of write-errors.json is this refusal.
+    // The fourth value of write-errors.json is this refusal (the third
+    // until slice 0082 added a second UnrepresentableCharacter, LIB-API-013).
     let values: Vec<serde_json::Value> =
         from_json("write-errors.json", &golden("write-errors.json"));
-    let Some(invalid) = values.get(2) else {
-        panic!("{ROW}: write-errors.json has no third value");
+    let Some(invalid) = values.get(3) else {
+        panic!("{ROW}: write-errors.json has no fourth value");
     };
     let written: serde_json::Value = match serde_json::to_value(&error) {
         Ok(value) => value,
@@ -627,13 +644,13 @@ fn lib_api_018_the_invalid_write_error_s_diagnostics_carry_their_templates() {
     };
     assert_eq!(
         &written, invalid,
-        "{ROW}: the Invalid refusal is not the third value of write-errors.json"
+        "{ROW}: the Invalid refusal is not the fourth value of write-errors.json"
     );
     // Read from the file's text, whose keys keep their written order (a
     // `serde_json::Value` sorts them).
     let all: Vec<WriteError> = from_json("write-errors.json", &golden("write-errors.json"));
-    let Some(read) = all.get(2) else {
-        panic!("{ROW}: write-errors.json has no third value");
+    let Some(read) = all.get(3) else {
+        panic!("{ROW}: write-errors.json has no fourth value");
     };
     let [diagnostic] = read.diagnostics() else {
         panic!("{ROW}: the refusal read back has {:?}", read.diagnostics());

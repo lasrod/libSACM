@@ -4,8 +4,11 @@
 //! `version`, `date`, `location`, `startTime` and `endTime` (SACM23-ART-002,
 //! SACM23-ART-004, SACM23-ART-005; ADR 0034 amendment 1).
 
+use std::borrow::Cow;
+
 use super::EditError;
-use super::plan::{Plan, Value};
+use super::create::plan_create;
+use super::plan::{Features, Plan, Value};
 use super::references::check_expressions;
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString,
@@ -20,6 +23,9 @@ pub(super) const GID: &str = "gid";
 /// The XMI name of the `assertionDeclaration` feature, as
 /// [`EditError::FeatureNotApplicable`] names it.
 pub(super) const ASSERTION_DECLARATION: &str = "assertionDeclaration";
+/// The XMI name of the `taggedValue` role (SACM 2.3 §8.6), as
+/// [`EditError::FeatureNotApplicable`] names it for [`SetTaggedValue`].
+pub(super) const TAGGED_VALUE: &str = "taggedValue";
 
 /// Sets the `name` (SACM 2.3 §8.6 `name:LangString[1]`) of a `ModelElement`,
 /// replacing the name it has, or giving one to an element read without one.
@@ -416,7 +422,7 @@ pub struct SetContent {
 
 impl SetContent {
     /// Sets the content of `element` to `content`. A [`LangString`] converts
-    /// into a content of one value.
+    /// into a content of one value; a `&str` or `String` converts too.
     #[must_use]
     pub fn new(element: impl Into<ElementId>, content: impl Into<MultiLangString>) -> Self {
         Self {
@@ -520,6 +526,137 @@ impl SetKey {
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         plan_text(document, &self.element, TextRole::Key, Some(&self.key))
+    }
+}
+
+/// Sets the `content` of the element's `TaggedValue` with a plain key
+/// (SACM 2.3 §8.12), creating the `TaggedValue` when it has none.
+///
+/// The tagged value it sets is the one
+/// [`SacmElement::tagged_value`](crate::model::SacmElement::tagged_value)
+/// finds: the first whose key has a value with the content `key`, byte for
+/// byte. Then:
+/// - **None has the key**: it creates a `TaggedValue` as the element's last
+///   child, with the key `MultiLangString::from(key)`, the content, and a
+///   generated id, `tagged_value_<n>`, as
+///   [`CreateTaggedValue`](super::CreateTaggedValue) would. The element is
+///   not changed: the tagged value is in
+///   [`created_ids`](super::Mutation::created_ids).
+/// - **One has it**: it replaces that tagged value's whole content, keeping
+///   ids by position as [`SetContent`] does. The tagged value is in
+///   [`changed_ids`](super::Mutation::changed_ids), unless the content is
+///   the one held, which changes nothing.
+///
+/// Apply it with [`edit::apply`](super::apply). It refuses an unknown
+/// element as [`EditError::ElementNotFound`], then a kind that holds no
+/// tagged value (§8.6: a `UtilityElement`) as
+/// [`EditError::FeatureNotApplicable`], naming `taggedValue`. Then it checks
+/// the content's `ExpressionLangString`s as [`SetContent`] does; on the set
+/// path, an `expression` the tagged value already holds is kept.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetTaggedValue};
+/// use sacm::model::{Document, ElementId, LangString, MultiLangString};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+///
+/// // No tagged value has the key: one is created.
+/// let made = edit::apply(&mut doc, SetTaggedValue::new("c1", "gsn:id", "G1"))?;
+/// assert_eq!(made.created_id().map(ElementId::as_str), Some("tagged_value_1"));
+///
+/// // Now one has it: its content is set.
+/// let set = edit::apply(&mut doc, SetTaggedValue::new("c1", "gsn:id", "G2"))?;
+/// assert_eq!(set.changed_ids(), [ElementId::from("tagged_value_1")]);
+/// let c1 = doc.get("c1").expect("in the document");
+/// let content = c1.tagged_value("gsn:id").and_then(|tag| tag.content());
+/// assert_eq!(content, Some(&MultiLangString::from("G2")));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct SetTaggedValue {
+    element: ElementId,
+    key: String,
+    content: MultiLangString,
+}
+
+impl SetTaggedValue {
+    /// Sets the content of the tagged value of `element` with the key `key`
+    /// to `content`, creating the tagged value if there is none. A `&str`,
+    /// a `String` or a [`LangString`] converts into a content of one value.
+    #[must_use]
+    pub fn new(
+        element: impl Into<ElementId>,
+        key: impl Into<String>,
+        content: impl Into<MultiLangString>,
+    ) -> Self {
+        Self {
+            element: element.into(),
+            key: key.into(),
+            content: content.into(),
+        }
+    }
+
+    /// The id of the element whose tagged value to set.
+    #[must_use]
+    pub fn element(&self) -> &ElementId {
+        &self.element
+    }
+
+    /// The plain key, matched against the content of each value of a
+    /// tagged value's key.
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// The content to set.
+    #[must_use]
+    pub fn content(&self) -> &MultiLangString {
+        &self.content
+    }
+
+    /// Runs every check of the operation, and returns what it creates or
+    /// changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        // 1 and 2: the element, of a kind that holds tagged values.
+        let target = edited(document, &self.element, TAGGED_VALUE, |kind| {
+            kind.may_contain(ElementKind::TaggedValue)
+        })?;
+        let matched = target.tagged_value(&self.key);
+        // 3 to 6: the content's expressions; those the matched tagged value
+        // holds are kept, and a new one holds none.
+        let held = matched.map_or(&[][..], SacmElement::expressions);
+        check_expressions(document, self.content.values(), held)?;
+        let Some(tag) = matched else {
+            return plan_create(
+                document,
+                ElementKind::TaggedValue,
+                Some(&self.element),
+                None,
+                Features::Texts {
+                    content: &self.content,
+                    key: Some(Cow::Owned(MultiLangString::from(self.key.as_str()))),
+                },
+            );
+        };
+        let held = tag.text(TextRole::Content);
+        let text = Text::keeping_ids(self.content.clone(), held);
+        if held == Some(&text) {
+            return Ok(Plan::Unchanged);
+        }
+        Ok(Plan::Set {
+            element: Cow::Owned(tag.id().clone()),
+            value: Value::Text(TextRole::Content, Some(text)),
+        })
     }
 }
 
@@ -994,7 +1131,10 @@ fn plan_text<'o>(
 /// [`Plan::Unchanged`] unless the value `changes`.
 pub(super) fn changing<'o>(element: &'o ElementId, changes: bool, value: Value<'o>) -> Plan<'o> {
     if changes {
-        Plan::Set { element, value }
+        Plan::Set {
+            element: Cow::Borrowed(element),
+            value,
+        }
     } else {
         Plan::Unchanged
     }

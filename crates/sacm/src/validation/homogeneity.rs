@@ -1,7 +1,7 @@
 //! Rules about what an `ArgumentPackage` holds (formal/23-05-08 §11.4).
 
 use crate::diagnostic::template::PKG_001_MIXED_CONTENT;
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, ElementKind, SacmElement};
 
 /// SACM23-VAL-012: for each plain `ArgumentPackage` with a plain
@@ -40,7 +40,7 @@ pub(super) fn argument_package_homogeneity(document: &Document, found: &mut Vec<
                     "SACM23-VAL-012",
                     arguments,
                 )
-                .set_clause("11.4")
+                .set_clause(Specification::Sacm23, "11.4")
                 .set_affected([package.id().clone(), child.id().clone()]),
             );
         }

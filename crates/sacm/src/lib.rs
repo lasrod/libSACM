@@ -148,7 +148,8 @@
 //!   ([`edit::SetName`] and the like), the `content` and `key` of
 //!   descriptions, implementation constraints, notes and tagged values
 //!   ([`edit::SetContent`],
-//!   [`edit::SetKey`]), an Artifact's `version`, the `date` of an Artifact
+//!   [`edit::SetKey`]), the content of an element's tagged value by its
+//!   plain key, created if absent ([`edit::SetTaggedValue`]), an Artifact's `version`, the `date` of an Artifact
 //!   or an Event, a Resource's `location` and an Activity's `startTime` and
 //!   `endTime` ([`edit::SetVersion`], [`edit::SetDate`],
 //!   [`edit::SetLocation`], [`edit::SetStartTime`], [`edit::SetEndTime`]),
@@ -169,7 +170,8 @@
 //!   document; [`edit::apply_preview`] applies a preview unless the document
 //!   has changed since ([`Document::revision`](model::Document::revision)).
 //!   [`edit::batch`] and [`edit::apply_all`] apply several operations as one
-//!   atomic change.
+//!   atomic change, and [`edit::preview_batch`] and [`edit::preview_all`]
+//!   show what they would do, without changing the document.
 //! - [`Document::referrers`](model::Document::referrers) lists the typed
 //!   references that name an id, and
 //!   [`SacmElement::flag`](model::SacmElement::flag) and

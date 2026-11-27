@@ -1,6 +1,8 @@
 //! The create operations of the `UtilityElement`s (SACM23-BASE-004,
 //! SACM23-BASE-005; LIB-EDIT-001, ADR 0019, ADR 0025).
 
+use std::borrow::Cow;
+
 use super::EditError;
 use super::create::plan_create;
 use super::plan::{Features, Plan};
@@ -304,7 +306,10 @@ impl CreateNote {
 /// `content`.
 ///
 /// Both are [`MultiLangString`]s, kept exactly as given; a
-/// [`LangString`](crate::model::LangString) converts into one with one value.
+/// [`LangString`](crate::model::LangString) converts into one with one value,
+/// and a `&str` or `String` converts too. To set a tagged value by its key,
+/// creating it only when there is none, use
+/// [`SetTaggedValue`](super::SetTaggedValue).
 /// The tagged value's value is its `content` (§8.7). In XMI, a `<value>`
 /// element is one `LangString` inside `key` or `content` (§8.5), not the
 /// tagged value's value. `TaggedValue`s with equal keys are all kept. It
@@ -427,6 +432,9 @@ fn plan_utility<'o>(
         kind,
         Some(parent),
         id,
-        Features::Texts { content, key },
+        Features::Texts {
+            content,
+            key: key.map(Cow::Borrowed),
+        },
     )
 }
