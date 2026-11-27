@@ -46,7 +46,7 @@ deletes them atomically, `sacm::validation::validate` checks names, ids, gids, c
 references, terms' values, ExpressionLangStrings, concrete Expressions and the
 argumentation and artifact rules, and
 `sacm::compare::semantic_compare` lists differences. Undo and redo are the application's, by whole-document copies, as the `edit`
-docs show. The interfaces and bindings of every package are read, written, edited and validated, and a reference to an element of another file (an `href` such as `other.sacm.xmi#c1`) is read, written back and counted, but never resolved; `Href::new` makes one, and `SetReferences::with_hrefs`, `AddReference::href` and `RemoveReference::href` set, add and remove them. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
+docs show. The interfaces and bindings of every package are read, written, edited and validated, and a reference to an element of another file (an `href` such as `other.sacm.xmi#c1`) is read, written back and counted, but never resolved; `Href::new` makes one, and `SetReferences::with_hrefs`, `AddReference::new_href` and `RemoveReference::new_href` set, add and remove them. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
 what is verified; nothing else is claimed.
 
 ## What SACM is

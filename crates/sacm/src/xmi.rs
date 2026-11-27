@@ -1455,6 +1455,32 @@ pub enum Mode {
     Tolerant,
 }
 
+impl Mode {
+    /// The mode's name in lower case, `"strict"` or `"tolerant"`: what a
+    /// command line or a settings file spells it, and what it displays as.
+    ///
+    /// ```
+    /// use sacm::xmi::Mode;
+    ///
+    /// assert_eq!(Mode::Strict.as_str(), "strict");
+    /// assert_eq!(Mode::Tolerant.to_string(), "tolerant");
+    /// ```
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Tolerant => "tolerant",
+        }
+    }
+}
+
+impl fmt::Display for Mode {
+    /// Writes [`Mode::as_str`].
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.as_str())
+    }
+}
+
 /// How [`read`] reads a document: in which [`Mode`], strict by default,
 /// under which [`Limits`], the defaults by default (LIB-SEC-003), and which
 /// classes outside SACM 2.3 the application declares subclasses of SACM 2.3
@@ -1723,6 +1749,23 @@ impl ReadOutput {
     #[must_use]
     pub fn into_document(self) -> Document {
         self.document
+    }
+
+    /// The document read and its diagnostics, to keep both without a clone.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id=" arguments "/>"#;
+    /// let (document, diagnostics) = xmi::read(input, &ReadOptions::default())?.into_parts();
+    /// assert!(document.contains("arguments"));
+    /// assert_eq!(diagnostics[0].code().as_str(), "SACM-ID-004"); // read trimmed
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn into_parts(self) -> (Document, Vec<Diagnostic>) {
+        (self.document, self.diagnostics)
     }
 }
 

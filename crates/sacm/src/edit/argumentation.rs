@@ -77,11 +77,11 @@ impl CreateArgumentReasoning {
     /// Creates an `ArgumentReasoning` named `name` as the last child of
     /// `parent`, with no structure.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             structure: None,
         }
     }
@@ -231,11 +231,11 @@ impl CreateArtifactReference {
     /// Creates an `ArtifactReference` named `name` as the last child of
     /// `parent`, referring to nothing.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             referenced_artifact_elements: Vec::new(),
         }
     }
@@ -374,11 +374,11 @@ impl CreateArgumentGroup {
     /// Creates an `ArgumentGroup` named `name` as the last child of
     /// `parent`, with no members.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             group_members: Vec::new(),
         }
     }
@@ -577,11 +577,11 @@ macro_rules! interface_operation {
                 "last root, declaring the `", $package, "` `implements` names."
             )]
             #[must_use]
-            pub fn root(name: LangString, implements: impl Into<ElementId>) -> Self {
+            pub fn root(name: impl Into<LangString>, implements: impl Into<ElementId>) -> Self {
                 Self {
                     parent: None,
                     id: None,
-                    name,
+                    name: name.into(),
                     implements: $crate::edit::references::Link::Id(implements.into()),
                 }
             }
@@ -593,11 +593,11 @@ macro_rules! interface_operation {
                 "never checked: the package need not exist."
             )]
             #[must_use]
-            pub fn root_href(name: LangString, implements: $crate::model::Href) -> Self {
+            pub fn root_href(name: impl Into<LangString>, implements: $crate::model::Href) -> Self {
                 Self {
                     parent: None,
                     id: None,
-                    name,
+                    name: name.into(),
                     implements: $crate::edit::references::Link::Href(implements),
                 }
             }
@@ -611,13 +611,13 @@ macro_rules! interface_operation {
             #[must_use]
             pub fn new_href(
                 parent: impl Into<ElementId>,
-                name: LangString,
+                name: impl Into<LangString>,
                 implements: $crate::model::Href,
             ) -> Self {
                 Self {
                     parent: Some(parent.into()),
                     id: None,
-                    name,
+                    name: name.into(),
                     implements: $crate::edit::references::Link::Href(implements),
                 }
             }
@@ -629,13 +629,13 @@ macro_rules! interface_operation {
             #[must_use]
             pub fn new(
                 parent: impl Into<ElementId>,
-                name: LangString,
+                name: impl Into<LangString>,
                 implements: impl Into<ElementId>,
             ) -> Self {
                 Self {
                     parent: Some(parent.into()),
                     id: None,
-                    name,
+                    name: name.into(),
                     implements: $crate::edit::references::Link::Id(implements.into()),
                 }
             }
@@ -822,13 +822,13 @@ macro_rules! binding_operation {
             )]
             #[must_use]
             pub fn root(
-                name: LangString,
+                name: impl Into<LangString>,
                 participant_packages: impl IntoIterator<Item = impl Into<ElementId>>,
             ) -> Self {
                 Self {
                     parent: None,
                     id: None,
-                    name,
+                    name: name.into(),
                     participant_packages: participant_packages.into_iter().map(Into::into).collect(),
                     participant_package_hrefs: Vec::new(),
                 }
@@ -842,13 +842,13 @@ macro_rules! binding_operation {
             #[must_use]
             pub fn new(
                 parent: impl Into<ElementId>,
-                name: LangString,
+                name: impl Into<LangString>,
                 participant_packages: impl IntoIterator<Item = impl Into<ElementId>>,
             ) -> Self {
                 Self {
                     parent: Some(parent.into()),
                     id: None,
-                    name,
+                    name: name.into(),
                     participant_packages: participant_packages.into_iter().map(Into::into).collect(),
                     participant_package_hrefs: Vec::new(),
                 }
@@ -1039,12 +1039,12 @@ macro_rules! relationship_operation {
             #[must_use]
             pub fn new(
                 parent: impl Into<ElementId>,
-                name: LangString,
+                name: impl Into<LangString>,
                 sources: impl IntoIterator<Item = impl Into<ElementId>>,
                 target: impl Into<ElementId>,
             ) -> Self {
                 Self {
-                    relationship: Relationship::new(parent, name, sources, target),
+                    relationship: Relationship::new(parent, name.into(), sources, target),
                 }
             }
 

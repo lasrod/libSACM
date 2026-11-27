@@ -74,7 +74,9 @@
 //! **The name is required**, because SACM gives every `ModelElement` exactly
 //! one name (§8.6 `name:LangString[1]`). Every operation that creates one
 //! takes it as a [`LangString`](crate::model::LangString), stored exactly as
-//! given. Any plain value is accepted, `LangString::default()` included; an
+//! given, or as plain text, which is a `LangString` with no `lang`: `"C1"`
+//! and `LangString::new("C1")` give the same name. Any plain value is
+//! accepted, `LangString::default()` included; an
 //! empty name is still a name. An `ExpressionLangString` name must have an
 //! `expression` that names a `Term` or an `Expression` (checks 5a to 8
 //! below).
@@ -130,8 +132,8 @@
 //! | [`SetValue`] | the `value` of a `Term` or an `Expression` (§10.9) | [`new`](SetValue::new) |
 //! | [`SetExternalReference`] | the `externalReference` of a `Term` (§10.11) | [`new`](SetExternalReference::new), [`remove`](SetExternalReference::remove) |
 //! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim`, and its cross-document references ([`Href`]) | [`new`](SetReferences::new), [`clear`](SetReferences::clear), [`with_hrefs`](SetReferences::with_hrefs) |
-//! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id or one href appended | [`new`](AddReference::new), [`href`](AddReference::href) |
-//! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id or of one href removed | [`new`](RemoveReference::new), [`href`](RemoveReference::href) |
+//! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id or one href appended | [`new`](AddReference::new), [`new_href`](AddReference::new_href) |
+//! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id or of one href removed | [`new`](RemoveReference::new), [`new_href`](RemoveReference::new_href) |
 //! | [`ReorderElements`] | the order of an element's children, or of the roots | [`new`](ReorderElements::new), [`roots`](ReorderElements::roots) |
 //!
 //! Each names the element it changes by id, and replaces one feature
@@ -414,7 +416,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
-//! | 3. for [`RemoveReference`] only: the end holds the id, or, for [`RemoveReference::href`], the href | [`EditError::ReferenceNotHeld`], [`EditError::HrefNotHeld`] | SACM-CMD-001 |
+//! | 3. for [`RemoveReference`] only: the end holds the id, or, for [`RemoveReference::new_href`], the href | [`EditError::ReferenceNotHeld`], [`EditError::HrefNotHeld`] | SACM-CMD-001 |
 //! | 4. the end would hold at least the distinct values it needs, ids plus hrefs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. the end would hold at most the values it allows, ids plus hrefs: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
 //! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
@@ -697,27 +699,27 @@ fn apply_operation(
 ///
 /// # Examples
 ///
-/// A refused operation is reported, and the document is unchanged:
+/// An operation struct is passed as `&op.into()`. A refused operation is
+/// reported, and the document is unchanged:
 ///
 /// ```
 /// use sacm::diagnostic::Code;
-/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, Operation};
-/// use sacm::model::{Document, LangString};
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError};
+/// use sacm::model::Document;
 ///
 /// let mut doc = Document::new();
-/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
 /// let before = doc.clone();
 ///
 /// // A Claim needs a parent the document holds.
-/// let misplaced = Operation::from(CreateClaim::new("nowhere", LangString::new("C1")));
-/// let error = edit::check(&doc, &misplaced).unwrap_err();
+/// let error = edit::check(&doc, &CreateClaim::new("nowhere", "C1").into()).unwrap_err();
 /// assert!(matches!(error, EditError::ParentNotFound { .. }));
 /// assert_eq!(error.code(), Code::CMD_TARGET_NOT_FOUND);
 /// assert_eq!(doc, before); // unchanged
 ///
 /// // An accepted operation is still the caller's, to apply.
-/// let claim = Operation::from(CreateClaim::new("p", LangString::new("C1")));
-/// assert_eq!(edit::check(&doc, &claim), Ok(()));
+/// let claim = CreateClaim::new("p", "C1");
+/// assert_eq!(edit::check(&doc, &claim.clone().into()), Ok(()));
 /// let mutation = edit::apply(&mut doc, claim)?;
 /// assert_eq!(mutation.created_ids()[0].as_str(), "claim_1");
 /// # Ok::<(), EditError>(())
@@ -746,23 +748,25 @@ pub fn check(document: &Document, operation: &Operation) -> Result<(), EditError
 ///
 /// # Examples
 ///
-/// Preview a delete that scrubs the references to the deleted element, then
-/// apply it:
+/// An operation struct is passed as `&op.into()`. Preview a create, then a
+/// delete that scrubs the references to the deleted element, and apply it:
 ///
 /// ```
-/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, Operation};
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement};
 /// use sacm::edit::{ReferenceDeletePolicy, SetReferences};
-/// use sacm::model::{Document, ElementId, LangString, ReferenceEnd};
+/// use sacm::model::{Document, ElementId, ReferenceEnd};
 ///
 /// let mut doc = Document::new();
-/// let name = LangString::new;
-/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
-/// edit::apply(&mut doc, CreateClaim::new("p", name("C1")).with_id("c1"))?;
-/// edit::apply(&mut doc, CreateClaim::new("p", name("C2")).with_id("c2"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+/// let create = edit::preview(&doc, &CreateClaim::new("p", "C1").into())?;
+/// assert_eq!(create.mutation().created_id().map(ElementId::as_str), Some("claim_1"));
+///
+/// edit::apply(&mut doc, CreateClaim::new("p", "C1").with_id("c1"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", "C2").with_id("c2"))?;
 /// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1"]))?;
 ///
 /// let scrub = DeleteElement::new("c1").with_reference_policy(ReferenceDeletePolicy::ScrubReferences);
-/// let preview = edit::preview(&doc, &Operation::from(scrub))?;
+/// let preview = edit::preview(&doc, &scrub.into())?;
 /// let dangling = &preview.dangling_references()[0];
 /// assert_eq!(dangling.holder().as_str(), "c2");
 /// assert_eq!(dangling.end(), ReferenceEnd::MetaClaim);
@@ -1522,13 +1526,13 @@ impl From<CreateTaggedValue> for Operation {
 ///
 /// ```
 /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
-/// use sacm::model::{Document, ElementId, LangString};
+/// use sacm::model::{Document, ElementId};
 ///
 /// let mut doc = Document::new();
-/// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+/// let arguments = CreateArgumentPackage::root("Arguments").with_id("arguments");
 /// edit::apply(&mut doc, arguments)?;
 /// // No with_id: the claim's id is generated.
-/// let claim = CreateClaim::new("arguments", LangString::new("The system is safe"));
+/// let claim = CreateClaim::new("arguments", "The system is safe");
 /// let mutation = edit::apply(&mut doc, claim)?;
 ///
 /// let ids = |ids: &[ElementId]| ids.iter().map(ElementId::as_str).collect::<Vec<_>>().join(",");
@@ -1619,15 +1623,15 @@ impl Mutation {
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetName};
-    /// use sacm::model::{Document, LangString};
+    /// use sacm::model::Document;
     ///
     /// let mut doc = Document::new();
-    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
-    /// let made = edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+    /// let made = edit::apply(&mut doc, CreateClaim::new("p", "C1"))?;
     /// let claim = made.created_id().expect("a create creates one element").clone();
     /// assert_eq!(claim.as_str(), "claim_1");
     ///
-    /// let renamed = edit::apply(&mut doc, SetName::new(&claim, LangString::new("C2")))?;
+    /// let renamed = edit::apply(&mut doc, SetName::new(&claim, "C2"))?;
     /// assert_eq!(renamed.created_id(), None);
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
@@ -1684,6 +1688,29 @@ impl Mutation {
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
+    }
+
+    /// Whether the operation created, changed and deleted no id: it set the
+    /// value held, or it only reordered the roots.
+    ///
+    /// A reorder of the roots lists no id, so its mutation is empty although
+    /// the document changed, as for [`BatchMutation::is_empty`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, SetName};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+    /// assert!(edit::apply(&mut doc, SetName::new("p", "Arguments"))?.is_empty());
+    /// assert!(!edit::apply(&mut doc, SetName::new("p", "Argument"))?.is_empty());
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.created.is_empty() && self.changed.is_empty() && self.deleted.is_empty()
     }
 }
 
@@ -2070,18 +2097,18 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
-    /// [`RemoveReference::href`] names an href the end does not hold
+    /// [`RemoveReference::new_href`] names an href the end does not hold
     /// (SACM-CMD-001); hrefs are compared as strings.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, RemoveReference};
-    /// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+    /// use sacm::model::{Document, Href, ReferenceEnd};
     ///
     /// let mut doc = Document::new();
-    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
-    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", "C1").with_id("c1"))?;
     /// let href = Href::new("o.xmi#m1")?;
-    /// let remove = RemoveReference::href("c1", ReferenceEnd::MetaClaim, href);
+    /// let remove = RemoveReference::new_href("c1", ReferenceEnd::MetaClaim, href);
     /// let error = edit::apply(&mut doc, remove).unwrap_err();
     /// assert!(matches!(error, EditError::HrefNotHeld { end: "metaClaim", .. }));
     /// assert_eq!(error.to_string(), "the metaClaim holds no href \"o.xmi#m1\" to remove");

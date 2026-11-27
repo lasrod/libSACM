@@ -50,22 +50,22 @@ impl CreateAssuranceCasePackage {
     /// Creates a root `AssuranceCasePackage` named `name`, after the
     /// document's last root.
     #[must_use]
-    pub fn root(name: LangString) -> Self {
+    pub fn root(name: impl Into<LangString>) -> Self {
         Self {
             parent: None,
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
     /// Creates an `AssuranceCasePackage` named `name` as the last child of
     /// `parent`.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: Some(parent.into()),
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
@@ -213,22 +213,22 @@ impl CreateArgumentPackage {
     /// Creates a root `ArgumentPackage` named `name`, after the document's
     /// last root.
     #[must_use]
-    pub fn root(name: LangString) -> Self {
+    pub fn root(name: impl Into<LangString>) -> Self {
         Self {
             parent: None,
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
     /// Creates an `ArgumentPackage` named `name` as the last child of
     /// `parent`.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: Some(parent.into()),
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
@@ -316,11 +316,11 @@ pub struct CreateClaim {
 impl CreateClaim {
     /// Creates a `Claim` named `name` as the last child of `parent`.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
         }
     }
 

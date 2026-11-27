@@ -141,7 +141,9 @@ use crate::model::{
 /// [`Document::get`](crate::model::Document::get) on either side.
 ///
 /// New variants are added as the model holds more SACM features, so a `match`
-/// needs a wildcard arm.
+/// needs a wildcard arm. A variant's fields stay as they are, `{id, left,
+/// right}` for most, so you can build an expected value in a test: a new
+/// comparison adds a variant, never a field (ADR 0045 D3).
 ///
 /// `Display` writes one line for people to read. Its wording is not API.
 ///

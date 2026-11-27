@@ -4,8 +4,20 @@ use std::borrow::Borrow;
 use std::fmt;
 
 /// The identifier of an element, its `xmi:id` or an id generated for it,
-/// and also the type of a name's `xmi:id`
-/// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)).
+/// and also the type of every other `xmi:id` a document holds: XMI has one
+/// id space (XMI 2.5.1 §7.6.1).
+///
+/// The `xmi:id`s of an element's parts are `ElementId`s too: those of its
+/// name ([`name_id`](crate::model::SacmElement::name_id)), content
+/// ([`content_id`](crate::model::SacmElement::content_id)), key
+/// ([`key_id`](crate::model::SacmElement::key_id)) and location
+/// ([`location_id`](crate::model::SacmElement::location_id)), and of each of
+/// their values
+/// ([`content_value_ids`](crate::model::SacmElement::content_value_ids) and
+/// the like). A part is no element: [`Document::get`](crate::model::Document::get)
+/// finds none of them, while
+/// [`Document::is_id_in_use`](crate::model::Document::is_id_in_use) covers
+/// them all, so an edit never gives an element the id of a part.
 ///
 /// An `ElementId` keeps its value exactly as given. It is not trimmed, case
 /// folded or otherwise normalised. An id read from a file is its `xsd:ID`
@@ -94,6 +106,19 @@ impl From<&ElementId> for ElementId {
     /// ```
     fn from(value: &ElementId) -> Self {
         value.clone()
+    }
+}
+
+impl From<ElementId> for String {
+    /// The id's value, unchanged.
+    ///
+    /// ```
+    /// use sacm::model::ElementId;
+    ///
+    /// assert_eq!(String::from(ElementId::from("c1")), "c1");
+    /// ```
+    fn from(id: ElementId) -> Self {
+        id.0
     }
 }
 

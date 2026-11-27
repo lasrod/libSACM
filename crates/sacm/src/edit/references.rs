@@ -361,7 +361,7 @@ impl SetReferences {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 ///
-/// [`AddReference::href`] appends a cross-document reference instead
+/// [`AddReference::new_href`] appends a cross-document reference instead
 /// (LIB-EDIT-020; ADR 0040 amendment 1): the same first three refusals, then
 /// the end's bounds over its ids and its hrefs with the new one. An href is
 /// never checked, so it may name nothing, and one the end holds is appended
@@ -369,15 +369,15 @@ impl SetReferences {
 ///
 /// ```
 /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim};
-/// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+/// use sacm::model::{Document, Href, ReferenceEnd};
 ///
 /// let mut doc = Document::new();
-/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
-/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", "C1").with_id("c1"))?;
 ///
 /// let remote = Href::new("other.sacm.xmi#m1")?;
-/// let add = AddReference::href("c1", ReferenceEnd::MetaClaim, remote.clone());
-/// assert_eq!((add.id(), add.cross_document()), (None, Some(&remote)));
+/// let add = AddReference::new_href("c1", ReferenceEnd::MetaClaim, remote.clone());
+/// assert_eq!((add.id(), add.href()), (None, Some(&remote)));
 /// edit::apply(&mut doc, add)?;
 /// let c1 = doc.get("c1").ok_or("no c1")?;
 /// assert_eq!(c1.hrefs(ReferenceEnd::MetaClaim), [remote]);
@@ -428,7 +428,7 @@ impl AddReference {
     /// `element`, after the hrefs the end holds (LIB-EDIT-020; ADR 0040
     /// amendment 1).
     #[must_use]
-    pub fn href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
+    pub fn new_href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
         Self {
             element: element.into(),
             end,
@@ -455,9 +455,8 @@ impl AddReference {
     }
 
     /// The href to append, or `None` for an id.
-    #[doc(alias = "href")]
     #[must_use]
-    pub fn cross_document(&self) -> Option<&Href> {
+    pub fn href(&self) -> Option<&Href> {
         self.link.href()
     }
 
@@ -532,25 +531,25 @@ impl AddReference {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
-/// [`RemoveReference::href`] removes every occurrence of a cross-document
-/// reference instead (LIB-EDIT-020; ADR 0040 amendment 1): the same first
-/// three refusals, then an href the end does not hold
+/// [`RemoveReference::new_href`] removes every occurrence of a
+/// cross-document reference instead (LIB-EDIT-020; ADR 0040 amendment 1):
+/// the same first three refusals, then an href the end does not hold
 /// ([`EditError::HrefNotHeld`]; hrefs are compared as strings), then the
 /// end's bounds over what is left.
 ///
 /// ```
 /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateClaim, RemoveReference};
-/// use sacm::model::{Document, Href, LangString, ReferenceEnd};
+/// use sacm::model::{Document, Href, ReferenceEnd};
 ///
 /// let mut doc = Document::new();
-/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
-/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", "C1").with_id("c1"))?;
 /// let remote = Href::new("other.sacm.xmi#m1")?;
 /// let end = ReferenceEnd::MetaClaim;
-/// edit::apply(&mut doc, AddReference::href("c1", end, remote.clone()))?;
+/// edit::apply(&mut doc, AddReference::new_href("c1", end, remote.clone()))?;
 ///
-/// let remove = RemoveReference::href("c1", end, remote.clone());
-/// assert_eq!((remove.id(), remove.cross_document()), (None, Some(&remote)));
+/// let remove = RemoveReference::new_href("c1", end, remote.clone());
+/// assert_eq!((remove.id(), remove.href()), (None, Some(&remote)));
 /// edit::apply(&mut doc, remove)?;
 /// assert!(doc.get("c1").is_some_and(|c1| c1.hrefs(end).is_empty()));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -598,7 +597,7 @@ impl RemoveReference {
     /// Removes every occurrence of the cross-document reference `href` from
     /// the end `end` of `element` (LIB-EDIT-020; ADR 0040 amendment 1).
     #[must_use]
-    pub fn href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
+    pub fn new_href(element: impl Into<ElementId>, end: ReferenceEnd, href: Href) -> Self {
         Self {
             element: element.into(),
             end,
@@ -625,9 +624,8 @@ impl RemoveReference {
     }
 
     /// The href to remove, or `None` for an id.
-    #[doc(alias = "href")]
     #[must_use]
-    pub fn cross_document(&self) -> Option<&Href> {
+    pub fn href(&self) -> Option<&Href> {
         self.link.href()
     }
 

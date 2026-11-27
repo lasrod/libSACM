@@ -70,22 +70,22 @@ impl CreateTerminologyPackage {
     /// Creates a root `TerminologyPackage` named `name`, after the
     /// document's last root.
     #[must_use]
-    pub fn root(name: LangString) -> Self {
+    pub fn root(name: impl Into<LangString>) -> Self {
         Self {
             parent: None,
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
     /// Creates a `TerminologyPackage` named `name` as the last child of
     /// `parent`.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: Some(parent.into()),
             id: None,
-            name,
+            name: name.into(),
         }
     }
 
@@ -254,11 +254,11 @@ impl CreateCategory {
     /// Creates a `Category` named `name` as the last child of `parent`, with
     /// no `category` ids.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             categories: Vec::new(),
         }
     }
@@ -398,11 +398,15 @@ impl CreateTerm {
     /// Creates a `Term` named `name` with the value `value` as the last child
     /// of `parent`, with no categories, no origin and no external reference.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString, value: impl Into<String>) -> Self {
+    pub fn new(
+        parent: impl Into<ElementId>,
+        name: impl Into<LangString>,
+        value: impl Into<String>,
+    ) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             value: value.into(),
             categories: Vec::new(),
             origin: None,
@@ -585,11 +589,15 @@ impl CreateExpression {
     /// Creates an `Expression` named `name` with the value `value` as the
     /// last child of `parent`, with no categories and no elements.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString, value: impl Into<String>) -> Self {
+    pub fn new(
+        parent: impl Into<ElementId>,
+        name: impl Into<LangString>,
+        value: impl Into<String>,
+    ) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             value: value.into(),
             categories: Vec::new(),
             expression_elements: Vec::new(),
@@ -752,11 +760,11 @@ impl CreateTerminologyGroup {
     /// Creates a `TerminologyGroup` named `name` as the last child of
     /// `parent`, with no members.
     #[must_use]
-    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+    pub fn new(parent: impl Into<ElementId>, name: impl Into<LangString>) -> Self {
         Self {
             parent: parent.into(),
             id: None,
-            name,
+            name: name.into(),
             group_members: Vec::new(),
         }
     }

@@ -1379,7 +1379,7 @@ fn href_not_held_sample() -> EditError {
     };
     refusal(
         &doc,
-        RemoveReference::href("binding", ReferenceEnd::ParticipantPackage, href("o.xmi#x")),
+        RemoveReference::new_href("binding", ReferenceEnd::ParticipantPackage, href("o.xmi#x")),
     )
 }
 
@@ -1402,8 +1402,8 @@ fn href_samples() -> Vec<Operation> {
         SetReferences::new("binding", participant, ["vehicle_api"])
             .with_hrefs([remote.clone()])
             .into(),
-        AddReference::href("binding", participant, remote.clone()).into(),
-        RemoveReference::href("binding", participant, remote.clone()).into(),
+        AddReference::new_href("binding", participant, remote.clone()).into(),
+        RemoveReference::new_href("binding", participant, remote.clone()).into(),
         CreateArgumentPackageInterface::root_href(
             en("Braking interface"),
             href("braking.sacm.xmi#braking"),
