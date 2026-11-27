@@ -1,0 +1,3969 @@
+{
+  "format": 1,
+  "specifications": [
+    "SACM 2.3",
+    "XMI 2.5.1"
+  ],
+  "codes": [
+    {
+      "code": "SACM-ABS-001",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-CITE-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CITE-002",
+      "severities": [
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-CMD-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-002",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-003",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-004",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-005",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-006",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-007",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-008",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-CMD-009",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-ENUM-001",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-EXPR-001",
+      "severities": [
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-ID-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-ID-002",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-ID-003",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-ID-004",
+      "severities": [
+        "info"
+      ]
+    },
+    {
+      "code": "SACM-MULT-001",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-PKG-001",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-PKG-002",
+      "severities": [
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-REF-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-REF-002",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-REF-003",
+      "severities": [
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-SEC-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-SEC-002",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-SEC-003",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XMI-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XMI-002",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-003",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-004",
+      "severities": [
+        "info"
+      ]
+    },
+    {
+      "code": "SACM-XMI-005",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-006",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XMI-007",
+      "severities": []
+    },
+    {
+      "code": "SACM-XMI-008",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-010",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-011",
+      "severities": [
+        "info"
+      ]
+    },
+    {
+      "code": "SACM-XMI-012",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-013",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-014",
+      "severities": []
+    },
+    {
+      "code": "SACM-XMI-015",
+      "severities": [
+        "error",
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XMI-016",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XMI-017",
+      "severities": [
+        "warning"
+      ]
+    },
+    {
+      "code": "SACM-XML-001",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XML-002",
+      "severities": [
+        "error"
+      ]
+    },
+    {
+      "code": "SACM-XML-003",
+      "severities": [
+        "error"
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "SACM-ABS-001/abstract-element",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} is concrete but has the element {target:?}, an abstract {target_class}: a concrete Expression references only concrete ExpressionElements (§10.10)"
+    },
+    {
+      "id": "SACM-ABS-001/abstract-holder",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the abstractForm {target:?} but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element"
+    },
+    {
+      "id": "SACM-ABS-001/form-not-abstract",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the abstractForm {target:?} of {class} {id:?} is not abstract: its isAbstract should be true (§8.2)"
+    },
+    {
+      "id": "SACM-ABS-001/form-of-another-kind",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        }
+      ],
+      "english": "the abstractForm {target:?} of {class} {id:?} is of the kind {target_class}, not {class}: it should be of the same type (§8.2)"
+    },
+    {
+      "id": "SACM-ABS-001/implementation-constraint",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has an implementationConstraint but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)"
+    },
+    {
+      "id": "SACM-ABS-001/implementation-constraints",
+      "code": "SACM-ABS-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        }
+      ],
+      "english": "{class} {id:?} has {count} implementationConstraints but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)"
+    },
+    {
+      "id": "SACM-CITE-001/not-a-citation",
+      "code": "SACM-CITE-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the citedElement {target:?} but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)"
+    },
+    {
+      "id": "SACM-CITE-002/cited-not-an-assertion",
+      "code": "SACM-CITE-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} is declared asCited but its citedElement {target:?} is of the kind {target_class}, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)"
+    },
+    {
+      "id": "SACM-CITE-002/no-cited-element",
+      "code": "SACM-CITE-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} is declared asCited but has no citedElement: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)"
+    },
+    {
+      "id": "SACM-CITE-002/not-a-citation",
+      "code": "SACM-CITE-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} is declared asCited but isCitation is not true: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)"
+    },
+    {
+      "id": "SACM-ENUM-001/boolean-kept",
+      "code": "SACM-ENUM-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {property} {value:?} is no literal: the literals are true, false, 1 and 0, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses, and the property is read as not written"
+    },
+    {
+      "id": "SACM-ENUM-001/declaration-kept",
+      "code": "SACM-ENUM-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the assertionDeclaration {value:?} is no literal: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses, and the property is read as not written"
+    },
+    {
+      "id": "SACM-ENUM-001/not-a-literal",
+      "code": "SACM-ENUM-001",
+      "carrier": "ReadError::InvalidLiteral",
+      "arguments": [
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the value {value:?} of the property {property:?} of the element {element:?} is not a literal"
+    },
+    {
+      "id": "SACM-EXPR-001/name-with-content",
+      "code": "SACM-EXPR-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "expression",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty"
+    },
+    {
+      "id": "SACM-EXPR-001/value-with-content",
+      "code": "SACM-EXPR-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "position",
+          "kind": "count"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "expression",
+          "kind": "text"
+        }
+      ],
+      "english": "value {position} of the {role} of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty"
+    },
+    {
+      "id": "SACM-ID-001/duplicate-id",
+      "code": "SACM-ID-001",
+      "carrier": "ReadError::DuplicateId",
+      "arguments": [
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        }
+      ],
+      "english": "the xmi:id {id:?} is carried by {count} elements"
+    },
+    {
+      "id": "SACM-ID-002/empty-id",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of the {class} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read with the generated id {id:?}, which write writes"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-kept-element",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of the element {element:?} kept in the {holder_class} {holder_id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-kept-element-by-document",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of the element {element:?} kept in the document is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-name",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of the name of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-text",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of the {role} of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-text-value",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id of a value of the {role} of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one"
+    },
+    {
+      "id": "SACM-ID-002/empty-id-of-xmi-element",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [],
+      "english": "the xmi:id of the XMI element is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space"
+    },
+    {
+      "id": "SACM-ID-002/metadata-id-not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "xmi_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?}, kept as XMI metadata, has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    },
+    {
+      "id": "SACM-ID-002/name-id-not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "xmi_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    },
+    {
+      "id": "SACM-ID-002/not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    },
+    {
+      "id": "SACM-ID-002/read-id-not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "ReadError::InvalidId",
+      "arguments": [
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id {id:?} is not an NCName"
+    },
+    {
+      "id": "SACM-ID-002/text-id-not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "xmi_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    },
+    {
+      "id": "SACM-ID-002/value-id-not-an-ncname",
+      "code": "SACM-ID-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "position",
+          "kind": "count"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "xmi_id",
+          "kind": "text"
+        }
+      ],
+      "english": "value {position} of the {role} of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    },
+    {
+      "id": "SACM-ID-003/duplicate-gid",
+      "code": "SACM-ID-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "gid",
+          "kind": "text"
+        },
+        {
+          "name": "elements",
+          "kind": "text"
+        }
+      ],
+      "english": "{count} elements hold the gid {gid:?}, which must be unique within the model instance: {elements}"
+    },
+    {
+      "id": "SACM-ID-004/trimmed-id",
+      "code": "SACM-ID-004",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "written",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id {written:?} of the {class} {id:?} is read as {id:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed"
+    },
+    {
+      "id": "SACM-ID-004/trimmed-id-of-name",
+      "code": "SACM-ID-004",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "written",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id {written:?} of the name of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed"
+    },
+    {
+      "id": "SACM-ID-004/trimmed-id-of-text",
+      "code": "SACM-ID-004",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "written",
+          "kind": "text"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id {written:?} of the {role} of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed"
+    },
+    {
+      "id": "SACM-ID-004/trimmed-id-of-text-value",
+      "code": "SACM-ID-004",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "written",
+          "kind": "text"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:id {written:?} of a value of the {role} of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed"
+    },
+    {
+      "id": "SACM-MULT-001/both-forms",
+      "code": "SACM-MULT-001",
+      "carrier": "ReadError::RepeatedValue",
+      "arguments": [
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the property {property:?} of the element {element:?} is given both as an attribute and as elements, which XMI 2.5.1 rule 2h forbids"
+    },
+    {
+      "id": "SACM-MULT-001/missing",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "multiplicity",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])"
+    },
+    {
+      "id": "SACM-MULT-001/name-without-expression",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])"
+    },
+    {
+      "id": "SACM-MULT-001/no-value",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of {class} {id:?} has no value (value:LangString[1..*])"
+    },
+    {
+      "id": "SACM-MULT-001/repeat-attribute-kept",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; the attribute that gave it first is kept with it, and the element has no content from them"
+    },
+    {
+      "id": "SACM-MULT-001/repeat-kept",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; the first occurrence is read"
+    },
+    {
+      "id": "SACM-MULT-001/repeated-absent-lang",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        }
+      ],
+      "english": "the {role} of {class} {id:?} has {count} values in no language (lang absent), and each value's lang must be unique"
+    },
+    {
+      "id": "SACM-MULT-001/repeated-lang",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "lang",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of {class} {id:?} has {count} values in the language {lang:?}, and each value's lang must be unique"
+    },
+    {
+      "id": "SACM-MULT-001/repeated-reference",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "end",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} holds {target:?} {count} times in its {end}, whose ids are unique in SACM 2.3 (the repeat is kept)"
+    },
+    {
+      "id": "SACM-MULT-001/repeated-value",
+      "code": "SACM-MULT-001",
+      "carrier": "ReadError::RepeatedValue",
+      "arguments": [
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        }
+      ],
+      "english": "the single-valued property {property:?} of the element {element:?} is given {count} times"
+    },
+    {
+      "id": "SACM-MULT-001/too-few",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "multiplicity",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has {count} distinct {property} ({property}:{type}[{multiplicity}])"
+    },
+    {
+      "id": "SACM-MULT-001/too-many",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "property",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "multiplicity",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has {count} {property}s ({property}:{type}[{multiplicity}])"
+    },
+    {
+      "id": "SACM-MULT-001/value-without-expression",
+      "code": "SACM-MULT-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "position",
+          "kind": "count"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "value {position} of the {role} of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])"
+    },
+    {
+      "id": "SACM-PKG-001/binding-participant",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the participantPackage {target:?}, of the kind {target_class}: a binding binds packages, not bindings"
+    },
+    {
+      "id": "SACM-PKG-001/cited-kind",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        },
+        {
+          "name": "expected",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?} of the kind {target_class}, but §{clause} has an interface cite only {expected}s"
+    },
+    {
+      "id": "SACM-PKG-001/cited-outside",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        },
+        {
+          "name": "package",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?}, but §{clause} has an interface cite only elements within the package it implements, {package:?}"
+    },
+    {
+      "id": "SACM-PKG-001/mixed-content",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "nested_class",
+          "kind": "text"
+        },
+        {
+          "name": "nested_id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} nests the {nested_class} {nested_id:?}, so it may contain only ArgumentPackages, but it also contains {child_class} {child_id:?}"
+    },
+    {
+      "id": "SACM-PKG-001/not-a-citation",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations in it"
+    },
+    {
+      "id": "SACM-PKG-001/not-a-citation-or-relationship",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        },
+        {
+          "name": "relationship",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations and {relationship}s in it"
+    },
+    {
+      "id": "SACM-PKG-001/not-an-interface",
+      "code": "SACM-PKG-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "child_class",
+          "kind": "text"
+        },
+        {
+          "name": "child_id",
+          "kind": "text"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "expected",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} contains {child_class} {child_id:?} in its {role}, but §9.3 allows only {expected}s there"
+    },
+    {
+      "id": "SACM-PKG-002/outside-implemented-package",
+      "code": "SACM-PKG-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "package_class",
+          "kind": "text"
+        },
+        {
+          "name": "package",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} implements the {package_class} {package:?} but does not reside inside it, as §{clause} says an interface does"
+    },
+    {
+      "id": "SACM-REF-001/dangling",
+      "code": "SACM-REF-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "end",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the {end} {target:?}, which names no element of the document (the end's type is {type})"
+    },
+    {
+      "id": "SACM-REF-001/metadata-dangling",
+      "code": "SACM-REF-001",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} of the element {element:?}, kept as XMI metadata, names {target:?}, which is no xmi:id of the document (XMI.xsd types it xsd:IDREF or xsd:IDREFS)"
+    },
+    {
+      "id": "SACM-REF-002/not-an-artifact-reference",
+      "code": "SACM-REF-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "end",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        },
+        {
+          "name": "clause",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the {end} {target:?}, of the kind {target_class}, but §{clause} requires each {end} of the {class} to be an ArtifactReference"
+    },
+    {
+      "id": "SACM-REF-002/wrong-type",
+      "code": "SACM-REF-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "end",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the {end} {target:?}, whose kind {target_class} does not conform to the end's type {type}"
+    },
+    {
+      "id": "SACM-REF-003/preserved-target",
+      "code": "SACM-REF-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "end",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        }
+      ],
+      "english": "{class} {id:?} has the {end} {target:?}, which names an element the document holds only as preserved content, so its type is not checked (the end's type is {type})"
+    },
+    {
+      "id": "SACM-SEC-001/doctype",
+      "code": "SACM-SEC-001",
+      "carrier": "ReadError::Doctype",
+      "arguments": [],
+      "english": "the input has a DOCTYPE, which is refused"
+    },
+    {
+      "id": "SACM-SEC-002/attributes",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [],
+      "english": "the document has more attributes than the parser can hold"
+    },
+    {
+      "id": "SACM-SEC-002/namespaces",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [],
+      "english": "the document declares more namespaces than the parser can hold"
+    },
+    {
+      "id": "SACM-SEC-002/nodes",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [],
+      "english": "the document has more nodes or nesting levels than the parser can hold"
+    },
+    {
+      "id": "SACM-SEC-002/unheld-element",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "error",
+          "kind": "prose"
+        }
+      ],
+      "english": "the element {element:?} cannot be held in the document: {error}"
+    },
+    {
+      "id": "SACM-SEC-002/unheld-outside",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "error",
+          "kind": "prose"
+        }
+      ],
+      "english": "the content outside every element cannot be held in the document: {error}"
+    },
+    {
+      "id": "SACM-SEC-002/unheld-root",
+      "code": "SACM-SEC-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "error",
+          "kind": "prose"
+        }
+      ],
+      "english": "the root element {element:?} cannot be held in the document: {error}"
+    },
+    {
+      "id": "SACM-SEC-003/attributes",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "an element has more attributes than the limit of {max}"
+    },
+    {
+      "id": "SACM-SEC-003/depth",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "an element is nested deeper than the depth limit of {max}"
+    },
+    {
+      "id": "SACM-SEC-003/input-bytes",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "size",
+          "kind": "count"
+        },
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "the input is {size} bytes long, over the size limit of {max} bytes"
+    },
+    {
+      "id": "SACM-SEC-003/kept-namespaces",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "the namespace names and bindings that preserved content keeps come to more than the size limit of {max} bytes"
+    },
+    {
+      "id": "SACM-SEC-003/kept-text",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "the namespace text and diagnostics that the read keeps come to more than the size limit of {max} bytes"
+    },
+    {
+      "id": "SACM-SEC-003/namespace-bindings",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "an element has more namespace bindings in scope than the limit of {max}"
+    },
+    {
+      "id": "SACM-SEC-003/namespace-copies",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "the elements that declare namespaces have more bindings in scope in all than the node limit of {max}"
+    },
+    {
+      "id": "SACM-SEC-003/nodes",
+      "code": "SACM-SEC-003",
+      "carrier": "ReadError::LimitExceeded",
+      "arguments": [
+        {
+          "name": "max",
+          "kind": "count"
+        }
+      ],
+      "english": "the input has more XML nodes than the node limit of {max}"
+    },
+    {
+      "id": "SACM-XMI-001/no-namespace",
+      "code": "SACM-XMI-001",
+      "carrier": "ReadError::InvalidRoot",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is in no namespace, so it is not a SACM package"
+    },
+    {
+      "id": "SACM-XMI-001/no-package",
+      "code": "SACM-XMI-001",
+      "carrier": "ReadError::NoPackage",
+      "arguments": [],
+      "english": "the XMI element holds no SACM package"
+    },
+    {
+      "id": "SACM-XMI-001/no-root-to-write",
+      "code": "SACM-XMI-001",
+      "carrier": "WriteError::NoRoot",
+      "arguments": [],
+      "english": "the document has no root to write"
+    },
+    {
+      "id": "SACM-XMI-001/not-a-package",
+      "code": "SACM-XMI-001",
+      "carrier": "ReadError::InvalidRoot",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is not a SACM package"
+    },
+    {
+      "id": "SACM-XMI-001/not-a-sacm-namespace",
+      "code": "SACM-XMI-001",
+      "carrier": "ReadError::InvalidRoot",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is in the namespace {namespace:?}, which does not name SACM"
+    },
+    {
+      "id": "SACM-XMI-001/xmi-namespace-root",
+      "code": "SACM-XMI-001",
+      "carrier": "ReadError::InvalidRoot",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the document element {element:?} is in the XMI namespace but is not xmi:XMI, so the document holds no SACM package"
+    },
+    {
+      "id": "SACM-XMI-002/other-namespace",
+      "code": "SACM-XMI-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        },
+        {
+          "name": "row",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\""
+    },
+    {
+      "id": "SACM-XMI-002/sacm-like",
+      "code": "SACM-XMI-002",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        }
+      ],
+      "english": "the {class} {id:?} is in the namespace {namespace:?}, which names SACM but is not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\", so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3"
+    },
+    {
+      "id": "SACM-XMI-003/attribute-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/element-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/prefix-renamed",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "prefix",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        },
+        {
+          "name": "pinned_namespace",
+          "kind": "text"
+        },
+        {
+          "name": "renamed_prefix",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands, and its prefix {prefix:?} is bound to {namespace:?}, which the written element binds to {pinned_namespace:?}, so it is written with the prefix {renamed_prefix:?}, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-cycle",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of the root {target:?}, which holds this proxy itself, directly or through other proxies, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-of-linked-root",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of the root {target:?}, which carries an href or an xmi:idref of its own, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-of-no-root",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of {target:?}, which is no root of the document, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-of-typed-root",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of the root {target:?}, which keeps the type attribute {attribute}={value:?} that only a root can carry, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-shared",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of the root {target:?}, which another proxy names too, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/proxy-wrong-kind",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "target",
+          "kind": "text"
+        },
+        {
+          "name": "target_class",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is a proxy of the root {target:?}, of the class {target_class}, which is not of the class {class}, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/subclass-type-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the type {type:?} of the {class} {id:?} is not SACM 2.3, but the application declared it a subclass of {class}, so the element is read as {class} and its type is kept as preserved content, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/text-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/unread-attribute",
+      "code": "SACM-XMI-003",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} of the element {element:?} is not read in this release"
+    },
+    {
+      "id": "SACM-XMI-003/unwritable-prefix",
+      "code": "SACM-XMI-003",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "prefix",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        },
+        {
+          "name": "pinned_namespace",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} of the element {element:?} is not SACM 2.3, and cannot be kept: its prefix {prefix:?} is bound to {namespace:?}, and the written element binds it to {pinned_namespace:?}"
+    },
+    {
+      "id": "SACM-XMI-003/wrapper-attribute-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/wrapper-element",
+      "code": "SACM-XMI-003",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in {container:?} is in the XMI namespace, but XMI 2.5.1 defines no such element there, and it has no element to be kept in"
+    },
+    {
+      "id": "SACM-XMI-003/wrapper-element-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in {container:?} is in the XMI namespace, but XMI 2.5.1 defines no such element there, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-003/wrapper-text",
+      "code": "SACM-XMI-003",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} holds text, which has no element to be kept in"
+    },
+    {
+      "id": "SACM-XMI-003/wrapper-text-kept",
+      "code": "SACM-XMI-003",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "text in the element {element:?} is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-004/generated-id",
+      "code": "SACM-XMI-004",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {class} has no xmi:id, which XMI 2.5.1 §7.6.1 makes optional, so it is read with the generated id {id:?}, which write writes"
+    },
+    {
+      "id": "SACM-XMI-005/missing-type",
+      "code": "SACM-XMI-005",
+      "carrier": "ReadError::MissingType",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {role:?} has no xmi:type, and its role has the abstract type {type}"
+    },
+    {
+      "id": "SACM-XMI-005/missing-type-in-root-kept",
+      "code": "SACM-XMI-005",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-005/missing-type-kept",
+      "code": "SACM-XMI-005",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        },
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "type",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses"
+    },
+    {
+      "id": "SACM-XMI-006/holders",
+      "code": "SACM-XMI-006",
+      "carrier": "WriteError::PreservedContent",
+      "arguments": [
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the document cannot be written in strict mode: {count} elements hold preserved content, the first is {id:?}"
+    },
+    {
+      "id": "SACM-XMI-006/one-holder",
+      "code": "SACM-XMI-006",
+      "carrier": "WriteError::PreservedContent",
+      "arguments": [
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the document cannot be written in strict mode: the element {id:?} holds preserved content"
+    },
+    {
+      "id": "SACM-XMI-006/outside-elements",
+      "code": "SACM-XMI-006",
+      "carrier": "WriteError::PreservedContent",
+      "arguments": [],
+      "english": "the document cannot be written in strict mode: the document holds preserved content outside its elements"
+    },
+    {
+      "id": "SACM-XMI-008/occurence",
+      "code": "SACM-XMI-008",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "revision",
+          "kind": "text"
+        }
+      ],
+      "english": "the Event {id:?} gives its date as the attribute \"occurence\", the SACM {revision} spelling, which is read as its date"
+    },
+    {
+      "id": "SACM-XMI-008/other-revision",
+      "code": "SACM-XMI-008",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        },
+        {
+          "name": "revision",
+          "kind": "text"
+        }
+      ],
+      "english": "the {class} {id:?} is in the namespace {namespace:?} of SACM {revision}, so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3"
+    },
+    {
+      "id": "SACM-XMI-008/other-revision-root",
+      "code": "SACM-XMI-008",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        },
+        {
+          "name": "revision",
+          "kind": "text"
+        },
+        {
+          "name": "row",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is in the namespace {namespace:?} of SACM {revision}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\""
+    },
+    {
+      "id": "SACM-XMI-008/sacm-2-4",
+      "code": "SACM-XMI-008",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "namespace",
+          "kind": "text"
+        }
+      ],
+      "english": "the root element {element:?} is in the SACM 2.4 namespace {namespace:?}, and SACM 2.4 restructures the metamodel, so it is not read as SACM 2.3 until LIB-COMPAT-018 decides how"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type-on-name",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type-on-name-value",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the value in the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type-on-proxy",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "holder_class",
+          "kind": "text"
+        },
+        {
+          "name": "holder_id",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        }
+      ],
+      "english": "the proxy {element:?} in the {holder_class} {holder_id:?} is typed {class} with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type-on-text",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-010/xsi-type-on-text-value",
+      "code": "SACM-XMI-010",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "a value of the {role} of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type"
+    },
+    {
+      "id": "SACM-XMI-011/emf-version-on-root",
+      "code": "SACM-XMI-011",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {attribute} {value:?} of the {class} {id:?} is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it"
+    },
+    {
+      "id": "SACM-XMI-011/emf-version-on-xmi-element",
+      "code": "SACM-XMI-011",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        },
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the {attribute} {value:?} of the XMI element is in the namespace \"http://www.omg.org/XMI\" and is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it"
+    },
+    {
+      "id": "SACM-XMI-011/version-on-root",
+      "code": "SACM-XMI-011",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "value",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:version {value:?} of the {class} {id:?} is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it"
+    },
+    {
+      "id": "SACM-XMI-011/version-on-xmi-element",
+      "code": "SACM-XMI-011",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the xmi:version {value:?} of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it"
+    },
+    {
+      "id": "SACM-XMI-012/content-on-element",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the content of the {class} {id:?} is given on the element itself"
+    },
+    {
+      "id": "SACM-XMI-012/content-on-element-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the content of the {class} {id:?} is given on the element itself, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/key-attribute",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the key of the {class} {id:?} is given as the attribute \"key\""
+    },
+    {
+      "id": "SACM-XMI-012/key-attribute-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the key of the {class} {id:?} is given as the attribute \"key\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/name-attribute",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} is given as the attribute \"name\""
+    },
+    {
+      "id": "SACM-XMI-012/name-attribute-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} is given as the attribute \"name\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/name-content-lang",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} holds a content carrying lang"
+    },
+    {
+      "id": "SACM-XMI-012/name-content-lang-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} holds a content carrying lang, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/name-text",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} has its content as text"
+    },
+    {
+      "id": "SACM-XMI-012/name-text-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/name-value",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} holds a value"
+    },
+    {
+      "id": "SACM-XMI-012/name-value-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the name of the {class} {id:?} holds a value, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/name-value-text",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the value in the name of the {class} {id:?} has its content as text"
+    },
+    {
+      "id": "SACM-XMI-012/name-value-text-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the value in the name of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/shorthand",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of the {class} {id:?} is given in the single-language shorthand"
+    },
+    {
+      "id": "SACM-XMI-012/shorthand-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "the {role} of the {class} {id:?} is given in the single-language shorthand, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-012/value-text",
+      "code": "SACM-XMI-012",
+      "carrier": "ReadError::LegacyShape",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "a value of the {role} of the {class} {id:?} has its content as text"
+    },
+    {
+      "id": "SACM-XMI-012/value-text-read",
+      "code": "SACM-XMI-012",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "role",
+          "kind": "text"
+        },
+        {
+          "name": "class",
+          "kind": "text"
+        },
+        {
+          "name": "id",
+          "kind": "text"
+        }
+      ],
+      "english": "a value of the {role} of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/event-date-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is kept as preserved content, and a tolerant read reads the name as date"
+    },
+    {
+      "id": "SACM-XMI-013/event-date-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is read as date, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/group-end-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement"
+    },
+    {
+      "id": "SACM-XMI-013/group-end-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is read as argumentElement, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/model-type-in-root-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship"
+    },
+    {
+      "id": "SACM-XMI-013/model-type-in-root-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/model-type-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship"
+    },
+    {
+      "id": "SACM-XMI-013/model-type-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/package-role-in-root-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement"
+    },
+    {
+      "id": "SACM-XMI-013/package-role-in-root-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/package-role-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement"
+    },
+    {
+      "id": "SACM-XMI-013/package-role-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/terminology-role-in-root-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement"
+    },
+    {
+      "id": "SACM-XMI-013/terminology-role-in-root-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes"
+    },
+    {
+      "id": "SACM-XMI-013/terminology-role-kept",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement"
+    },
+    {
+      "id": "SACM-XMI-013/terminology-role-read",
+      "code": "SACM-XMI-013",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "container",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes"
+    },
+    {
+      "id": "SACM-XMI-015/emf-xmi-namespace",
+      "code": "SACM-XMI-015",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        },
+        {
+          "name": "row",
+          "kind": "text"
+        }
+      ],
+      "english": "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\""
+    },
+    {
+      "id": "SACM-XMI-015/emf-xmi-namespace-read",
+      "code": "SACM-XMI-015",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        }
+      ],
+      "english": "the name {name:?} is in the namespace \"http://www.omg.org/XMI\", not the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\", so the XMI names of the document in it are read as XMI 2.5.1's, which write writes"
+    },
+    {
+      "id": "SACM-XMI-015/not-xmi-element",
+      "code": "SACM-XMI-015",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is in neither the XMI 2.5.1 namespace \"http://www.omg.org/spec/XMI/20131001\" nor \"http://www.omg.org/XMI\", so it is not read as the XMI element"
+    },
+    {
+      "id": "SACM-XMI-015/not-xmi-namespace",
+      "code": "SACM-XMI-015",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "row",
+          "kind": "text"
+        }
+      ],
+      "english": "the element {element:?} is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element"
+    },
+    {
+      "id": "SACM-XMI-016/schema-error",
+      "code": "SACM-XMI-016",
+      "carrier": "WriteError::Invalid",
+      "arguments": [
+        {
+          "name": "first_code",
+          "kind": "text"
+        },
+        {
+          "name": "first_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the document cannot be written in strict mode: 1 schema error, {first_code} on {first_id:?}"
+    },
+    {
+      "id": "SACM-XMI-016/schema-errors",
+      "code": "SACM-XMI-016",
+      "carrier": "WriteError::Invalid",
+      "arguments": [
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "first_code",
+          "kind": "text"
+        },
+        {
+          "name": "first_id",
+          "kind": "text"
+        }
+      ],
+      "english": "the document cannot be written in strict mode: {count} schema errors, the first is {first_code} on {first_id:?}"
+    },
+    {
+      "id": "SACM-XMI-017/paths-partly-read",
+      "code": "SACM-XMI-017",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "first",
+          "kind": "text"
+        },
+        {
+          "name": "kept",
+          "kind": "count"
+        }
+      ],
+      "english": "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each that names an element of the document is read as that element's id, which write writes, and those that name none ({kept}) are kept as written"
+    },
+    {
+      "id": "SACM-XMI-017/paths-read",
+      "code": "SACM-XMI-017",
+      "carrier": "Diagnostic",
+      "arguments": [
+        {
+          "name": "count",
+          "kind": "count"
+        },
+        {
+          "name": "first",
+          "kind": "text"
+        }
+      ],
+      "english": "the document names reference targets by EMF fragment paths, which XMI 2.5.1 does not define ({count} in all, the first {first:?}); each names an element of the document, so it is read as that element's id, which write writes"
+    },
+    {
+      "id": "SACM-XML-001/cdata-end-in-text",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "character data holds \"]]>\""
+    },
+    {
+      "id": "SACM-XML-001/declaration-character",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "expected",
+          "kind": "prose"
+        }
+      ],
+      "english": "an unexpected character in the XML declaration where {expected} was expected"
+    },
+    {
+      "id": "SACM-XML-001/declaration-end",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the input ends inside the XML declaration"
+    },
+    {
+      "id": "SACM-XML-001/duplicate-attribute",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "attribute",
+          "kind": "text"
+        }
+      ],
+      "english": "an element has the attribute {attribute:?} more than once"
+    },
+    {
+      "id": "SACM-XML-001/duplicate-prefix",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "prefix",
+          "kind": "text"
+        }
+      ],
+      "english": "the namespace prefix {prefix:?} is declared twice on one element"
+    },
+    {
+      "id": "SACM-XML-001/empty-prefix",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        }
+      ],
+      "english": "the name {name:?} has an empty namespace prefix"
+    },
+    {
+      "id": "SACM-XML-001/encoding-contradicts-bom",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "text"
+        }
+      ],
+      "english": "the declared encoding {encoding:?} contradicts the UTF-16 byte order mark"
+    },
+    {
+      "id": "SACM-XML-001/encoding-contradicts-utf8-bom",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "text"
+        }
+      ],
+      "english": "the declared encoding {encoding:?} contradicts the UTF-8 byte order mark"
+    },
+    {
+      "id": "SACM-XML-001/encoding-name",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "text"
+        }
+      ],
+      "english": "the encoding name {encoding:?} is not a valid encoding name"
+    },
+    {
+      "id": "SACM-XML-001/end-tag-mismatch",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "end_tag",
+          "kind": "text"
+        },
+        {
+          "name": "start_tag",
+          "kind": "text"
+        }
+      ],
+      "english": "the end tag {end_tag:?} does not match the start tag {start_tag:?}"
+    },
+    {
+      "id": "SACM-XML-001/entity-closes-element",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an entity's replacement text closes an element"
+    },
+    {
+      "id": "SACM-XML-001/entity-loop",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "entity references nest too deeply"
+    },
+    {
+      "id": "SACM-XML-001/expected-string",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "expected",
+          "kind": "text"
+        }
+      ],
+      "english": "{expected:?} was expected"
+    },
+    {
+      "id": "SACM-XML-001/invalid-comment",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "a comment holds \"--\" or ends with \"-\""
+    },
+    {
+      "id": "SACM-XML-001/invalid-external-id",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an external identifier is not valid"
+    },
+    {
+      "id": "SACM-XML-001/invalid-name",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "a name is not valid"
+    },
+    {
+      "id": "SACM-XML-001/invalid-utf8",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "a byte sequence is not valid UTF-8"
+    },
+    {
+      "id": "SACM-XML-001/lt-in-attribute-value",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an attribute value holds an unescaped \"<\""
+    },
+    {
+      "id": "SACM-XML-001/malformed-reference",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "a \"&\" does not start an entity or character reference"
+    },
+    {
+      "id": "SACM-XML-001/misplaced-declaration",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an XML declaration is not at the start of the document"
+    },
+    {
+      "id": "SACM-XML-001/no-root",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the document has no root element"
+    },
+    {
+      "id": "SACM-XML-001/non-ascii-character",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "text"
+        },
+        {
+          "name": "code_point",
+          "kind": "count"
+        }
+      ],
+      "english": "the declared encoding is {encoding:?}, but the input holds the non-ASCII character U+{code_point:04X}"
+    },
+    {
+      "id": "SACM-XML-001/non-xml-character",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "code_point",
+          "kind": "count"
+        }
+      ],
+      "english": "the character U+{code_point:04X} is not allowed in XML"
+    },
+    {
+      "id": "SACM-XML-001/odd-utf16-byte",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the UTF-16 input ends with a byte that is not a whole code unit"
+    },
+    {
+      "id": "SACM-XML-001/pi-target-colon",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "the processing instruction target {target:?} contains a colon"
+    },
+    {
+      "id": "SACM-XML-001/pi-target-end",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "the processing instruction target {target:?} is not followed by white space or \"?>\""
+    },
+    {
+      "id": "SACM-XML-001/prefix-undeclared",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "prefix",
+          "kind": "text"
+        }
+      ],
+      "english": "the namespace prefix {prefix:?} is declared with an empty value, and a prefix cannot be undeclared"
+    },
+    {
+      "id": "SACM-XML-001/pseudo-attribute-order",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        }
+      ],
+      "english": "the pseudo-attribute {name:?} is out of order in the XML declaration"
+    },
+    {
+      "id": "SACM-XML-001/pseudo-attribute-space",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        }
+      ],
+      "english": "the pseudo-attribute {name:?} does not follow white space in the XML declaration"
+    },
+    {
+      "id": "SACM-XML-001/reference-above-max",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "reference",
+          "kind": "text"
+        }
+      ],
+      "english": "the character reference {reference:?} refers to a code point above U+10FFFF, which is not a character"
+    },
+    {
+      "id": "SACM-XML-001/reference-to-surrogate",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "reference",
+          "kind": "text"
+        }
+      ],
+      "english": "the character reference {reference:?} refers to a surrogate, which is not a character"
+    },
+    {
+      "id": "SACM-XML-001/reserved-pi-target",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "target",
+          "kind": "text"
+        }
+      ],
+      "english": "a processing instruction has the reserved target {target:?}"
+    },
+    {
+      "id": "SACM-XML-001/standalone",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "value",
+          "kind": "text"
+        }
+      ],
+      "english": "the standalone value {value:?} is not \"yes\" or \"no\""
+    },
+    {
+      "id": "SACM-XML-001/unclosed-root",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the root element is not closed"
+    },
+    {
+      "id": "SACM-XML-001/unexpected-character",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "expected",
+          "kind": "prose"
+        }
+      ],
+      "english": "an unexpected character where {expected} was expected"
+    },
+    {
+      "id": "SACM-XML-001/unexpected-end",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the input ends before the document is complete"
+    },
+    {
+      "id": "SACM-XML-001/unknown-entity",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "entity",
+          "kind": "text"
+        }
+      ],
+      "english": "the entity {entity:?} is not declared"
+    },
+    {
+      "id": "SACM-XML-001/unknown-prefix",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "prefix",
+          "kind": "text"
+        }
+      ],
+      "english": "the namespace prefix {prefix:?} is not declared"
+    },
+    {
+      "id": "SACM-XML-001/unknown-pseudo-attribute",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "name",
+          "kind": "text"
+        }
+      ],
+      "english": "the XML declaration has the unknown pseudo-attribute {name:?}"
+    },
+    {
+      "id": "SACM-XML-001/unknown-token",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the input has markup or text that is not allowed here"
+    },
+    {
+      "id": "SACM-XML-001/unpaired-surrogate",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "unit",
+          "kind": "count"
+        }
+      ],
+      "english": "the UTF-16 code unit {unit:04X} is an unpaired surrogate"
+    },
+    {
+      "id": "SACM-XML-001/unresolved-entity",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an external entity could not be resolved"
+    },
+    {
+      "id": "SACM-XML-001/xml-prefix-uri",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the \"xml\" prefix is bound to a namespace other than the XML namespace"
+    },
+    {
+      "id": "SACM-XML-001/xml-uri-prefix",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the XML namespace is bound to a prefix other than \"xml\""
+    },
+    {
+      "id": "SACM-XML-001/xml-version",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [
+        {
+          "name": "version",
+          "kind": "text"
+        }
+      ],
+      "english": "the XML version {version:?} is not \"1.\" followed by digits"
+    },
+    {
+      "id": "SACM-XML-001/xmlns-element-prefix",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "an element name has the prefix \"xmlns\""
+    },
+    {
+      "id": "SACM-XML-001/xmlns-prefix-declared",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the namespace prefix \"xmlns\" is declared, and it cannot be declared"
+    },
+    {
+      "id": "SACM-XML-001/xmlns-uri",
+      "code": "SACM-XML-001",
+      "carrier": "ReadError::Malformed",
+      "arguments": [],
+      "english": "the \"xmlns\" namespace is declared, which is not allowed"
+    },
+    {
+      "id": "SACM-XML-002/byte-order-mark",
+      "code": "SACM-XML-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "prose"
+        }
+      ],
+      "english": "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read"
+    },
+    {
+      "id": "SACM-XML-002/declared-encoding",
+      "code": "SACM-XML-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "text"
+        }
+      ],
+      "english": "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read"
+    },
+    {
+      "id": "SACM-XML-002/detected-encoding",
+      "code": "SACM-XML-002",
+      "carrier": "ReadError::Unsupported",
+      "arguments": [
+        {
+          "name": "encoding",
+          "kind": "prose"
+        }
+      ],
+      "english": "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read"
+    },
+    {
+      "id": "SACM-XML-003/unrepresentable-character",
+      "code": "SACM-XML-003",
+      "carrier": "WriteError::UnrepresentableCharacter",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "attribute",
+          "kind": "prose"
+        },
+        {
+          "name": "code_point",
+          "kind": "count"
+        }
+      ],
+      "english": "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent"
+    },
+    {
+      "id": "SACM-XML-003/unrepresentable-character-in-value",
+      "code": "SACM-XML-003",
+      "carrier": "WriteError::UnrepresentableCharacter",
+      "arguments": [
+        {
+          "name": "element",
+          "kind": "text"
+        },
+        {
+          "name": "attribute",
+          "kind": "prose"
+        },
+        {
+          "name": "position",
+          "kind": "count"
+        },
+        {
+          "name": "code_point",
+          "kind": "count"
+        }
+      ],
+      "english": "the element {element:?} cannot be written: its {attribute} at index {position} holds U+{code_point:04X}, which XML 1.0 cannot represent"
+    }
+  ]
+}

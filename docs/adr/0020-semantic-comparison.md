@@ -67,3 +67,20 @@ SACM content and, if not, where they differ. The assurance-forge C++ library has
   docs say so, and LIB-EDIT-002 checks the next id on its own.
 - A caller who wants order-free equality filters out the two order variants. An option for
   it can be added later without a break.
+
+## Amendment 1 (2026-11-27): changes per id
+
+LIB-RT-005; lasrod/libSACM#113 A11.
+- `compare::changes(before, after) -> Changes` lists the ids `semantic_compare(before,
+  after)` reports:
+  - right-only, as created, in `after`'s pre-order;
+  - with a difference of their own, as changed, in `after`'s pre-order;
+  - left-only, as deleted, in `before`'s pre-order.
+
+  These are a batch's net lists (ADR 0032), except that two documents have no creation
+  order.
+- `document_changed()` covers the order of the roots and the content outside every element,
+  so `is_empty()` is exactly `before == after`.
+- It is linear and builds no `Difference`.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-27).*

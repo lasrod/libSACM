@@ -21,6 +21,9 @@
 //! - [`schema`]: the SACM XML Schema generated from it, and the check of
 //!   strict output against it with xmllint (`cargo xtask schema`,
 //!   `schema validate`; LIB-TOOL-023, ADR 0043).
+//! - [`catalog`]: the machine-readable diagnostics catalog,
+//!   `crates/sacm/src/diagnostic/catalog.json` (`cargo xtask catalog`;
+//!   LIB-DIAG-006).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -38,6 +41,8 @@
 //!                                           into DIR (default: target/schema); needs fetch-spec
 //! cargo xtask schema validate [--out DIR]   generate it, then check the strict golden files and
 //!                                           DIR/outputs with xmllint
+//! cargo xtask catalog             Write crates/sacm/src/diagnostic/catalog.json from the
+//!                                 crate's codes and templates
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -57,6 +62,7 @@
 //! This crate is repository tooling, not part of the published library: it is
 //! `publish = false` and its API serves the binary and its tests only.
 
+pub mod catalog;
 pub mod fetch;
 pub mod matrix;
 pub mod metamodel;
@@ -87,6 +93,7 @@ commands:
   schema validate [--out DIR]
                           generate it, then check the strict golden files and
                           DIR/outputs with xmllint
+  catalog   write crates/sacm/src/diagnostic/catalog.json from the crate's codes and templates
 
 environment:
   XTASK_ROOT              repository to work on (default: the one xtask was built in);
@@ -183,8 +190,8 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 ///   `invalid row count: <count>`;
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
 ///   [`matrix::cmd_next`], [`matrix::cmd_status`], [`fetch::cmd_fetch`],
-///   [`fetch::cmd_fetch_corpus`], [`schema::cmd_schema`] and
-///   [`schema::cmd_validate`]);
+///   [`fetch::cmd_fetch_corpus`], [`schema::cmd_schema`],
+///   [`schema::cmd_validate`] and [`catalog::cmd_catalog`]);
 ///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
 ///   describes;
 /// - writing to or flushing `out` fails.
@@ -231,6 +238,7 @@ fn dispatch(
         ["schema", "--out", dir] => schema::cmd_schema(root, &root.join(dir), out),
         ["schema", "validate"] => schema::cmd_validate(root, &root.join(schema::DEFAULT_OUT), out),
         ["schema", "validate", "--out", dir] => schema::cmd_validate(root, &root.join(dir), out),
+        ["catalog"] => catalog::cmd_catalog(root, out),
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
         _ => Err(format!(
             "unrecognized arguments: {}\n\n{USAGE}",

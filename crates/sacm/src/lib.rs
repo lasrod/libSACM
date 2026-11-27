@@ -181,7 +181,9 @@
 //!   and ends without naming each one.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
-//!   true when there is none.
+//!   true when there is none. [`compare::changes`] lists the ids created,
+//!   changed and deleted between them, like a batch's net lists but with the
+//!   created ids in document order.
 //!
 //! The [functionality matrix][matrix] tracks every requirement: what is
 //! built, what is planned, and the tests behind each.
@@ -469,9 +471,10 @@
 //! With `serde`, every operation ([`edit::Operation`] and each operation
 //! struct), [`edit::Mutation`], [`edit::EditError`],
 //! [`diagnostic::Diagnostic`], the read and write refusals
-//! [`xmi::ReadError`] and [`xmi::WriteError`], and the values they carry
+//! [`xmi::ReadError`] and [`xmi::WriteError`], the values they carry
 //! (ids, kinds, names, flags, reference ends, codes, severities, locations
-//! and [`xmi::WriteAttribute`]) implement `Serialize` and `Deserialize`. So
+//! and [`xmi::WriteAttribute`]) and [`compare::Changes`] implement
+//! `Serialize` and `Deserialize`. So
 //! an edit can cross a process boundary, travel between users or be kept as
 //! an audit log. A refusal is
 //! `{"type", "code", "template", "arguments", …its fields}`, every key

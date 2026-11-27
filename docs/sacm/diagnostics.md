@@ -10,6 +10,21 @@ human-readable message, and the template and arguments the message is made from
 `WriteError`) carries a code too, and its message's template and arguments (LIB-API-017):
 see [Message templates](#message-templates).
 
+**Machine-readable form.** `crates/sacm/src/diagnostic/catalog.json`, also
+`sacm::diagnostic::CATALOG_JSON`: every code with its severities and every template with its
+code, carrier, arguments and English (LIB-DIAG-006). `cargo xtask catalog` writes it; a test
+fails when it is stale.
+
+- `"format": 1`, which changes only on a breaking change (ADR 0030 amendment 1).
+- `"specifications"`: `["SACM 2.3", "XMI 2.5.1"]`.
+- `"codes"`, sorted by code: `{"code", "severities"}`, the severities named by the code's
+  Severity cell below, as `"error"`, `"warning"` and `"info"`; `[]` for a code no longer
+  reported.
+- `"templates"`, sorted by id: `{"id", "code", "carrier", "arguments", "english"}`; the
+  carrier as in the [Message templates](#message-templates) table, each argument
+  `{"name", "kind"}` with the kind `"text"`, `"count"` or `"prose"`, in the template's
+  order, and the English with its placeholders. The English is not promised.
+
 > **Status.** The codes below are adopted from the assurance-forge C++ SACM library (same
 > author), so that the two implementations report the same finding with the same code.
 > Tool-specific wording from that project ("Assurance Forge", ODE containers) has been kept
@@ -21,7 +36,7 @@ see [Message templates](#message-templates).
 > exactly the crate's `Code` constants.
 
 Adding a code: append the row here in the same change that adds its constant to the
-crate, and name the matrix row that owns it.
+crate, and name the matrix row that owns it; then run `cargo xtask catalog`.
 
 ## XML and security
 

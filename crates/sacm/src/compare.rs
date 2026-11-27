@@ -1,6 +1,10 @@
 //! Comparing documents by their SACM content: [`semantic_compare`] lists
 //! every [`Difference`] between two documents, and `==` on two
-//! [`Document`]s is true exactly when there is none.
+//! [`Document`]s is true exactly when there is none. [`changes`] lists only
+//! the ids created, changed and deleted between them, as [`Changes`]: a
+//! batch's net lists, with the created ids in document order rather than
+//! creation order (LIB-RT-005). With the `serde` feature, `Changes`
+//! serializes as a record.
 //!
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
@@ -1552,6 +1556,179 @@ pub fn semantic_compare(left: &Document, right: &Document) -> Vec<Difference> {
     differences
 }
 
+/// The ids that differ between two documents, from [`changes`]: what a
+/// [`BatchMutation`](crate::edit::BatchMutation)'s net lists say about a
+/// batch, for any two documents, such as before and after restoring a file.
+///
+/// - [`created_ids`](Self::created_ids): only `after` holds the id.
+/// - [`changed_ids`](Self::changed_ids): both hold it, and
+///   [`semantic_compare`] reports a difference of the element itself.
+/// - [`deleted_ids`](Self::deleted_ids): only `before` holds it.
+/// - [`document_changed`](Self::document_changed): the order of the roots,
+///   or the XMI metadata or preserved content outside every element,
+///   differs.
+///
+/// With the `serde` feature it is
+/// `{"created_ids", "changed_ids", "deleted_ids", "document_changed"}`,
+/// every key required: a record (ADR 0030 amendment 8).
+///
+/// # Examples
+///
+/// ```
+/// use sacm::compare::changes;
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetName};
+/// use sacm::model::{Document, ElementId, LangString};
+///
+/// let mut before = Document::new();
+/// edit::apply(&mut before, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut before, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+///
+/// let mut after = before.clone();
+/// edit::apply(&mut after, SetName::new("c1", LangString::new("C1 changed")))?;
+/// edit::apply(&mut after, CreateClaim::new("p", LangString::new("C2")).with_id("c2"))?;
+///
+/// let found = changes(&before, &after);
+/// assert_eq!(found.created_ids(), [ElementId::from("c2")]);
+/// assert_eq!(found.changed_ids(), [ElementId::from("c1")]);
+/// assert!(found.deleted_ids().is_empty() && !found.document_changed());
+/// assert!(changes(&before, &before.clone()).is_empty());
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct Changes {
+    created_ids: Vec<ElementId>,
+    changed_ids: Vec<ElementId>,
+    deleted_ids: Vec<ElementId>,
+    document_changed: bool,
+}
+
+impl Changes {
+    /// The ids only the document after holds, in its
+    /// [pre-order](Document::elements). Documents keep no creation order, so
+    /// unlike a batch's this list is not in the order the elements were
+    /// created.
+    #[must_use]
+    pub fn created_ids(&self) -> &[ElementId] {
+        &self.created_ids
+    }
+
+    /// The ids both documents hold whose element itself differs, in the
+    /// [pre-order](Document::elements) of the document after.
+    ///
+    /// - A moved element is changed, and its old and new parents are not,
+    ///   unless the relative order of their remaining children changed.
+    /// - A reorder changes the parent, not the children.
+    /// - An element of another kind under the same id is changed.
+    /// - A change in an element's subtree does not change the element.
+    #[must_use]
+    pub fn changed_ids(&self) -> &[ElementId] {
+        &self.changed_ids
+    }
+
+    /// The ids only the document before holds, in its
+    /// [pre-order](Document::elements). An element written under a new id is
+    /// one deletion and one creation.
+    #[must_use]
+    pub fn deleted_ids(&self) -> &[ElementId] {
+        &self.deleted_ids
+    }
+
+    /// Whether the document itself differs: the relative order of the roots
+    /// both hold, or the XMI metadata or preserved content outside every
+    /// element. Adding or removing a root is not a change of the root order.
+    #[must_use]
+    pub fn document_changed(&self) -> bool {
+        self.document_changed
+    }
+
+    /// Whether nothing differs: no id is listed and the document did not
+    /// change. Exactly when the two documents are `==`.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.created_ids.is_empty()
+            && self.changed_ids.is_empty()
+            && self.deleted_ids.is_empty()
+            && !self.document_changed
+    }
+}
+
+/// The ids created, changed and deleted between `before` and `after`, and
+/// whether the document itself changed.
+///
+/// The rules are those of [`semantic_compare`], by id:
+/// - created: only `after` holds the id, in `after`'s pre-order;
+/// - changed: both hold it and `semantic_compare` reports a difference whose
+///   [`element_id`](Difference::element_id) is that id, in `after`'s
+///   pre-order;
+/// - deleted: only `before` holds it, in `before`'s pre-order;
+/// - document changed: it reports [`Difference::RootOrder`],
+///   [`Difference::DocumentMetadata`] or
+///   [`Difference::DocumentPreservedContent`].
+///
+/// So [`Changes::is_empty`] is `before == after`. No [`Difference`] is
+/// built: each element stops at its first difference. It does not recurse
+/// and takes time linear in the number of elements.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::compare::changes;
+/// use sacm::edit::{self, CreateArgumentPackage, DeleteElement, ReorderElements};
+/// use sacm::model::{Document, ElementId, LangString};
+///
+/// let mut before = Document::new();
+/// edit::apply(&mut before, CreateArgumentPackage::root(LangString::new("A")).with_id("a"))?;
+/// edit::apply(&mut before, CreateArgumentPackage::root(LangString::new("B")).with_id("b"))?;
+/// edit::apply(&mut before, CreateArgumentPackage::root(LangString::new("C")).with_id("c"))?;
+///
+/// let mut after = before.clone();
+/// edit::apply(&mut after, DeleteElement::new("b"))?;
+/// edit::apply(&mut after, ReorderElements::roots(["c", "a"]))?;
+///
+/// let found = changes(&before, &after);
+/// assert_eq!(found.deleted_ids(), [ElementId::from("b")]);
+/// // A root order is no element's change.
+/// assert!(found.changed_ids().is_empty() && found.document_changed());
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[must_use]
+pub fn changes(before: &Document, after: &Document) -> Changes {
+    let mut created_ids = Vec::new();
+    let mut changed_ids = Vec::new();
+    for element in after.elements() {
+        match before.get(element.id()) {
+            None => created_ids.push(element.id().clone()),
+            Some(old) => {
+                if compare_element(before, after, old, element, &mut stop_at_first).is_break() {
+                    changed_ids.push(element.id().clone());
+                }
+            }
+        }
+    }
+    let deleted_ids = before
+        .elements()
+        .filter(|element| !after.contains(element.id()))
+        .map(|element| element.id().clone())
+        .collect();
+    let document_changed = compare_document(before, after, &mut stop_at_first).is_break();
+    Changes {
+        created_ids,
+        changed_ids,
+        deleted_ids,
+        document_changed,
+    }
+}
+
+/// A sink that stops a walk at the first difference it is given.
+fn stop_at_first(_: Found<'_>) -> ControlFlow<()> {
+    ControlFlow::Break(())
+}
+
 /// One difference as [`walk`] finds it: borrowed from the two documents, so
 /// finding it allocates nothing. [`Found::into_difference`] makes the owned
 /// [`Difference`].
@@ -1842,15 +2019,7 @@ fn walk<'a>(
     right: &'a Document,
     mut sink: impl FnMut(Found<'a>) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
-    if common_roots(left, right).ne(common_roots(right, left)) {
-        sink(Found::RootOrder)?;
-    }
-    if left.document_metadata() != right.document_metadata() {
-        sink(Found::DocumentMetadata)?;
-    }
-    if left.document_preserved() != right.document_preserved() {
-        sink(Found::DocumentPreservedContent)?;
-    }
+    compare_document(left, right, &mut sink)?;
 
     for element in left.elements() {
         let Some(other) = right.get(element.id()) else {
@@ -1868,6 +2037,27 @@ fn walk<'a>(
     ControlFlow::Continue(())
 }
 
+/// Gives each difference of the documents themselves, not of an element, to
+/// `sink`, in [`semantic_compare`]'s order, until `sink` breaks: the
+/// relative order of the common roots, then the XMI metadata and the
+/// preserved content outside every element.
+fn compare_document<'a>(
+    left: &'a Document,
+    right: &'a Document,
+    sink: &mut impl FnMut(Found<'a>) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    if common_roots(left, right).ne(common_roots(right, left)) {
+        sink(Found::RootOrder)?;
+    }
+    if left.document_metadata() != right.document_metadata() {
+        sink(Found::DocumentMetadata)?;
+    }
+    if left.document_preserved() != right.document_preserved() {
+        sink(Found::DocumentPreservedContent)?;
+    }
+    ControlFlow::Continue(())
+}
+
 /// Whether the element `id`, held by both documents, differs between them:
 /// whether [`semantic_compare`] reports a difference of the element itself
 /// (not `LeftOnly`, `RightOnly` or `RootOrder`). `false` when either
@@ -1875,7 +2065,7 @@ fn walk<'a>(
 pub(crate) fn element_differs(left: &Document, right: &Document, id: &ElementId) -> bool {
     match (left.get(id), right.get(id)) {
         (Some(element), Some(other)) => {
-            compare_element(left, right, element, other, &mut |_| ControlFlow::Break(())).is_break()
+            compare_element(left, right, element, other, &mut stop_at_first).is_break()
         }
         _ => false,
     }
@@ -2066,7 +2256,7 @@ impl PartialEq for Document {
     /// difference and builds no [`Difference`]. The per-kind counters that
     /// generate ids are not compared.
     fn eq(&self, other: &Self) -> bool {
-        walk(self, other, |_| ControlFlow::Break(())).is_continue()
+        walk(self, other, stop_at_first).is_continue()
     }
 }
 

@@ -46,6 +46,8 @@ use std::fmt::Debug;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use sacm::compare::{Difference, semantic_compare};
+// The changes between two documents of slice 0083 (LIB-RT-005).
+use sacm::compare::changes;
 use sacm::edit::{
     self, AddReference, Batch, BatchError, BatchMutation, CreateArgumentGroup,
     CreateArgumentPackage, CreateArgumentReasoning, CreateArtifactGroup, CreateArtifactPackage,
@@ -72,6 +74,7 @@ use sacm::xmi::{self, ReadOptions};
 
 const EDIT_014: &str = "LIB-EDIT-014";
 const EDIT_007: &str = "LIB-EDIT-007";
+const RT_005: &str = "LIB-RT-005";
 
 /// An id no starting document holds.
 const NOWHERE: &str = "nowhere";
@@ -1699,6 +1702,86 @@ fn lib_edit_014_over_random_sequences_the_net_ids_equal_the_semantic_comparison(
             "{EDIT_014}: {context}: the net ids are not the right-only (in creation order), \
              per-element (in pre-order after) and left-only (in pre-order before) ids of \
              semantic_compare(before, after)"
+        );
+    }
+}
+
+/// `compare::changes(start, after)` of each random batch lists the batch's
+/// net ids: the changed and deleted ids exactly, the created ids as a set,
+/// and as a list when the batch created them in `after`'s pre-order (a
+/// batch lists them in creation order); `document_changed()` is whether
+/// `semantic_compare` reports a root order, the one document-level
+/// difference a batch can make.
+#[test]
+fn lib_rt_005_over_random_sequences_changes_equal_the_batch_s_net_ids() {
+    let runs = random_runs();
+    assert_runs_cover(&runs);
+    let set = |ids: &[ElementId]| ids.iter().cloned().collect::<BTreeSet<_>>();
+    let mut created_in_pre_order = 0;
+    let mut created_out_of_pre_order = 0;
+    let mut root_orders = 0;
+    for run in &runs {
+        let context = &run.context;
+        let found = changes(&run.start, &run.after);
+        let batch = &run.outcome;
+        assert_eq!(
+            found.changed_ids(),
+            batch.changed_ids(),
+            "{RT_005}: {context}: changed_ids() is not the batch's"
+        );
+        assert_eq!(
+            found.deleted_ids(),
+            batch.deleted_ids(),
+            "{RT_005}: {context}: deleted_ids() is not the batch's"
+        );
+        assert_eq!(
+            set(found.created_ids()),
+            set(batch.created_ids()),
+            "{RT_005}: {context}: created_ids() is not the batch's as a set"
+        );
+        let pre_order: Vec<&ElementId> = run
+            .after
+            .elements()
+            .map(SacmElement::id)
+            .filter(|id| batch.created_ids().contains(id))
+            .collect();
+        if pre_order.iter().copied().eq(batch.created_ids()) {
+            assert_eq!(
+                found.created_ids(),
+                batch.created_ids(),
+                "{RT_005}: {context}: the batch created in pre-order, and created_ids() is \
+                 not its list"
+            );
+            created_in_pre_order += usize::from(!batch.created_ids().is_empty());
+        } else {
+            created_out_of_pre_order += 1;
+        }
+        let root_order = semantic_compare(&run.start, &run.after)
+            .iter()
+            .any(|difference| matches!(difference, Difference::RootOrder { .. }));
+        root_orders += usize::from(root_order);
+        assert_eq!(
+            found.document_changed(),
+            root_order,
+            "{RT_005}: {context}: document_changed() is not whether the roots were reordered"
+        );
+        assert_eq!(
+            found.is_empty(),
+            run.start == run.after,
+            "{RT_005}: {context}: is_empty() is not start == after"
+        );
+    }
+    for (what, count) in [
+        ("batches that created in pre-order", created_in_pre_order),
+        (
+            "batches that created out of pre-order",
+            created_out_of_pre_order,
+        ),
+        ("batches that reordered the roots", root_orders),
+    ] {
+        assert!(
+            count > 0,
+            "{RT_005}: setup: the random sequences have no {what}"
         );
     }
 }

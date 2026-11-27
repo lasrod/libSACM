@@ -661,6 +661,18 @@ mod serde_specification {
                 ),
             }
         }
+        // A number is refused by naming the two specifications expected.
+        let number = TOO_MANY.replacen(SPECIFICATION, r#""specification":23"#, 1);
+        match serde_json::from_str::<Diagnostic>(&number) {
+            Ok(value) => panic!("{ROW}: a number: {number} was read as {value:?}"),
+            Err(error) => {
+                let text = error.to_string();
+                assert!(
+                    text.contains(r#"expected "SACM 2.3" or "XMI 2.5.1""#),
+                    "{ROW}: a number: the refusal does not name what was expected: {text}"
+                );
+            }
+        }
         // A specification alone is its name.
         for (specification, name) in [
             (Specification::Sacm23, "\"SACM 2.3\""),
@@ -1058,6 +1070,8 @@ fn lib_api_013_an_element_id_compares_with_str() {
     assert!(id != " c1", "{ROW}: the comparison trims");
     assert!(id != "c1 ", "{ROW}: the comparison trims");
     assert!("C1" != id, "{ROW}: the reverse comparison ignores case");
+    assert!(*"C1" != id, "{ROW}: str != ElementId ignores case");
+    assert!(*"c1 " != id, "{ROW}: str != ElementId trims");
     let mut doc = Document::new();
     apply(
         "the package",
