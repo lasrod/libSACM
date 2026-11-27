@@ -16,8 +16,9 @@ lasrod/libSACM#113.
   C-STRUCT-PRIVATE; C-STABLE (no `roxmltree` type in the public API); `#[non_exhaustive]` on
   the enums and options that will grow; `#[must_use]` on getters and builders.
 - **Fixed:** names take `impl Into<LangString>` (LIB-API-022); uniform traits and
-  conversions, and an `Href` that compares with text as an `ElementId` does (LIB-API-023); collection and result helpers (LIB-API-024); one spelling for
-  the href form, `new_href` and `href()` (LIB-API-025).
+  conversions, and an `Href` that compares with text as an `ElementId` does (LIB-API-023);
+  collection and result helpers (LIB-API-024); one spelling for the href form, `new_href`
+  and `href()` (LIB-API-025).
 - **Argument rule:** a lookup takes an id as `&impl AsRef<str>` and other text as `&str`.
   A constructor takes an id as `impl Into<ElementId>`, text as `impl Into<String>`, and a
   value as `impl Into<LangString>` or `impl Into<MultiLangString>`.

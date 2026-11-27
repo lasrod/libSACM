@@ -26,8 +26,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   from the parameter now needs it written: `CreateClaim::new("p", Default::default())` is
   `CreateClaim::new("p", LangString::default())`, and a name given as `x.into()` or
   deserialized in place needs `LangString` as its type [LIB-API-022].
-- `Href` now compares with `str` and `&str`, so `[]` compared with a slice of `Href`s needs
-  its type, as for `ElementId` [LIB-API-023].
+- `Href` now compares with `str` and `&str`, so the element type of an empty array or vector
+  is no longer inferred: `assert_eq!(element.hrefs(end), [])` needs `[] as [Href; 0]`, or
+  `.is_empty()`; `href == x.into()` and `href == s.parse()?` likewise need the target type
+  [LIB-API-023].
 - `ElementId` now compares with `str` and `&str`, so the element type of an empty array is
   no longer inferred: `assert_eq!(mutation.created_ids(), [])` needs
   `[] as [ElementId; 0]`, or `.is_empty()`; `id == x.into()` likewise needs the target

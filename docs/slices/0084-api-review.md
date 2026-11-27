@@ -1,8 +1,8 @@
 ---
 slice: 0084
 name: api-review
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-API-005, LIB-API-022, LIB-API-023, LIB-API-024, LIB-API-025]
 mode: pr
 ---
@@ -44,3 +44,6 @@ Library rows: the Rust API Guidelines checklist; acceptance by the lead from the
   test, the verifier's wording in `Mutation::is_empty` and `LangString`, the CHANGELOG
   Breaking entry for name inference, ADR 0045's checked list and deferred items, an ADR 0040
   rename note; one follow-up.
+- 2026-11-27 verification: re-verify PASS on all five rows (fb3c567); the last wording
+  (CHANGELOG `Href` entry, LIB-API-023 acceptance, ADR 0045 wrap) applied by the lead.
+  Record `docs/verification/0084-api-review.md`. Rows `verified`.
