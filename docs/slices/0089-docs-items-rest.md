@@ -41,3 +41,9 @@ guarantee comes from LIB-RT-004's wording, now true because edits refuse unsavab
   metadata or a reference still names), so `xmi::write` states it with those exceptions; the
   lead adds LIB-EDIT-026 to remove them before 0.5.0 and adjusts LIB-DOC-015's acceptance.
   Rows `implemented`.
+- 2026-11-28 verification: FAIL on LIB-DOC-014 (the delete checks left proxies out) and
+  LIB-DOC-015 (a third round-trip exception: a copy brings its source's preserved content and
+  metadata ids); LIB-DOC-002 and -010 PASS but wait on them. Fix round: the verifier's texts;
+  LIB-DOC-015's acceptance names the copy exception; the lead adds row LIB-EDIT-026 (planned)
+  so the acceptance's reference resolves. The guarantee stays stated, with its exceptions.
+

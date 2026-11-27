@@ -11,7 +11,7 @@ use crate::model::{
 };
 
 /// Deletes an element, everything it contains, and whatever its policies
-/// allow, so that no reference is left dangling.
+/// allow, so that no typed reference is left dangling.
 ///
 /// - **Three policies, each refusing by default,** so a delete never cascades unless
 ///   asked to (D-POLICY). SACM 2.3 says nothing about editing, so they follow the

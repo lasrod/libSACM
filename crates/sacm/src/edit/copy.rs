@@ -30,8 +30,8 @@ use crate::model::{
 /// What a copy keeps:
 ///
 /// - **Its id,** when that is an XML `NCName` free in the target: no element, name,
-///   `content`, `key`, `location`, `value` or preserved content holds it, and no
-///   reference names it.
+///   `content`, `key`, `location`, `value`, preserved content or XMI metadata holds
+///   it, and no reference names it.
 /// - **A generated id otherwise,** such as `claim_3`, that avoids every id the copy keeps
 ///   or names.
 /// - **A part's `xmi:id`** (a name, `content`, `key`, `location` or `value`), when it is
@@ -43,6 +43,9 @@ use crate::model::{
 ///   [`validate`](crate::validation::validate) reports (SACM-ID-003).
 /// - **Texts are not checked.** A source document holds only text that `xmi::read` or an
 ///   edit accepted (LIB-EDIT-025).
+/// - **A strict write refuses what it copies** where it would refuse the source:
+///   preserved content, or XMI metadata whose `xmi:id` is no `NCName`
+///   ([`xmi::write`](crate::xmi::write#round-trip)).
 ///
 /// # Examples
 ///

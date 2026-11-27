@@ -572,8 +572,8 @@ pub(crate) use output::{first_unrepresentable, name_texts, string_attribute, val
 /// # Ids
 ///
 /// An element's id is the value of its `xmi:id`, an `xsd:ID` (XMI 2.5.1 §7.6.1).
-/// The ids of the elements, and of the names, `content`s, `key`s and `value`s, of
-/// a file share one id space (ADR 0024, ADR 0025).
+/// The ids of the elements, and of the names, `content`s, `key`s, `location`s and
+/// `value`s, of a file share one id space (ADR 0024, ADR 0025).
 ///
 /// - **Only `xmi:id` is one.** An `id` in no namespace or another, such as `id` or
 ///   `o:id`, is an attribute the class lacks, and is preserved.
@@ -1033,7 +1033,7 @@ pub(crate) use output::{first_unrepresentable, name_texts, string_attribute, val
 /// | [`ReadError::Malformed`] | SACM-XML-001 | both | the input is not well-formed XML, is truncated, is not valid UTF-8 or UTF-16, declares ASCII but holds a non-ASCII character, has a UTF-16 byte order mark but declares another encoding, or has a UTF-8 byte order mark but declares ISO-8859-1 |
 /// | [`ReadError::InvalidRoot`] | SACM-XMI-001 | both | a root's local name is not one of the twelve SACM package kinds; the root is in no namespace or one whose URI does not contain `sacm`; or the document element is in an XMI namespace (XMI 2.5.1's or `http://www.omg.org/XMI`) but is not `xmi:XMI` |
 /// | [`ReadError::NoPackage`] | SACM-XMI-001 | both | the `xmi:XMI` element holds no root: no element child outside the XMI namespace |
-/// | [`ReadError::DuplicateId`] | SACM-ID-001 | both | two or more elements (names, `content`s, `key`s, `value`s and preserved elements included) carry the same `xmi:id` (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value (see [Ids](#ids)). It names every element that carries the first id to repeat |
+/// | [`ReadError::DuplicateId`] | SACM-ID-001 | both | two or more elements (names, `content`s, `key`s, `location`s, `value`s and preserved elements included) carry the same `xmi:id` (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value (see [Ids](#ids)). It names every element that carries the first id to repeat |
 /// | [`ReadError::LimitExceeded`] | SACM-SEC-003 | both | the input passes one of the [`Limits`] (see [Limits](#limits)) |
 /// | [`ReadError::InvalidId`] | SACM-ID-002 | strict | the `xmi:id` of an element, of a `name`, `content`, `key`, `location` or `value`, or of an element of preserved content, is empty |
 /// | [`ReadError::RepeatedValue`] | SACM-MULT-001 | strict | a property is given more often than XMI allows, even with equal values; it gives every occurrence |
@@ -2649,8 +2649,9 @@ impl std::error::Error for ReadError {}
 /// Take a document from a strict [`read`] that a strict `write` accepts, changed
 /// by any edits [`edit::apply`](crate::edit::apply) accepted.
 ///
-/// - **It writes strictly,** with the two exceptions below. No edit stores text
-///   XML 1.0 cannot represent, an id that is no `NCName`, or preserved content.
+/// - **It writes strictly,** with the three exceptions below. No edit stores text
+///   XML 1.0 cannot represent, and only a copy stores preserved content or an id
+///   that is no `NCName`.
 /// - **It reads back equal.** A strict read of the output gives a document `==`
 ///   to it, under [`Limits`] that admit the output.
 /// - **Exception: no root.** Edits that delete every root leave nothing to
@@ -2658,6 +2659,11 @@ impl std::error::Error for ReadError {}
 /// - **Exception: a freed id that is still named.** An edit can free an id that
 ///   XMI metadata names, by deleting the element, or the `xmi:id` of a name or
 ///   text that a reference names, by replacing it ([`WriteError::Invalid`]).
+/// - **Exception: what a copy brings.** [`CopyElements`](crate::edit::CopyElements)
+///   copies its source's preserved content and XMI metadata as they are.
+/// - **So the target is refused** for a copied element that holds preserved
+///   content ([`WriteError::PreservedContent`]), or XMI metadata whose `xmi:id` is
+///   no `NCName` ([`WriteError::Invalid`]), as the source would be.
 /// - **Outside the guarantee:** a document that holds preserved content or a
 ///   schema error as read, which a tolerant read in particular may give. A
 ///   strict write refuses it.
@@ -3109,7 +3115,7 @@ pub enum WriteError {
     ///
     /// | Schema error | Code | Rule |
     /// |---|---|---|
-    /// | an `xmi:id`, of an element, a `name`, a `content`, a `key` or a `value`, is no `NCName`, which an `xsd:ID` must be | SACM-ID-002 | XML Schema 1.0 Part 2 §3.3.8 |
+    /// | an `xmi:id`, of an element, a `name`, a `content`, a `key`, a `location` or a `value`, is no `NCName`, which an `xsd:ID` must be | SACM-ID-002 | XML Schema 1.0 Part 2 §3.3.8 |
     /// | a reference names no `xmi:id` the output writes, which an `xsd:IDREF` must | SACM-REF-001 | Part 1 §3.3.4; XMI 2.5.1 rule 4i |
     ///
     /// - **`diagnostics`** holds every such Error, in [`Diagnostic`] order. Each

@@ -172,8 +172,9 @@
 //!   id of the value at its position.
 //! - **Freed ids.** The ids beyond the new length, every id of a removed `content`, and
 //!   an id no reference holds any more are freed, so a later create may generate them.
-//! - **Setting the value held changes nothing.** The document is not written, and
-//!   [`Mutation::is_empty`] is true ([`BatchMutation::is_empty`] for a batch).
+//! - **Setting the value held changes nothing.** The elements are unchanged, though the
+//!   document gets a new revision, and [`Mutation::is_empty`] is true
+//!   ([`BatchMutation::is_empty`] for a batch).
 //! - **Otherwise [`Mutation::changed_ids`] is the element,** or for
 //!   [`ReorderElements::new`] the parent.
 //! - **A root reorder lists no id.** The order of the roots belongs to no element, so
@@ -182,10 +183,10 @@
 //!
 //! # Deleting an element
 //!
-//! [`DeleteElement`] deletes an element of any kind, everything it contains, and what
-//! its three policies allow. It never leaves a reference dangling (LIB-EDIT-005,
-//! LIB-EDIT-006, ADR 0031). Each policy refuses by default, so nothing cascades unless
-//! asked (D-POLICY):
+//! [`DeleteElement`] deletes an element of any kind, everything it contains, and what its three
+//! policies allow. It never leaves a typed reference dangling; XMI metadata that names a deleted
+//! element is kept as it is (LIB-EDIT-005, LIB-EDIT-006, ADR 0031). Each policy refuses by
+//! default, so nothing cascades unless asked (D-POLICY):
 //!
 //! | Policy | Refuses (default) | Allows | What it does |
 //! |---|---|---|---|
@@ -554,10 +555,10 @@ use plan::{Features, Outcome, Plan};
 /// | Check | Refusal | Code |
 /// |---|---|---|
 /// | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-/// | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s, and no preserved child element (ADR 0033) | [`EditError::NotEmpty`] | SACM-CMD-006 |
+/// | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s, no preserved child element (ADR 0033) and no proxy of a child in another document ([`Proxy`](crate::model::Proxy)) | [`EditError::NotEmpty`] | SACM-CMD-006 |
 /// | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
 /// | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
-/// | 4. under `RejectIfNonEmpty`: the first interface or binding in pre-order that the delete removes for its bound (left with no `implements`, or fewer than two distinct participants) and that holds an element other than a `UtilityElement` or a preserved child element (LIB-EDIT-019) | [`EditError::NotEmpty`] naming it | SACM-CMD-006 |
+/// | 4. under `RejectIfNonEmpty`: the first interface or binding in pre-order that the delete removes for its bound (left with no `implements`, or fewer than two distinct participants) and that holds an element other than a `UtilityElement`, a preserved child element or a proxy (LIB-EDIT-019) | [`EditError::NotEmpty`] naming it | SACM-CMD-006 |
 ///
 /// ## Moves
 ///
@@ -580,7 +581,7 @@ use plan::{Features, Outcome, Plan};
 /// |---|---|---|
 /// | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
 /// | 2. each top, in list order: the parent's class can hold it, and it keeps no `xmi:type` or `xsi:type` as preserved content, which only a root can carry (LIB-COMPAT-019); for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::KeptRootType`] (the source id), [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
-/// | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
+/// | 3. each copied element, in pre-order: its preserved content's and XMI metadata's ids are free, and neither names an id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
 /// | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the distinct ids it needs, such as an interface's `implements` and a binding's two participants (ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 /// | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
 /// | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
@@ -1841,7 +1842,7 @@ pub enum EditError {
     /// The id given with `with_id` is already in the document (SACM-CMD-004).
     ///
     /// - **In use** as an element's id, or as the `xmi:id` of a name, a `content`, a `key`,
-    ///   a `location` or a `value`, which identify no element
+    ///   a `location`, a `value`, preserved content or XMI metadata, which identify no element
     ///   ([`SacmElement::name_id`](crate::model::SacmElement::name_id),
     ///   [`SacmElement::content_id`](crate::model::SacmElement::content_id)).
     /// - **Fix.** Ids are unique across the whole document, not per parent. Choose another
@@ -2315,8 +2316,9 @@ pub enum EditError {
     ///
     /// - **Not counted:** descriptions, implementation constraints, notes and tagged
     ///   values.
-    /// - **Counted:** each child element of preserved content anywhere in the subtree
-    ///   (ADR 0033).
+    /// - **Counted:** each child element of preserved content (ADR 0033) and each
+    ///   proxy, a child held in another document (ADR 0040 amendment 1), anywhere in
+    ///   the subtree.
     /// - **Fix.** Choose [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively), or
     ///   delete the contents first.
     ///
@@ -2344,8 +2346,8 @@ pub enum EditError {
         element: ElementId,
         /// How many elements it contains, at any depth, that are not `UtilityElement`s.
         ///
-        /// The preserved child elements of every element of its subtree, itself included,
-        /// count too.
+        /// The preserved child elements and the proxies of every element of its subtree,
+        /// itself included, count too.
         contained: usize,
     },
     /// A [`DeleteElement`] would leave a reference dangling across a package boundary
