@@ -6,19 +6,15 @@ use std::str::FromStr;
 /// The declared state of an Assertion: SACM's `AssertionDeclaration`
 /// enumeration (SACM 2.3 §11.8).
 ///
-/// Every Assertion (a Claim or an asserted relationship; see
-/// [`AbstractClass::Assertion`](crate::model::AbstractClass::Assertion)) has
-/// one, in its `assertionDeclaration` attribute (SACM 2.3 §11.10). Read it
-/// with [`SacmElement::assertion_declaration`](crate::model::SacmElement::assertion_declaration).
-///
-/// The variants are in the metamodel's literal order, and [`Ord`] follows it.
-/// The default is [`Asserted`](Self::Asserted) (§11.8, §11.10). Conversion
-/// to and from the literal spellings is exact and case-sensitive:
-/// [`as_str`](Self::as_str) and [`Display`](fmt::Display) give the spelling,
-/// and [`FromStr`] accepts only that spelling.
-///
-/// It is `#[non_exhaustive]` so that a later SACM revision can add literals
-/// without a breaking change.
+/// - **Where.** Every Assertion (a Claim or an asserted relationship; see
+///   [`AbstractClass::Assertion`](crate::model::AbstractClass::Assertion)) has one, in its
+///   `assertionDeclaration` attribute (§11.10). Read it with
+///   [`SacmElement::assertion_declaration`](crate::model::SacmElement::assertion_declaration).
+/// - **Order.** The variants are in the metamodel's literal order, and [`Ord`] follows it.
+/// - **Default.** [`Asserted`](Self::Asserted) (§11.8, §11.10).
+/// - **Spelling.** [`as_str`](Self::as_str) and [`Display`](fmt::Display) give the literal's
+///   spelling; [`FromStr`] accepts only that spelling, case included.
+/// - **`#[non_exhaustive]`.** A later SACM revision can add literals without a breaking change.
 ///
 /// # Examples
 ///

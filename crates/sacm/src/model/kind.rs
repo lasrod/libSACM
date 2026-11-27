@@ -266,9 +266,8 @@ pub enum ElementKind {
     /// `TaggedValue`: a key and value attached to an element (§8.12).
     TaggedValue,
     // AssuranceCase (clause 9)
-    /// `AssuranceCasePackage`: an assurance case: the package that holds
-    /// argument, artifact and terminology packages, and nested assurance case
-    /// packages.
+    /// `AssuranceCasePackage`: an assurance case: the package that holds argument, artifact
+    /// and terminology packages, and nested assurance case packages.
     AssuranceCasePackage,
     /// `AssuranceCasePackageInterface`: the declared interface of an assurance case package.
     AssuranceCasePackageInterface,
@@ -329,9 +328,8 @@ pub enum ElementKind {
     /// `Artifact` (§12.7): "the distinguishable units of data used in a structured
     /// assurance case", such as a document, a test report or a model.
     Artifact,
-    /// `ArtifactAssetRelationship`: a relationship between artifact assets
-    /// (clause 12.14; the machine-readable model misnames it
-    /// `ArtifactAssertedRelationship`).
+    /// `ArtifactAssetRelationship`: a relationship between artifact assets (clause 12.14; the
+    /// machine-readable model misnames it `ArtifactAssertedRelationship`).
     ArtifactAssetRelationship,
     /// `Activity` (§12.11): "units of work related to the management of
     /// `ArtifactAssets`".
@@ -585,30 +583,32 @@ impl ElementKind {
     /// Whether an element of this kind may contain a `child` element: whether
     /// a composite role of its SACM 2.3 class admits the child's kind.
     ///
-    /// The roles are `description`, `implementationConstraint`, `note` and
-    /// `taggedValue` on every `ModelElement` (§8.6); `assuranceCasePackage`,
-    /// `argumentPackage`, `artifactPackage` and `terminologyPackage` on
-    /// `AssuranceCasePackage` (§9.2); `terminologyElement` on
-    /// `TerminologyPackage` (§10.4); `argumentElement` on `ArgumentPackage`
-    /// (§11.4: the spelling of the model, where the text says
-    /// `argumentationElement`, D-TEXT-MODEL); `artifactElement` on `ArtifactPackage`, admitting every
-    /// `ArtifactElement` (§12.2, ADR 0014); and `property` on every
-    /// `ArtifactAsset` (§12.6). Package interfaces and bindings inherit their
-    /// package's roles. A `UtilityElement` holds no elements.
+    /// The composite roles:
     ///
-    /// The answer comes from the same table that insertion, the edit
-    /// operations and the XMI writer use, so it cannot disagree with them. It
-    /// states what SACM 2.3 admits. It does not promise that a create
-    /// operation exists for `child`, that a given edit succeeds (ids, names
-    /// and references are checked separately), or that
-    /// [`xmi::read`](crate::xmi::read) reads such a child in this release.
-    /// Multiplicity is not enforced here: a second `Description` is admitted,
-    /// and [`validate`](crate::validation::validate) reports it
-    /// (SACM23-VAL-011). Nor does it check the rule of §11.4 that an
-    /// `ArgumentPackage` holding nested `ArgumentPackage`s holds only
-    /// `ArgumentPackage`s; `validate` reports that (SACM23-VAL-012). Which
-    /// kinds may be a root is
-    /// [`is_package`](Self::is_package).
+    /// | Class | Roles |
+    /// |---|---|
+    /// | every `ModelElement` (§8.6) | `description`, `implementationConstraint`, `note`, `taggedValue` |
+    /// | `AssuranceCasePackage` (§9.2) | `assuranceCasePackage`, `argumentPackage`, `artifactPackage`, `terminologyPackage` |
+    /// | `TerminologyPackage` (§10.4) | `terminologyElement` |
+    /// | `ArgumentPackage` (§11.4) | `argumentElement`: the model's spelling, where the text says `argumentationElement` (D-TEXT-MODEL) |
+    /// | `ArtifactPackage` (§12.2, ADR 0014) | `artifactElement`, admitting every `ArtifactElement` |
+    /// | every `ArtifactAsset` (§12.6) | `property` |
+    ///
+    /// - **Interfaces and bindings.** A package interface or binding inherits its package's
+    ///   roles.
+    /// - **A `UtilityElement`** holds no elements.
+    /// - **One table.** Insertion, the edit operations and the XMI writer use the same table,
+    ///   so the answer cannot disagree with them.
+    /// - **What SACM 2.3 admits, no more.** It does not promise that a create operation exists
+    ///   for `child`, that a given edit succeeds (ids, names and references are checked
+    ///   separately), or that [`xmi::read`](crate::xmi::read) reads such a child in this
+    ///   release.
+    /// - **Multiplicity is not enforced here.** A second `Description` is admitted, and
+    ///   [`validate`](crate::validation::validate) reports it (SACM23-VAL-011).
+    /// - **Nested packages.** The rule of §11.4, that an `ArgumentPackage` holding nested
+    ///   `ArgumentPackage`s holds only `ArgumentPackage`s, is not checked here; `validate`
+    ///   reports it (SACM23-VAL-012).
+    /// - **Roots.** Which kinds may be a root is [`is_package`](Self::is_package).
     ///
     /// # Examples
     ///

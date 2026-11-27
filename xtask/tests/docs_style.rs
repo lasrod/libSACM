@@ -881,6 +881,627 @@ fn lib_doc_013_no_paragraph_or_list_item_in_the_sacm_references_runs_over_four_l
 }
 
 // ---------------------------------------------------------------------------
+// LIB-DOC-012: item docs of model, compare, diagnostic and validation
+// ---------------------------------------------------------------------------
+
+/// The modules of `crates/sacm/src` whose `///` docs LIB-DOC-012 checks:
+/// each `<module>.rs` and every `.rs` file under `<module>/`.
+const ITEM_DOC_MODULES: [&str; 4] = ["model", "compare", "diagnostic", "validation"];
+
+/// The longest item summary allowed, in display lines.
+const MAX_SUMMARY_LINES: usize = 2;
+
+/// One item's `///` docs, as [`doc_blocks`] reads them.
+struct DocBlock {
+    /// The doc lines, each with its 1-based number and its text.
+    lines: Vec<(usize, String)>,
+    /// The first line after the block that is not blank, a comment or an
+    /// attribute, trimmed: the documented item's. Empty at the end of the file.
+    item: String,
+    /// Whether the block is inside a `#[cfg(test)]` module.
+    in_test: bool,
+    /// Whether the innermost `impl` block around the block is a trait impl,
+    /// `impl … for … {`.
+    in_trait_impl: bool,
+}
+
+/// The text of a `///` line, at any indentation, without the `///` and the
+/// one space after it; `None` for any other line, `////` included.
+fn doc_text(line: &str) -> Option<String> {
+    let rest = line
+        .trim_start()
+        .strip_prefix("///")
+        .filter(|rest| !rest.starts_with('/'))?;
+    Some(rest.strip_prefix(' ').unwrap_or(rest).to_owned())
+}
+
+/// Whether `line` starts an outer attribute, `#[…]`.
+fn is_attribute(line: &str) -> bool {
+    line.trim_start().starts_with("#[")
+}
+
+/// The index of the line after the attribute that starts at `lines[start]`:
+/// the attribute ends on the line where its brackets balance.
+fn attribute_end(lines: &[&str], start: usize) -> usize {
+    let mut depth = 0_i64;
+    for (i, line) in lines.iter().enumerate().skip(start) {
+        for c in line.chars() {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                _ => {}
+            }
+        }
+        if depth <= 0 {
+            return i + 1;
+        }
+    }
+    lines.len()
+}
+
+/// The `#[cfg(test)]` modules of `lines`, as index ranges: from the
+/// `#[cfg(test)]` line to the `}` at the indentation of the `mod … {` line
+/// after it (the sources are rustfmt-formatted).
+fn test_modules(lines: &[&str]) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim() != "#[cfg(test)]" {
+            continue;
+        }
+        let mut header = i + 1;
+        while header < lines.len() && is_attribute(lines[header]) {
+            header = attribute_end(lines, header);
+        }
+        let Some(text) = lines.get(header) else {
+            continue;
+        };
+        let trimmed = text.trim();
+        if !(trimmed.ends_with('{') && trimmed.split_whitespace().any(|word| word == "mod")) {
+            continue;
+        }
+        let close = format!("{}}}", &text[..text.len() - text.trim_start().len()]);
+        let end = lines[header + 1..]
+            .iter()
+            .position(|line| *line == close)
+            .map_or(lines.len(), |k| header + 1 + k);
+        ranges.push((i, end));
+    }
+    ranges
+}
+
+/// The `impl` blocks of `lines`, as index ranges, each with whether it is a
+/// trait impl: from the header line, `impl…` at indentation N, to the first
+/// line after it that is exactly N spaces and `}` (the sources are
+/// rustfmt-formatted). A header with ` for ` in it is a trait impl's; an
+/// `impl … {}` on one line holds nothing.
+fn impl_blocks(lines: &[&str]) -> Vec<(usize, usize, bool)> {
+    let mut ranges = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !(trimmed.starts_with("impl ") || trimmed.starts_with("impl<"))
+            || trimmed.ends_with("{}")
+            || trimmed.ends_with(';')
+        {
+            continue;
+        }
+        let close = format!("{}}}", &line[..line.len() - line.trim_start().len()]);
+        let end = lines[i + 1..]
+            .iter()
+            .position(|line| *line == close)
+            .map_or(lines.len(), |k| i + 1 + k);
+        ranges.push((i, end, trimmed.contains(" for ")));
+    }
+    ranges
+}
+
+/// The `///` blocks of a Rust source. A block is a run of `///` lines, at any
+/// indentation, and the attribute lines between them (`#[doc(alias = …)]`):
+/// it ends at the first line that is neither. A bare `///` is a blank line;
+/// `////` is a plain comment; `//!` and `#[doc = …]` are not read.
+fn doc_blocks(source: &str) -> Vec<DocBlock> {
+    let lines: Vec<&str> = source.lines().collect();
+    let tests = test_modules(&lines);
+    let impls = impl_blocks(&lines);
+    let mut blocks = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if doc_text(lines[i]).is_none() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut block = Vec::new();
+        while i < lines.len() {
+            if let Some(text) = doc_text(lines[i]) {
+                block.push((i + 1, text));
+                i += 1;
+            } else if is_attribute(lines[i]) {
+                i = attribute_end(&lines, i);
+            } else {
+                break;
+            }
+        }
+        let mut next = i;
+        while next < lines.len() {
+            let trimmed = lines[next].trim();
+            if is_attribute(trimmed) {
+                next = attribute_end(&lines, next);
+            } else if trimmed.is_empty() || trimmed.starts_with("//") {
+                next += 1;
+            } else {
+                break;
+            }
+        }
+        blocks.push(DocBlock {
+            lines: block,
+            item: lines.get(next).map_or("", |line| line.trim()).to_owned(),
+            in_test: tests.iter().any(|(from, to)| start > *from && start < *to),
+            in_trait_impl: impls
+                .iter()
+                .filter(|(from, to, _)| start > *from && start < *to)
+                .max_by_key(|(from, _, _)| *from)
+                .is_some_and(|(_, _, is_trait)| *is_trait),
+        });
+    }
+    blocks
+}
+
+/// The lines of every `///` block of a Rust source, public or not.
+fn outer_doc_blocks(source: &str) -> Vec<Vec<(usize, String)>> {
+    doc_blocks(source)
+        .into_iter()
+        .map(|block| block.lines)
+        .collect()
+}
+
+/// Whether the item line `item` is clearly not public: restricted
+/// (`pub(crate)`, `pub(super)`, `pub(in …)`) or an item keyword without
+/// `pub`. Enum variants, fields and `impl` blocks count; the parent's
+/// visibility is not resolved. The items of trait impls are left to
+/// [`counts`].
+fn is_non_public_item(item: &str) -> bool {
+    const RESTRICTED: [&str; 3] = ["pub(crate)", "pub(super)", "pub(in"];
+    const PRIVATE: [&str; 11] = [
+        "fn ",
+        "const fn ",
+        "unsafe fn ",
+        "struct ",
+        "enum ",
+        "trait ",
+        "type ",
+        "const ",
+        "static ",
+        "mod ",
+        "macro_rules!",
+    ];
+    RESTRICTED
+        .iter()
+        .chain(PRIVATE.iter())
+        .any(|prefix| item.starts_with(prefix))
+}
+
+/// Whether LIB-DOC-012 checks `block`: outside `#[cfg(test)]` modules, the
+/// docs of a `fn`, `type` or `const` of a trait impl, which rustdoc shows,
+/// and of any item [`is_non_public_item`] does not rule out.
+fn counts(block: &DocBlock) -> bool {
+    const TRAIT_IMPL_ITEMS: [&str; 3] = ["fn ", "type ", "const "];
+    if block.in_test {
+        return false;
+    }
+    if block.in_trait_impl
+        && TRAIT_IMPL_ITEMS
+            .iter()
+            .any(|prefix| block.item.starts_with(prefix))
+    {
+        return true;
+    }
+    !is_non_public_item(&block.item)
+}
+
+/// The lines of the `///` blocks of a Rust source that LIB-DOC-012 checks:
+/// those of public items and of the items of trait impls, outside
+/// `#[cfg(test)]` modules, per [`counts`].
+fn public_doc_blocks(source: &str) -> Vec<Vec<(usize, String)>> {
+    doc_blocks(source)
+        .into_iter()
+        .filter(counts)
+        .map(|block| block.lines)
+        .collect()
+}
+
+/// Controls of [`public_doc_blocks`]: which items' docs count.
+fn check_public_item_controls() {
+    let source = "\
+/// Crate-private.
+pub(crate) fn a() {}
+/// Private.
+fn b() {}
+/// Public.
+pub fn c() {}
+/// A public enum.
+pub enum E {
+    /// A variant.
+    V,
+    /// A variant with fields.
+    W { x: u8 },
+}
+/// Restricted to the parent, behind an attribute and a comment.
+#[cfg_attr(
+    feature = \"serde\",
+    derive(Debug)
+)]
+// A plain comment.
+pub(super) struct S;
+#[cfg(test)]
+mod tests {
+    /// A test helper, public within its module.
+    pub fn h() {}
+}
+/// After the test module.
+pub fn d() {}
+impl fmt::Display for E {
+    /// Writes it.
+    fn fmt(..) {}
+}
+impl S {
+    /// A private method of an inherent impl.
+    fn p() {}
+    /// A public method of an inherent impl.
+    pub fn q() {}
+}
+/// Private, behind a blank line and an attribute.
+
+#[inline]
+fn r() {}
+";
+    let counted: Vec<usize> = public_doc_blocks(source)
+        .iter()
+        .filter_map(|block| block.first().map(|(line, _)| *line))
+        .collect();
+    for (line, what, counts) in [
+        (1, "a `pub(crate) fn`", false),
+        (3, "a private `fn`", false),
+        (5, "a `pub fn`", true),
+        (7, "a `pub enum`", true),
+        (9, "a unit enum variant", true),
+        (11, "a struct enum variant", true),
+        (
+            14,
+            "a `pub(super)` item behind an attribute and a comment",
+            false,
+        ),
+        (23, "a block inside `#[cfg(test)] mod tests { … }`", false),
+        (26, "a `pub fn` after the test module", true),
+        (29, "a `fn` of a trait impl, `impl … for … {`", true),
+        (33, "a private `fn` of an inherent impl", false),
+        (35, "a `pub fn` of an inherent impl", true),
+        (
+            38,
+            "a private `fn` behind a blank line and an attribute",
+            false,
+        ),
+    ] {
+        assert_eq!(
+            counted.contains(&line),
+            counts,
+            "LIB-DOC-012: the docs of {what} (line {line}) must {}be checked; checked: {counted:?}",
+            if counts { "" } else { "not " }
+        );
+    }
+}
+
+/// Controls of [`doc_blocks`]: an attribute between `///` lines does not end
+/// the block, so the item has one block and one summary.
+fn check_doc_attribute_controls() {
+    let source = "\
+/// The summary.
+#[doc(alias = \"x\")]
+///
+/// One,
+/// two,
+/// three.
+#[must_use]
+pub fn f() {}
+";
+    let blocks = public_doc_blocks(source);
+    assert_eq!(
+        blocks.iter().map(Vec::len).collect::<Vec<_>>(),
+        [5],
+        "LIB-DOC-012: a `#[doc(alias = \"x\")]` between two `///` lines gives one block of \
+         five doc lines; found {blocks:?}"
+    );
+    assert_eq!(
+        blocks
+            .iter()
+            .filter_map(|block| summary(block))
+            .collect::<Vec<_>>(),
+        [(1, 1)],
+        "LIB-DOC-012: the joined block has one summary, its first paragraph"
+    );
+    assert_eq!(
+        long_summary_problems("m.rs", source),
+        Vec::<String>::new(),
+        "LIB-DOC-012: the paragraph after the attribute is not a second summary"
+    );
+}
+
+/// The summary of an item's doc block: its first paragraph, if the block
+/// opens with prose, as the paragraph's first line number and its display
+/// lines. A block that opens with a heading, a list, a table or code has none.
+fn summary(block: &[(usize, String)]) -> Option<(usize, usize)> {
+    let texts: Vec<String> = block.iter().map(|(_, text)| text.clone()).collect();
+    let kinds = classify(&texts);
+    let start = kinds.iter().position(|kind| *kind != LineKind::Blank)?;
+    if kinds[start] != LineKind::Prose {
+        return None;
+    }
+    let total = block[start..]
+        .iter()
+        .zip(&kinds[start..])
+        .take_while(|(_, kind)| **kind == LineKind::Prose)
+        .map(|((_, text), _)| display_lines(text))
+        .sum();
+    Some((block[start].0, total))
+}
+
+/// The long paragraphs and list items of the public `///` blocks of
+/// `source`, the file `rel`, as `rel:line (N lines[, list item])` problems.
+fn long_item_doc_problems(rel: &str, source: &str) -> Vec<String> {
+    public_doc_blocks(source)
+        .iter()
+        .flat_map(|block| long_block_problems(rel, block))
+        .collect()
+}
+
+/// The summaries over [`MAX_SUMMARY_LINES`] of the public `///` blocks of
+/// `source`, the file `rel`, as `rel:line (N lines, summary)` problems.
+fn long_summary_problems(rel: &str, source: &str) -> Vec<String> {
+    public_doc_blocks(source)
+        .iter()
+        .filter_map(|block| summary(block))
+        .filter(|(_, length)| *length > MAX_SUMMARY_LINES)
+        .map(|(line, length)| format!("{rel}:{line} ({length} lines, summary)"))
+        .collect()
+}
+
+/// The files LIB-DOC-012 checks, each with its path from the repository root
+/// and its text, in a stable order.
+fn item_doc_sources() -> Vec<(String, String)> {
+    let src = repository_root().join("crates/sacm/src");
+    let mut files = Vec::new();
+    for module in ITEM_DOC_MODULES {
+        let file = src.join(format!("{module}.rs"));
+        assert!(
+            file.is_file(),
+            "LIB-DOC-012: {} must exist",
+            repository_relative(&file)
+        );
+        files.push(file);
+        let dir = src.join(module);
+        if dir.is_dir() {
+            rust_files(&dir, &mut files);
+        }
+    }
+    files
+        .iter()
+        .map(|path| {
+            let text =
+                fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            (repository_relative(path), text)
+        })
+        .collect()
+}
+
+#[test]
+fn lib_doc_012_the_item_doc_reader_splits_blocks_and_finds_summaries() {
+    // Two items separated by code are two blocks.
+    let two_items = "\
+/// The first item.
+pub fn a() {}
+/// The second item.
+///
+/// Its details.
+pub fn b() {}
+//! Not an item's docs.
+//// Not docs either.
+";
+    let blocks = outer_doc_blocks(two_items);
+    assert_eq!(
+        blocks,
+        [
+            vec![(1, "The first item.".to_owned())],
+            vec![
+                (3, "The second item.".to_owned()),
+                (4, String::new()),
+                (5, "Its details.".to_owned()),
+            ],
+        ],
+        "LIB-DOC-012: two items separated by code are two blocks, read without the `/// ` \
+         prefix, a bare `///` blank; `//!` and `////` lines are not item docs"
+    );
+    let split =
+        "/// One,\n/// two,\n/// three.\npub struct S;\n/// Four,\n/// five.\npub struct T;\n";
+    assert_eq!(
+        long_item_doc_problems("m.rs", split),
+        Vec::<String>::new(),
+        "LIB-DOC-012: the lines of two blocks are not counted together"
+    );
+
+    // An indented `///` (an impl method) is read, at its source line.
+    let method = "\
+impl S {
+    /// One,
+    /// two,
+    /// three,
+    /// four,
+    /// five.
+    pub fn f(&self) {}
+}
+";
+    assert_eq!(
+        long_item_doc_problems("m.rs", method),
+        ["m.rs:2 (5 lines)"],
+        "LIB-DOC-012: an indented `///` block is read, and a long paragraph in it is reported \
+         at its source line"
+    );
+    assert_eq!(
+        outer_doc_blocks("    ///   - nested\n")
+            .first()
+            .and_then(|b| b.first()),
+        Some(&(1, "  - nested".to_owned())),
+        "LIB-DOC-012: the indentation after the prefix's space is kept"
+    );
+
+    // A list item over four lines is reported as a list item.
+    let item = "/// The item.\n///\n/// - one,\n///   two,\n///   three,\n///   four,\n///   five.\npub fn f() {}\n";
+    assert_eq!(
+        long_item_doc_problems("m.rs", item),
+        ["m.rs:3 (5 lines, list item)"],
+        "LIB-DOC-012: a long list item is reported as `file:line (N lines, list item)`"
+    );
+
+    // A 2-line summary followed by a long list item reports only the list item.
+    let summary_then_item = "\
+/// One,
+/// two.
+///
+/// - one,
+///   two,
+///   three,
+///   four,
+///   five.
+pub fn f() {}
+";
+    assert_eq!(
+        long_summary_problems("m.rs", summary_then_item),
+        Vec::<String>::new(),
+        "LIB-DOC-012: a summary of two display lines is within the limit"
+    );
+    assert_eq!(
+        long_item_doc_problems("m.rs", summary_then_item),
+        ["m.rs:4 (5 lines, list item)"],
+        "LIB-DOC-012: after a two-line summary only the long list item is reported"
+    );
+    let summary_then_list = "/// One,\n/// two.\n/// - three,\n/// - four.\npub fn f() {}\n";
+    assert_eq!(
+        long_summary_problems("m.rs", summary_then_list),
+        Vec::<String>::new(),
+        "LIB-DOC-012: a list right after the summary is not part of it"
+    );
+}
+
+#[test]
+fn lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines() {
+    // Controls: only the docs of public items, outside test modules, count.
+    check_public_item_controls();
+
+    let sources = item_doc_sources();
+    let blocks: usize = sources
+        .iter()
+        .map(|(_, text)| public_doc_blocks(text).len())
+        .sum();
+    assert!(
+        blocks > 100,
+        "LIB-DOC-012: the public item docs must be found in the `///` blocks of the \
+         {ITEM_DOC_MODULES:?} modules; found {blocks} blocks"
+    );
+    let problems: Vec<String> = sources
+        .iter()
+        .flat_map(|(rel, text)| long_item_doc_problems(rel, text))
+        .collect();
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-012: no prose paragraph or list item in the `///` docs of the \
+         {ITEM_DOC_MODULES:?} modules may run over {MAX_LINES} display lines of \
+         {DISPLAY_WIDTH} characters (docs/style.md); found {}: {problems:#?}",
+        problems.len()
+    );
+}
+
+#[test]
+fn lib_doc_012_no_item_summary_runs_over_two_lines() {
+    // Controls: a 3-line summary fails, counted in display lines from its
+    // first line.
+    let three = "/// One,\n/// two,\n/// three.\n///\n/// Details.\npub fn f() {}\n";
+    assert_eq!(
+        long_summary_problems("m.rs", three),
+        ["m.rs:1 (3 lines, summary)"],
+        "LIB-DOC-012: a summary of three display lines is reported as `file:line (N lines, summary)`"
+    );
+    let wide = format!("/// {}\npub fn f() {{}}\n", "x".repeat(201));
+    assert_eq!(
+        long_summary_problems("m.rs", &wide),
+        ["m.rs:1 (3 lines, summary)"],
+        "LIB-DOC-012: a summary line of 201 characters counts as three display lines"
+    );
+    let indented = "    ///\n    /// One,\n    /// two,\n    /// three.\n    pub fn f() {}\n";
+    assert_eq!(
+        long_summary_problems("m.rs", indented),
+        ["m.rs:2 (3 lines, summary)"],
+        "LIB-DOC-012: the summary is the first paragraph after leading blank lines, reported \
+         at its first line"
+    );
+
+    // Controls: a block that opens with a heading, a list or code has no
+    // summary.
+    for (opening, block) in [
+        (
+            "a heading",
+            "/// # Examples\n///\n/// One,\n/// two,\n/// three.\npub fn f() {}\n",
+        ),
+        (
+            "a list",
+            "/// - One,\n///   two,\n///   three.\npub fn f() {}\n",
+        ),
+        (
+            "code",
+            "/// ```rust,ignore\n/// let x = 1;\n/// ```\n/// One,\n/// two,\n/// three.\npub fn f() {}\n",
+        ),
+    ] {
+        assert_eq!(
+            outer_doc_blocks(block).first().and_then(|b| summary(b)),
+            None,
+            "LIB-DOC-012: a block that opens with {opening} has no summary"
+        );
+        assert_eq!(
+            long_summary_problems("m.rs", block),
+            Vec::<String>::new(),
+            "LIB-DOC-012: a block that opens with {opening} is not a summary failure"
+        );
+    }
+
+    // Controls: an attribute between `///` lines does not split a block.
+    check_doc_attribute_controls();
+
+    let sources = item_doc_sources();
+    let summaries: usize = sources
+        .iter()
+        .map(|(_, text)| {
+            public_doc_blocks(text)
+                .iter()
+                .filter(|block| summary(block).is_some())
+                .count()
+        })
+        .sum();
+    assert!(
+        summaries > 100,
+        "LIB-DOC-012: the item summaries must be found in the `///` blocks of the \
+         {ITEM_DOC_MODULES:?} modules; found {summaries}"
+    );
+    let problems: Vec<String> = sources
+        .iter()
+        .flat_map(|(rel, text)| long_summary_problems(rel, text))
+        .collect();
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-012: no item summary (the first paragraph of an item's `///` docs) in the \
+         {ITEM_DOC_MODULES:?} modules may run over {MAX_SUMMARY_LINES} display lines of \
+         {DISPLAY_WIDTH} characters (docs/style.md); found {}: {problems:#?}",
+        problems.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // LIB-DOC-009: no diagram in rustdoc
 // ---------------------------------------------------------------------------
 

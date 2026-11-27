@@ -6,31 +6,27 @@ use std::str::FromStr;
 
 use super::ElementKind;
 
-/// A reference to an element of another document, or an `XPointer`, held as
-/// the `href` that names it (XMI 2.5.1 §7.10.2 `URI#id_value`, rule 2n): an
-/// optional type, then a document part and a fragment, as read (white space
-/// around it trimmed, and a type written as `sacm:<Class>` and one space),
-/// never resolved (SACM23-XMI-027, SACM23-XMI-029, ADR 0040).
-/// [`SacmElement::hrefs`](crate::model::SacmElement::hrefs) gives an end's,
-/// [`LangString::expression_href`](crate::model::LangString::expression_href)
-/// an `ExpressionLangString`'s, and a [`Proxy`] holds one. [`Href::new`]
-/// makes one for an edit.
+/// A reference to an element of another document, or an `XPointer`, held as the `href` that
+/// names it and never resolved (XMI 2.5.1 §7.10.2 `URI#id_value`, rule 2n; ADR 0040).
 ///
-/// Every character of it is an XML 1.0 `Char` (XML 1.0 §2.2). Its URI
-/// reference ([`uri`](Self::uri)) holds one `#`, with a fragment after it,
-/// and no XML white space. The fragment is the id of an element of
-/// the other document, or an `XPointer` ([`is_xpointer`](Self::is_xpointer));
-/// the document part before the `#` is empty only for an `XPointer` into the
-/// same document. A type may stand before the URI reference (XMI 2.5.1 rule
-/// 2n), held as `sacm:<Class>` and one space: [`kind`](Self::kind) gives the
-/// class. The URI reference is never decoded or normalised: `a%20b.xmi#c`
-/// stays as written.
-/// Equality, ordering and hashing are those of the string, and it
-/// compares equal to a `str` with the same value. It parses from
-/// text ([`FromStr`], [`TryFrom`]) exactly as [`Href::new`] checks it, and
-/// converts into its [`String`]. No file is
-/// opened: [`document`](Self::document) and [`fragment`](Self::fragment) let
-/// an application load the other document and find the element itself.
+/// - **Where.** [`SacmElement::hrefs`](crate::model::SacmElement::hrefs) gives an end's,
+///   [`LangString::expression_href`](crate::model::LangString::expression_href) an
+///   `ExpressionLangString`'s, and a [`Proxy`] holds one. [`Href::new`] makes one for an edit.
+/// - **Parts.** An optional type, then a URI reference ([`uri`](Self::uri)): a document part,
+///   one `#` and a fragment after it, with no XML white space.
+/// - **As read.** White space around it is trimmed, and a type is held as `sacm:<Class>` and
+///   one space (rule 2n): [`kind`](Self::kind) gives the class.
+/// - **Fragment.** The id of an element of the other document, or an `XPointer`
+///   ([`is_xpointer`](Self::is_xpointer)). The document part before the `#` is empty only for
+///   an `XPointer` into the same document.
+/// - **Characters.** Every character is an XML 1.0 `Char` (XML 1.0 §2.2).
+/// - **As written.** The URI reference is never decoded or normalised: `a%20b.xmi#c` stays.
+/// - **Comparison.** Equality, ordering and hashing are those of the string, and it compares
+///   equal to a `str` with the same value.
+/// - **Conversion.** It parses from text ([`FromStr`], [`TryFrom`]) exactly as [`Href::new`]
+///   checks it, and converts into its [`String`].
+/// - **No file is opened.** [`document`](Self::document) and [`fragment`](Self::fragment) let
+///   an application load the other document and find the element itself.
 ///
 /// # Examples
 ///
@@ -79,13 +75,13 @@ fn concrete_class(name: &str) -> Option<ElementKind> {
 }
 
 impl Href {
-    /// The cross-document reference `value`, as [`as_str`](Self::as_str)
-    /// gives one: an optional type `sacm:<Class>` and one space, then a URI
-    /// reference `document#fragment`, the document part empty only for an
-    /// `XPointer` (ADR 0040 amendment 1).
+    /// Makes the cross-document reference `value`, checked but not changed.
     ///
-    /// Nothing is trimmed, decoded, normalised or resolved, and no file is
-    /// opened: the element it names need not exist (ADR 0040 D6, D9).
+    /// - **Form.** As [`as_str`](Self::as_str) gives one: an optional type `sacm:<Class>` and
+    ///   one space, then a URI reference `document#fragment`, the document part empty only
+    ///   for an `XPointer` (ADR 0040 amendment 1).
+    /// - **Not changed.** Nothing is trimmed, decoded, normalised or resolved, and no file is
+    ///   opened: the element it names need not exist (ADR 0040 D6, D9).
     ///
     /// ```
     /// use sacm::model::{ElementKind, Href, HrefError};
@@ -166,10 +162,11 @@ impl Href {
         &self.0
     }
 
-    /// The concrete class the href's type names (XMI 2.5.1 rule 2n: "A URI
-    /// Reference, optionally preceded by the type of the object being
-    /// referenced"), or `None` when it has no type. The class is what the
-    /// file says, never checked against the other document.
+    /// The concrete class the href's type names, or `None` when it has no type.
+    ///
+    /// XMI 2.5.1 rule 2n: "A URI Reference, optionally preceded by the type of the object
+    /// being referenced". The class is what the file says, never checked against the other
+    /// document.
     ///
     /// ```
     /// use sacm::model::{ElementKind, Href};
@@ -200,9 +197,10 @@ impl Href {
         self.0.split_once(' ').map_or(&self.0, |(_, uri)| uri)
     }
 
-    /// The part of the URI reference before `#`: the document, as written
-    /// (not resolved or normalised), such as `braking.sacm.xmi`. Empty only
-    /// for an `XPointer` into the same document.
+    /// The part of the URI reference before `#`: the document, such as `braking.sacm.xmi`.
+    ///
+    /// It is as written, not resolved or normalised. Empty only for an `XPointer` into the
+    /// same document.
     #[must_use]
     pub fn document(&self) -> &str {
         self.uri()
@@ -210,9 +208,8 @@ impl Href {
             .map_or("", |(document, _)| document)
     }
 
-    /// The part after `#`: the id of the element in that document, or an
-    /// `XPointer` ([`is_xpointer`](Self::is_xpointer)), as written, such as
-    /// `braking_api`.
+    /// The part after `#`, as written, such as `braking_api`: the id of the element in that
+    /// document, or an `XPointer` ([`is_xpointer`](Self::is_xpointer)).
     #[must_use]
     pub fn fragment(&self) -> &str {
         self.uri()
@@ -220,9 +217,9 @@ impl Href {
             .map_or("", |(_, fragment)| fragment)
     }
 
-    /// Whether the fragment is an `XPointer` (it holds `(` or `)`), not the id
-    /// of an element. The library holds an `XPointer` as written and never
-    /// evaluates it.
+    /// Whether the fragment is an `XPointer` (it holds `(` or `)`), not the id of an element.
+    ///
+    /// The library holds an `XPointer` as written and never evaluates it.
     ///
     /// ```
     /// use sacm::model::Href;
@@ -422,14 +419,14 @@ impl fmt::Display for HrefError {
 
 impl std::error::Error for HrefError {}
 
-/// A proxy (XMI 2.5.1 §7.10.1): a child, in one of an element's composite
-/// roles, that is held in another document and named by an href; never
-/// resolved (SACM23-XMI-029, ADR 0040 amendment 1).
-/// [`SacmElement::proxies`](crate::model::SacmElement::proxies) gives an
-/// element's.
+/// A proxy (XMI 2.5.1 §7.10.1): a child, in one of an element's composite roles, that is held
+/// in another document and named by an href; never resolved (ADR 0040 amendment 1).
 ///
-/// A proxy is no element of this document: it has no id, it is no child,
-/// and no validation rule counts it. Proxies order by role, then by href.
+/// - **Where.** [`SacmElement::proxies`](crate::model::SacmElement::proxies) gives an
+///   element's.
+/// - **No element of this document.** It has no id, it is no child, and no validation rule
+///   counts it.
+/// - **Order.** Proxies order by role, then by href.
 ///
 /// ```
 /// use sacm::xmi::{self, ReadOptions};

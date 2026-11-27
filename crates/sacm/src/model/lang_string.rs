@@ -6,56 +6,53 @@ use std::fmt;
 
 use super::{ElementId, Href};
 
-/// Text with an optional language tag, where the text may also be absent:
-/// SACM's `LangString` (SACM 2.3 §8.3). Plain text converts into one with no
-/// `lang`: `LangString::from("C1") == LangString::new("C1")`, so an
-/// operation's `name` takes `"C1"` as well.
+/// Text with an optional language tag, where the text may also be absent: SACM's `LangString`
+/// (SACM 2.3 §8.3).
 ///
-/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6), read
-/// with [`SacmElement::name`](crate::model::SacmElement::name), and for each
-/// entry of a [`MultiLangString`] (§8.5). SACM defines no format for `lang`,
-/// so any string is accepted.
-///
-/// §8.3 gives it two attributes, `lang : String [0..1]` ("the language used
-/// in the string") and `content : String [0..1]` ("the content of the
-/// string").
-///
-/// For each field, absent (`None`), empty (`Some("")`) and non-empty are
-/// three distinct values ([ADR 0012]), and [`Eq`], [`Ord`] and [`Hash`] tell
-/// them apart. Values are kept byte for byte: there is no trimming, case
-/// folding or Unicode normalisation, and `lang` has no format check.
+/// - **Used for** the `name` of every `ModelElement` (§8.6), read with
+///   [`SacmElement::name`](crate::model::SacmElement::name), and each entry of a
+///   [`MultiLangString`] (§8.5).
+/// - **Attributes.** §8.3 gives it `lang : String [0..1]` ("the language used in the string")
+///   and `content : String [0..1]` ("the content of the string").
+/// - **From plain text.** `LangString::from("C1") == LangString::new("C1")`, with no `lang`,
+///   so an operation's `name` takes `"C1"` as well.
+/// - **Absent is not empty.** For each field, absent (`None`), empty (`Some("")`) and
+///   non-empty are three distinct values ([ADR 0012]); [`Eq`], [`Ord`] and [`Hash`] tell
+///   them apart.
+/// - **Byte for byte.** No trimming, case folding or Unicode normalisation. SACM defines no
+///   format for `lang`, so any string is accepted.
+/// - **A value, not an element.** It has no id and no
+///   [`ElementKind`](crate::model::ElementKind), and you construct it directly; only a
+///   [`Document`](crate::model::Document) holds elements.
+/// - **Its `xmi:id`.** A `name` element may carry one (a `LangString` is a class, XMI 2.5.1
+///   §7.8.3). The document keeps it with the element that owns the name, as
+///   [`SacmElement::name_id`](crate::model::SacmElement::name_id), not on the value.
+/// - **Order.** [`Ord`] compares `lang`, then `content`, absent before present, then the
+///   form: plain before an `ExpressionLangString`, and among those one with no expression,
+///   then one with an id, then one with an href.
 ///
 /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
 ///
-/// `LangString` is a value, not an element: it has no id and no
-/// [`ElementKind`](crate::model::ElementKind), and you construct it directly,
-/// unlike elements, which only a [`Document`](crate::model::Document) holds.
-/// A `name` element may still carry an `xmi:id` (a `LangString` is a class,
-/// XMI 2.5.1 §7.8.3); the document keeps it with the element that owns the
-/// name, as [`SacmElement::name_id`](crate::model::SacmElement::name_id), not
-/// on the value.
-///
-/// [`Ord`] compares `lang` first, then `content`, with absent before present,
-/// then the form: plain before an `ExpressionLangString`, and among those
-/// one with no expression, then one with an id, then one with an href.
-///
 /// # `ExpressionLangString`
 ///
-/// A `LangString` may also be an `ExpressionLangString` (§8.4: "it contains a
-/// description (`LangString`) and it also (optionally) points to an
-/// `ExpressionElement` in the Terminology Package"): its
-/// [`expression`](Self::expression) is the id of that `Term` or
-/// `Expression`. [`with_expression`](Self::with_expression) makes one and
-/// [`without_expression`](Self::without_expression) makes it plain again,
-/// keeping `lang` and `content` (ADR 0038). §8.4 gives `expression[1]`, but
-/// a file may hold one without, which reads with `expression() == None` and
-/// which [`validate`](crate::validation::validate) reports (SACM-MULT-001).
-/// The ids an element's name and texts link are its
-/// [`expressions`](crate::model::SacmElement::expressions). The expression
-/// may instead be an element of another document, named by an
-/// [`Href`]: [`expression_href`](Self::expression_href) and
-/// [`with_expression_href`](Self::with_expression_href) (ADR 0040 amendment
-/// 1). It then counts as present, and is never resolved or checked.
+/// A `LangString` may also be an `ExpressionLangString`. §8.4: "it contains a description
+/// (`LangString`) and it also (optionally) points to an `ExpressionElement` in the
+/// Terminology Package".
+///
+/// - **Its expression.** [`expression`](Self::expression) is the id of that `Term` or
+///   `Expression`.
+/// - **Make and unmake.** [`with_expression`](Self::with_expression) makes one and
+///   [`without_expression`](Self::without_expression) makes it plain again, keeping `lang`
+///   and `content` (ADR 0038).
+/// - **Without an expression.** §8.4 gives `expression[1]`, but a file may hold one without.
+///   It reads with `expression() == None`, and
+///   [`validate`](crate::validation::validate) reports it (SACM-MULT-001).
+/// - **All of an element's.** The ids its name and texts link are its
+///   [`expressions`](crate::model::SacmElement::expressions).
+/// - **In another document.** The expression may instead be named by an [`Href`]:
+///   [`expression_href`](Self::expression_href) and
+///   [`with_expression_href`](Self::with_expression_href) (ADR 0040 amendment 1). It then
+///   counts as present, and is never resolved or checked.
 ///
 /// ```
 /// use sacm::model::{ElementId, LangString};
@@ -186,10 +183,11 @@ impl LangString {
         self.content = content;
     }
 
-    /// The `expression` of an `ExpressionLangString` (SACM 2.3 §8.4): the id of
-    /// the `ExpressionElement` it links to. `None` for a plain `LangString`,
-    /// for an `ExpressionLangString` read without one, and for one whose
-    /// expression is in another document
+    /// The `expression` of an `ExpressionLangString` (SACM 2.3 §8.4): the id of the
+    /// `ExpressionElement` it links to.
+    ///
+    /// `None` for a plain `LangString`, for an `ExpressionLangString` read without one, and
+    /// for one whose expression is in another document
     /// ([`expression_href`](Self::expression_href)).
     ///
     /// ```
@@ -207,15 +205,15 @@ impl LangString {
         }
     }
 
-    /// The `expression` of an `ExpressionLangString` that is an element of
-    /// another document, or an `XPointer`: the [`Href`] that names it, never
-    /// resolved or checked (SACM23-XMI-029, ADR 0040 amendment 1). `None`
-    /// for a plain `LangString`, and for an `ExpressionLangString` whose
-    /// expression is an id or absent.
+    /// The [`Href`] that names the `expression` of an `ExpressionLangString`, when that is an
+    /// element of another document or an `XPointer` (ADR 0040 amendment 1).
     ///
-    /// It counts as the expression being present (§8.4 `expression[1]`),
-    /// and it is not among the ids of
-    /// [`SacmElement::expressions`](crate::model::SacmElement::expressions).
+    /// - **Never resolved or checked.**
+    /// - **`None`** for a plain `LangString`, and for an `ExpressionLangString` whose
+    ///   expression is an id or absent.
+    /// - **Present.** It counts as the expression being present (§8.4 `expression[1]`).
+    /// - **Not an id.** It is not among the ids of
+    ///   [`SacmElement::expressions`](crate::model::SacmElement::expressions).
     ///
     /// ```
     /// use sacm::model::{Href, LangString};
@@ -255,12 +253,11 @@ impl LangString {
         matches!(self.form, Form::Expression(_))
     }
 
-    /// This value as an `ExpressionLangString` whose `expression` is
-    /// `expression`, keeping `lang` and `content` and replacing any earlier
-    /// expression.
+    /// This value as an `ExpressionLangString` whose `expression` is `expression`, keeping
+    /// `lang` and `content` and replacing any earlier expression.
     ///
-    /// An edit that sets it checks the id as a reference: it must name a
-    /// `Term` or an `Expression` of the document
+    /// An edit that sets it checks the id as a reference: it must name a `Term` or an
+    /// `Expression` of the document
     /// ([`EditError::ReferenceNotFound`](crate::edit::EditError::ReferenceNotFound),
     /// [`EditError::WrongReferenceType`](crate::edit::EditError::WrongReferenceType)).
     ///
@@ -277,12 +274,11 @@ impl LangString {
         self
     }
 
-    /// This value as an `ExpressionLangString` whose `expression` is the
-    /// element of another document that `href` names, keeping `lang` and
-    /// `content` and replacing any earlier expression (LIB-EDIT-020, ADR
-    /// 0040 amendment 1).
+    /// This value as an `ExpressionLangString` whose `expression` is the element of another
+    /// document that `href` names, keeping `lang` and `content` (ADR 0040 amendment 1).
     ///
-    /// No edit checks the href: the element it names need not exist.
+    /// It replaces any earlier expression. No edit checks the href: the element it names
+    /// need not exist.
     ///
     /// ```
     /// use sacm::model::{ElementId, Href, LangString};
@@ -339,9 +335,9 @@ impl LangString {
 }
 
 impl From<&str> for LangString {
-    /// A `LangString` with the content `content` and no `lang`, as
-    /// [`LangString::new`] gives. Every operation's `name` takes one, so a
-    /// name can be plain text.
+    /// A `LangString` with the content `content` and no `lang`, as [`LangString::new`] gives.
+    ///
+    /// Every operation's `name` takes one, so a name can be plain text.
     ///
     /// ```
     /// use sacm::model::LangString;
@@ -363,9 +359,10 @@ impl From<String> for LangString {
 }
 
 impl fmt::Debug for LangString {
-    /// A plain value as `LangString { lang, content }`; an
-    /// `ExpressionLangString` as `ExpressionLangString { lang, content,
-    /// expression }`, the expression as its id, its href or `None`.
+    /// A plain value as `LangString { lang, content }`; an `ExpressionLangString` as
+    /// `ExpressionLangString { lang, content, expression }`.
+    ///
+    /// The expression shows as its id, its href or `None`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.form {
             Form::Plain => f
@@ -393,12 +390,13 @@ impl fmt::Debug for LangString {
 #[cfg(feature = "serde")]
 const EXPRESSION_LANG_STRING: &str = "ExpressionLangString";
 
-/// The JSON of a `LangString` (ADR 0030 R6 and amendment 4): a plain one is
-/// `{"lang", "content"}`; an `ExpressionLangString` is
-/// `{"type": "ExpressionLangString", "lang", "content", "expression"}`, keys
-/// in that order, `expression` the id as a string, `{"href": "…"}` for an
-/// element of another document (ADR 0040 amendment 1, A7), or `null` when
-/// it has none.
+/// The JSON of a `LangString` (ADR 0030 R6 and amendment 4).
+///
+/// - **Plain.** `{"lang", "content"}`.
+/// - **`ExpressionLangString`.** `{"type": "ExpressionLangString", "lang", "content",
+///   "expression"}`, keys in that order.
+/// - **`expression`.** The id as a string, `{"href": "…"}` for an element of another
+///   document (ADR 0040 amendment 1, A7), or `null` when it has none.
 #[cfg(feature = "serde")]
 impl serde::Serialize for LangString {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -476,10 +474,12 @@ impl<'de> serde::Deserialize<'de> for JsonExpression {
     }
 }
 
-/// Reads either JSON form (ADR 0030 amendment 4): `type`, when given, must
-/// be `"ExpressionLangString"`, and `expression` is required with it and
-/// refused without it; `lang` and `content` may be left out (R3); unknown
-/// and repeated keys are refused (R4).
+/// Reads either JSON form (ADR 0030 amendment 4).
+///
+/// - **`type`**, when given, must be `"ExpressionLangString"`; `expression` is required
+///   with it and refused without it.
+/// - **`lang` and `content`** may be left out (R3).
+/// - **Unknown and repeated keys** are refused (R4).
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for LangString {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -548,23 +548,20 @@ impl<'de> serde::de::Visitor<'de> for LangStringVisitor {
 /// A list of [`LangString`] values that say the same thing in different
 /// languages: SACM's `MultiLangString` (SACM 2.3 §8.5).
 ///
-/// §8.5 gives it `value : LangString [1..*]` and requires each value's `lang`
-/// to be unique. This type enforces neither: it keeps the values in the order
-/// given, including duplicates and repeated languages, and it may be empty,
-/// so a document can be held as it was written.
-/// [`validation::validate`](crate::validation::validate) reports an empty
-/// one and each repeated `lang` held in a document (SACM-MULT-001).
-///
-/// Equality and [`Hash`] depend on order: `[en, fr]` and `[fr, en]` are
-/// different values.
-///
-/// SACM uses it for the `content` of the `UtilityElement` kinds (§8.7), such
-/// as a `Note`
-/// ([`SacmElement::content`](crate::model::SacmElement::content)), and for the
-/// `key` of a `TaggedValue` (§8.12). It is a value, not an element: it has no
-/// id and no [`ElementKind`](crate::model::ElementKind). The `xmi:id` its
-/// element may carry is kept with the element that holds it
-/// ([`SacmElement::content_id`](crate::model::SacmElement::content_id)).
+/// - **Used for** the `content` of the `UtilityElement` kinds (§8.7), such as a `Note`
+///   ([`SacmElement::content`](crate::model::SacmElement::content)), and the `key` of a
+///   `TaggedValue` (§8.12).
+/// - **Held as written.** §8.5 gives it `value : LangString [1..*]` and requires each value's
+///   `lang` to be unique. This type enforces neither: it keeps the values in the order
+///   given, duplicates and repeated languages included, and it may be empty.
+/// - **Reported.** [`validation::validate`](crate::validation::validate) reports an empty
+///   one and each repeated `lang` held in a document (SACM-MULT-001).
+/// - **Order counts.** Equality and [`Hash`] depend on it: `[en, fr]` and `[fr, en]` are
+///   different values.
+/// - **A value, not an element.** It has no id and no
+///   [`ElementKind`](crate::model::ElementKind). The `xmi:id` its element may carry is kept
+///   with the element that holds it
+///   ([`SacmElement::content_id`](crate::model::SacmElement::content_id)).
 ///
 /// # Examples
 ///
@@ -665,9 +662,8 @@ impl MultiLangString {
         self.values.iter()
     }
 
-    /// An iterator over the values, in order, to change each in place: the
-    /// number of values stays as it is, as with
-    /// [`values_mut`](Self::values_mut).
+    /// An iterator over the values, in order, to change each in place: the number of values
+    /// stays as it is, as with [`values_mut`](Self::values_mut).
     ///
     /// `for value in &mut text` gives the same.
     ///
@@ -686,12 +682,10 @@ impl MultiLangString {
         self.values.iter_mut()
     }
 
-    /// The index of the value to show for the language `lang`, such as
-    /// `"en-GB"`: SACM 2.3 §8.5 holds one value per language, each with its
-    /// §8.3 `lang`.
+    /// The index of the value to show for the language `lang`, such as `"en-GB"`.
     ///
-    /// The first step that finds a value decides, and within a step the
-    /// first value in order:
+    /// SACM 2.3 §8.5 holds one value per language, each with its §8.3 `lang`. The first step
+    /// that finds a value decides, and within a step the first value in order:
     /// 1. its `lang` equals `lang`, ignoring ASCII case;
     /// 2. its primary subtag, up to the first `-`, equals that of `lang`,
     ///    ignoring ASCII case, and neither is empty;

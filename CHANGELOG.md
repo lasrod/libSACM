@@ -94,6 +94,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   then the rules a caller needs as short bullets and tables [LIB-DOC-011].
 - docs/sacm/diagnostics.md and compliance-points.md follow the style guide. No code,
   severity, template or meaning changed [LIB-DOC-013].
+- The item docs of `model`, `compare`, `diagnostic` and `validation` follow the style guide:
+  a short summary, then only what the signature does not say. `validate` now lists what its
+  rules count [LIB-DOC-012].
 - The `validation` module docs no longer say a strict write refuses a relationship with
   no `source` or `target`, or implementation constraints on a concrete element. A strict
   write checks schema validity only; `validate` reports both [LIB-DOC-011].

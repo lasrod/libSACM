@@ -126,15 +126,15 @@ impl Flag {
     /// ```
     pub const ALL: &'static [Flag] = &[Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
 
-    /// Whether an element of `kind` has the flag: every element has
-    /// `isCitation` and `isAbstract` (§8.2), and only an
-    /// `AssertedRelationship` has `isCounter` (§11.13).
+    /// Whether an element of `kind` has the flag.
     ///
-    /// It is true exactly when a [`SetFlag`](crate::edit::SetFlag) of the
-    /// flag on such an element is not
-    /// [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable),
-    /// and [`SacmElement::flag`](crate::model::SacmElement::flag) of a flag
-    /// the kind lacks is `false`.
+    /// - **Which.** Every element has `isCitation` and `isAbstract` (§8.2); only an
+    ///   `AssertedRelationship` has `isCounter` (§11.13).
+    /// - **Edits agree.** It is true exactly when a [`SetFlag`](crate::edit::SetFlag) of the
+    ///   flag on such an element is not
+    ///   [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable).
+    /// - **Reads agree.** [`SacmElement::flag`](crate::model::SacmElement::flag) of a flag
+    ///   the kind lacks is `false`.
     ///
     /// ```
     /// use sacm::model::{ElementKind, Flag};
@@ -184,26 +184,26 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
         .find(|flag| flag.name() == local && flag.owner().admits(kind))
 }
 
-/// A non-containment reference end, which holds the ids of its targets
-/// unresolved (ADR 0026): the end a [`SetReferences`](crate::edit::SetReferences),
-/// [`AddReference`](crate::edit::AddReference) or
-/// [`RemoveReference`](crate::edit::RemoveReference) edits.
+/// A non-containment reference end, which holds the ids of its targets unresolved (ADR 0026).
 ///
-/// Each end belongs to a class, and only the elements of that class have it:
-/// every element has `citedElement` and `abstractForm`, every Assertion has
-/// `metaClaim`, and so on, as each variant says. An end holds at most one id
-/// (`[0..1]`, or exactly one for an `AssertedRelationship`'s `target`), or
-/// any number in order, repeats included (`[0..*]`, or at least one for
-/// `source` and for an `ArtifactAssetRelationship`'s `target`). No kind has
-/// two ends of one name: an `ArtifactAssetRelationship`'s `source` and
-/// `target` are [`ArtifactSource`](Self::ArtifactSource) and
-/// [`ArtifactTarget`](Self::ArtifactTarget), apart from an
-/// `AssertedRelationship`'s [`Source`](Self::Source) and
-/// [`Target`](Self::Target). Later releases may add ends, so a `match` on
-/// `ReferenceEnd` needs a wildcard arm.
-///
-/// It displays as its [`name`](Self::name), and [`Ord`] is the order of
-/// [`ReferenceEnd::ALL`].
+/// - **Edited by** [`SetReferences`](crate::edit::SetReferences),
+///   [`AddReference`](crate::edit::AddReference) and
+///   [`RemoveReference`](crate::edit::RemoveReference).
+/// - **By class.** Each end belongs to a class, and only the elements of that class have it:
+///   every element has `citedElement` and `abstractForm`, every Assertion has `metaClaim`,
+///   and so on, as each variant says.
+/// - **One.** A single-valued end holds at most one id (`[0..1]`, or exactly one for an
+///   `AssertedRelationship`'s `target`).
+/// - **Many.** A multi-valued end holds any number in order, repeats included (`[0..*]`, or
+///   at least one for `source` and for an `ArtifactAssetRelationship`'s `target`).
+/// - **No kind has two ends of one name.** An `ArtifactAssetRelationship`'s `source` and
+///   `target` are [`ArtifactSource`](Self::ArtifactSource) and
+///   [`ArtifactTarget`](Self::ArtifactTarget), apart from an `AssertedRelationship`'s
+///   [`Source`](Self::Source) and [`Target`](Self::Target).
+/// - **`#[non_exhaustive]`.** Later releases may add ends, so a `match` on `ReferenceEnd`
+///   needs a wildcard arm.
+/// - **Display and order.** It displays as its [`name`](Self::name), and [`Ord`] is the
+///   order of [`ReferenceEnd::ALL`].
 ///
 /// # Examples
 ///
@@ -247,37 +247,41 @@ pub enum ReferenceEnd {
     /// `referencedArtifactElement:Base::ArtifactElement[0..*]` of an
     /// `ArtifactReference` (§11.9).
     ReferencedArtifactElement,
-    /// `argumentElement:ArgumentationElement[0..*]` of an `ArgumentGroup`
-    /// (§11.2, where the text spells it `argumentationElement`; ptc/22-03-13
-    /// gives no aggregation, so it is a reference, not a composition). Named
-    /// for the group, because `argumentElement` is also the composite role
-    /// of an `ArgumentPackage` (ADR 0028).
+    /// `argumentElement:ArgumentationElement[0..*]` of an `ArgumentGroup` (§11.2, where the
+    /// text spells it `argumentationElement`).
+    ///
+    /// - **A reference, not a composition.** ptc/22-03-13 gives no aggregation.
+    /// - **Named for the group,** because `argumentElement` is also the composite role of an
+    ///   `ArgumentPackage` (ADR 0028).
     #[doc(alias = "argumentElement")]
     #[cfg_attr(feature = "serde", serde(rename = "argumentElement"))]
     GroupMember,
-    /// `artifactElement:ArtifactElement[0..*]` of an `ArtifactGroup` (§12.3;
-    /// ptc/22-03-13 gives no aggregation, so it is a reference, not a
-    /// composition). Named for the group, because `artifactElement` is also
-    /// the composite role of an `ArtifactPackage` (ADR 0034).
+    /// `artifactElement:ArtifactElement[0..*]` of an `ArtifactGroup` (§12.3).
+    ///
+    /// - **A reference, not a composition.** ptc/22-03-13 gives no aggregation.
+    /// - **Named for the group,** because `artifactElement` is also the composite role of an
+    ///   `ArtifactPackage` (ADR 0034).
     #[doc(alias = "artifactElement")]
     #[cfg_attr(feature = "serde", serde(rename = "artifactElement"))]
     ArtifactGroupMember,
-    /// `source:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14). Named for the
-    /// Artifact package, because `source` is also the end of every `AssertedRelationship`
-    /// (ADR 0034 amendment 2); with `serde` it is `artifactSource`.
+    /// `source:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14).
+    ///
+    /// Named for the Artifact package, because `source` is also the end of every
+    /// `AssertedRelationship` (ADR 0034 amendment 2). With `serde` it is `artifactSource`.
     #[doc(alias = "source")]
     ArtifactSource,
-    /// `target:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14): one or more
-    /// ids, where an `AssertedRelationship`'s `target` holds exactly one. With `serde` it is
-    /// `artifactTarget`.
+    /// `target:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14).
+    ///
+    /// It holds one or more ids, where an `AssertedRelationship`'s `target` holds exactly
+    /// one. With `serde` it is `artifactTarget`.
     #[doc(alias = "target")]
     ArtifactTarget,
-    /// `category:Category[0..*]` of a `Category` (ptc/22-03-13; §10.8
-    /// Semantics) and of every `ExpressionElement` (§10.9): one end, held by
-    /// every `TerminologyAsset`. On a `Term` or an `Expression` it holds the
-    /// Categories the element belongs to. On a `Category` it holds the ids as
-    /// written: formal/23-05-08 does not say which way the end points (spec
-    /// defect D21).
+    /// `category:Category[0..*]` of a `Category` (ptc/22-03-13; §10.8 Semantics) and of every
+    /// `ExpressionElement` (§10.9): one end, held by every `TerminologyAsset`.
+    ///
+    /// - **On a `Term` or an `Expression`** it holds the Categories the element belongs to.
+    /// - **On a `Category`** it holds the ids as written: formal/23-05-08 does not say which
+    ///   way the end points (spec defect D21).
     Category,
     /// `element:ExpressionElement[0..*]` of an `Expression` (§10.10): the
     /// expression elements it is formed from.
@@ -285,57 +289,67 @@ pub enum ReferenceEnd {
     /// `origin:Base::ModelElement[0..1]` of a `Term` (§10.11): the element
     /// the Term originates from.
     Origin,
-    /// `terminologyElement:TerminologyElement[0..*]` of a `TerminologyGroup`
-    /// (§10.3; ptc/22-03-13 gives no aggregation, so it is a reference, not a
-    /// composition). Named for the group, because `terminologyElement` is
-    /// also the composite role of a `TerminologyPackage` (ADR 0034 amendment
-    /// 3).
+    /// `terminologyElement:TerminologyElement[0..*]` of a `TerminologyGroup` (§10.3).
+    ///
+    /// - **A reference, not a composition.** ptc/22-03-13 gives no aggregation.
+    /// - **Named for the group,** because `terminologyElement` is also the composite role of
+    ///   a `TerminologyPackage` (ADR 0034 amendment 3).
     #[doc(alias = "terminologyElement")]
     #[cfg_attr(feature = "serde", serde(rename = "terminologyElement"))]
     TerminologyGroupMember,
-    /// `interface:<package>Interface[0..*]` of every package kind, interfaces and bindings included:
-    /// an `AssuranceCasePackage` (§9.2), a `TerminologyPackage`, an `ArgumentPackage` or an
-    /// `ArtifactPackage` (ptc/22-03-13; the text of §10.4, §11.4 and §12.2 omits it): the
-    /// interfaces the package declares. Its targets are the holder's family's interface class.
-    /// Held as written, never synced with `implements` (ADR 0039).
+    /// `interface:<package>Interface[0..*]` of every package kind, interfaces and bindings
+    /// included: the interfaces the package declares.
+    ///
+    /// - **Declared by** an `AssuranceCasePackage` (§9.2), a `TerminologyPackage`, an
+    ///   `ArgumentPackage` or an `ArtifactPackage` (ptc/22-03-13; the text of §10.4, §11.4
+    ///   and §12.2 omits it).
+    /// - **Targets.** The interface class of the holder's family.
+    /// - **Held as written,** never synced with `implements` (ADR 0039).
     Interface,
-    /// `implements:<package>[1]` of a package interface: an `AssuranceCasePackageInterface`
-    /// (§9.3), a `TerminologyPackageInterface` (§10.5), an `ArgumentPackageInterface` (§11.6) or an
-    /// `ArtifactPackageInterface` (§12.5): the package the interface declares.
+    /// `implements:<package>[1]` of a package interface: the package the interface declares.
+    ///
+    /// The interfaces are an `AssuranceCasePackageInterface` (§9.3), a
+    /// `TerminologyPackageInterface` (§10.5), an `ArgumentPackageInterface` (§11.6) and an
+    /// `ArtifactPackageInterface` (§12.5).
     Implements,
-    /// `participantPackage:<package>[2..*]` of a package binding: an `AssuranceCasePackageBinding`
-    /// (§9.4), a `TerminologyPackageBinding` (ptc/22-03-13; §10.6 has no Associations block), an
-    /// `ArgumentPackageBinding` (§11.5) or an `ArtifactPackageBinding` (§12.4): the packages the
-    /// binding binds. Its lower bound counts distinct ids.
+    /// `participantPackage:<package>[2..*]` of a package binding: the packages the binding
+    /// binds.
+    ///
+    /// - **The bindings** are an `AssuranceCasePackageBinding` (§9.4), a
+    ///   `TerminologyPackageBinding` (ptc/22-03-13; §10.6 has no Associations block), an
+    ///   `ArgumentPackageBinding` (§11.5) and an `ArtifactPackageBinding` (§12.4).
+    /// - **Lower bound.** It counts distinct ids.
     #[doc(alias = "participantPackage")]
     ParticipantPackage,
     /// The `expression:Terminology::ExpressionElement[1]` of each `ExpressionLangString`
-    /// (§8.4) the element holds, as its name or a value of its `content`, `key` or
-    /// `location`: their ids in that order, one per `ExpressionLangString` that has one.
-    /// Derived from the name and texts: the reference edits refuse it
-    /// ([`EditError::DerivedEnd`](crate::edit::EditError::DerivedEnd)); set it with
-    /// [`LangString::with_expression`](super::LangString::with_expression).
+    /// (§8.4) the element holds.
+    ///
+    /// - **Which.** The element's name, then the values of its `content`, `key` and
+    ///   `location`: their ids in that order, one per `ExpressionLangString` that has one.
+    /// - **Derived** from the name and texts: the reference edits refuse it
+    ///   ([`EditError::DerivedEnd`](crate::edit::EditError::DerivedEnd)). Set it with
+    ///   [`LangString::with_expression`](super::LangString::with_expression).
     Expression,
 }
 
 impl ReferenceEnd {
-    /// Every end, in the order `xmi::write` writes them and `compare`
-    /// reports them (ptc/22-03-13 order within each class, superclass
-    /// first): `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
-    /// `source`, `target`, `structure`, `referencedArtifactElement`, an
-    /// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
-    /// `artifactElement`, and an `ArtifactAssetRelationship`'s `source` and
-    /// `target`, then the Terminology ends: the `category` of every
-    /// `TerminologyAsset`, an `Expression`'s `element`, a `Term`'s `origin`
-    /// and a `TerminologyGroup`'s `terminologyElement`; then a package's
-    /// `interface`, an interface's `implements` and a binding's
-    /// `participantPackage` (ADR 0039); and last the derived
-    /// `expression` of every element (SACM23-BASE-009), which `xmi::write`
-    /// writes with the name and texts that hold it, not as an end.
+    /// Every end, in the order `xmi::write` writes them and `compare` reports them:
+    /// ptc/22-03-13 order within each class, superclass first.
     ///
-    /// A slice, so that a later end is an additive change. It is also the
-    /// order of [`Document::referrers`](crate::model::Document::referrers)
-    /// within one holder.
+    /// 1. `citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`,
+    ///    `structure`, `referencedArtifactElement`;
+    /// 2. an `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s `artifactElement`,
+    ///    and an `ArtifactAssetRelationship`'s `source` and `target`;
+    /// 3. the Terminology ends: the `category` of every `TerminologyAsset`, an
+    ///    `Expression`'s `element`, a `Term`'s `origin` and a `TerminologyGroup`'s
+    ///    `terminologyElement`;
+    /// 4. a package's `interface`, an interface's `implements` and a binding's
+    ///    `participantPackage` (ADR 0039);
+    /// 5. the derived `expression` of every element (SACM23-BASE-009), which `xmi::write`
+    ///    writes with the name and texts that hold it, not as an end.
+    ///
+    /// A slice, so that a later end is an additive change. It is also the order of
+    /// [`Document::referrers`](crate::model::Document::referrers) within one holder.
     ///
     /// ```
     /// use sacm::model::{ElementKind, ReferenceEnd};
@@ -382,18 +396,19 @@ impl ReferenceEnd {
         ReferenceEnd::Expression,
     ];
 
-    /// The end's name, spelled as in the machine-readable model and in XMI:
-    /// `citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`,
-    /// `target`, `structure`, `referencedArtifactElement` or, for
-    /// [`GroupMember`](Self::GroupMember), `argumentElement`, for
-    /// [`ArtifactGroupMember`](Self::ArtifactGroupMember), `artifactElement`,
-    /// for [`ArtifactSource`](Self::ArtifactSource) and
-    /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`,
-    /// `category`, `element`, `origin`, for
-    /// [`TerminologyGroupMember`](Self::TerminologyGroupMember),
-    /// `terminologyElement`, `interface`, `implements`, `participantPackage`
-    /// and `expression`. It is the `end` an
-    /// [`EditError`](crate::edit::EditError) names.
+    /// The end's name, spelled as in the machine-readable model and in XMI. It is the `end`
+    /// an [`EditError`](crate::edit::EditError) names.
+    ///
+    /// The name is the variant's in lower camel case, such as `citedElement` for
+    /// `CitedElement`, except:
+    ///
+    /// | Variant | Name |
+    /// |---|---|
+    /// | [`GroupMember`](Self::GroupMember) | `argumentElement` |
+    /// | [`ArtifactGroupMember`](Self::ArtifactGroupMember) | `artifactElement` |
+    /// | [`ArtifactSource`](Self::ArtifactSource) | `source` |
+    /// | [`ArtifactTarget`](Self::ArtifactTarget) | `target` |
+    /// | [`TerminologyGroupMember`](Self::TerminologyGroupMember) | `terminologyElement` |
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -496,21 +511,24 @@ impl ReferenceEnd {
         matches!(self, Self::Expression)
     }
 
-    /// Whether an element of `kind` has the end: every element has
-    /// `citedElement` and `abstractForm` (§8.2) and the derived `expression`
-    /// (§8.4), every Assertion has
-    /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
-    /// `source` and `target` (§11.13), an `ArtifactAssetRelationship` has
-    /// its own `source` and `target` (§12.14), every `TerminologyAsset` (a
-    /// Category, a Term or an Expression) has `category` (§10.8, §10.9), and
-    /// each other end belongs to one kind, as its variant says.
+    /// Whether an element of `kind` has the end.
     ///
-    /// It is true exactly when a
-    /// [`SetReferences::clear`](crate::edit::SetReferences::clear) of the
-    /// end on such an element is not
-    /// [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable),
-    /// and [`SacmElement::references`](crate::model::SacmElement::references)
-    /// of an end the kind lacks holds no id.
+    /// | Elements | Ends |
+    /// |---|---|
+    /// | every element | `citedElement`, `abstractForm` (§8.2), the derived `expression` (§8.4) |
+    /// | every Assertion | `metaClaim` (§11.10) |
+    /// | every `AssertedRelationship` | `reasoning`, `source`, `target` (§11.13) |
+    /// | an `ArtifactAssetRelationship` | its own `source` and `target` (§12.14) |
+    /// | every `TerminologyAsset`: a Category, a Term or an Expression | `category` (§10.8, §10.9) |
+    ///
+    /// Each other end belongs to one kind, as its variant says.
+    ///
+    /// - **Edits agree.** It is true exactly when a
+    ///   [`SetReferences::clear`](crate::edit::SetReferences::clear) of the end on such an
+    ///   element is not
+    ///   [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable).
+    /// - **Reads agree.** [`SacmElement::references`](crate::model::SacmElement::references)
+    ///   of an end the kind lacks holds no id.
     ///
     /// ```
     /// use sacm::model::{ElementKind, ReferenceEnd};
@@ -528,26 +546,29 @@ impl ReferenceEnd {
         self.owner_on(kind).is_some()
     }
 
-    /// The fewest and the most ids the end holds on an element of `kind`, as
-    /// `(lower, upper)` with `None` for no upper bound; `None` when the kind
-    /// has no such end ([`applies_to`](Self::applies_to)).
+    /// The fewest and the most ids the end holds on an element of `kind`, as `(lower, upper)`
+    /// with `None` for no upper bound.
     ///
-    /// The bounds depend on the owner: §11.13 (p. 40) gives an
-    /// `AssertedRelationship` `source:ArgumentAsset[1..*]` and
-    /// `target:ArgumentAsset[1]`, §12.14 (p. 50) gives an
-    /// `ArtifactAssetRelationship` `source:ArtifactAsset[1..*]` and
-    /// `target:ArtifactAsset[1..*]`, and the other ends are `[0..1]` or
-    /// `[0..*]`. An interface's `implements` is `[1]` (§9.3, §10.5, §11.6,
-    /// §12.5) and a binding's `participantPackage` `[2..*]` (§9.4, §11.5,
-    /// §12.4; ptc/22-03-13 for a `TerminologyPackageBinding`); a lower bound
-    /// counts distinct ids (ADR 0039 D3).
-    /// They are the bounds [`SetReferences`](crate::edit::SetReferences),
-    /// [`AddReference`](crate::edit::AddReference) and
-    /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
-    /// ([`TooFewReferences`](crate::edit::EditError::TooFewReferences),
-    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)),
-    /// except the derived [`Expression`](Self::Expression), which they refuse
-    /// as [`DerivedEnd`](crate::edit::EditError::DerivedEnd).
+    /// `None` when the kind has no such end ([`applies_to`](Self::applies_to)). The bounds
+    /// depend on the owner:
+    ///
+    /// | End | Bounds |
+    /// |---|---|
+    /// | an `AssertedRelationship`'s `source` (§11.13, p. 40) | `[1..*]` |
+    /// | an `AssertedRelationship`'s `target` (§11.13, p. 40) | `[1]` |
+    /// | an `ArtifactAssetRelationship`'s `source` and `target` (§12.14, p. 50) | `[1..*]` |
+    /// | an interface's `implements` (§9.3, §10.5, §11.6, §12.5) | `[1]` |
+    /// | a binding's `participantPackage` (§9.4, §11.5, §12.4; ptc/22-03-13 for a `TerminologyPackageBinding`) | `[2..*]` |
+    /// | every other end | `[0..1]` or `[0..*]` |
+    ///
+    /// - **Distinct ids.** A lower bound counts distinct ids (ADR 0039 D3).
+    /// - **Kept by the edits.** [`SetReferences`](crate::edit::SetReferences),
+    ///   [`AddReference`](crate::edit::AddReference) and
+    ///   [`RemoveReference`](crate::edit::RemoveReference) keep an end within them.
+    /// - **Refused as** [`TooFewReferences`](crate::edit::EditError::TooFewReferences) or
+    ///   [`TooManyReferences`](crate::edit::EditError::TooManyReferences) otherwise.
+    /// - **Except** the derived [`Expression`](Self::Expression), which they refuse as
+    ///   [`DerivedEnd`](crate::edit::EditError::DerivedEnd).
     ///
     /// ```
     /// use sacm::model::{ElementKind, ReferenceEnd};
@@ -714,8 +735,7 @@ impl ReferenceEnd {
 }
 
 impl fmt::Display for ReferenceEnd {
-    /// Writes [`ReferenceEnd::name`]: `source` for both
-    /// [`Source`](ReferenceEnd::Source) and
+    /// Writes [`ReferenceEnd::name`]: `source` for both [`Source`](ReferenceEnd::Source) and
     /// [`ArtifactSource`](ReferenceEnd::ArtifactSource).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad(self.name())

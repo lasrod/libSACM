@@ -10,102 +10,101 @@ use super::{
     MultiLangString, Preserved, Proxy, ReferenceEnd, Revision, Subclass,
 };
 
-/// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
-/// owning its root packages and every element under them.
+/// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds), owning its root
+/// packages and every element under them.
 ///
-/// A document is read through borrowing views. [`roots`](Self::roots) yields
-/// the top-level packages, [`get`](Self::get) looks an element up by its
-/// [`ElementId`], and [`elements`](Self::elements) visits every element. Each
-/// view is a [`SacmElement`], which navigates to its
-/// [`parent`](SacmElement::parent) and [`children`](SacmElement::children).
+/// - **Read through borrowing views.** [`roots`](Self::roots) yields the top-level packages,
+///   [`get`](Self::get) looks an element up by its [`ElementId`], and
+///   [`elements`](Self::elements) visits every element.
+/// - **A view is a [`SacmElement`],** which navigates to its [`parent`](SacmElement::parent)
+///   and [`children`](SacmElement::children).
+/// - **Document order** is the order in which elements were added: for a loaded file, the
+///   order they appear in it. It applies to the roots, and to each element's children
+///   across every kind of child.
+/// - **Read.** In this release [`xmi::read`](crate::xmi::read) fills a document with roots
+///   of the twelve package kinds (the four packages, their interfaces and their bindings)
+///   and with elements of every [`ElementKind`]. [`Document::new`] is empty.
+/// - **Edited.** [`edit::apply`](crate::edit::apply) creates every kind, edits the features
+///   and the order of elements of every kind, and moves, copies and deletes them
+///   ([`MoveElement`](crate::edit::MoveElement), [`CopyElements`](crate::edit::CopyElements),
+///   [`DeleteElement`](crate::edit::DeleteElement)).
+/// - **Cloning** copies all of it, preserved content included, and the counters that
+///   generated ids continue from. The copy is independent of the original.
+/// - **No recursion.** Cloning, dropping and traversal do not recurse, so arbitrarily deep
+///   nesting is safe, in preserved content too.
 ///
-/// **Document order** is the order in which elements were added: for a loaded
-/// file, the order they appear in it. It applies to the roots, and to each
-/// element's children across every kind of child.
+/// # Containment
 ///
-/// **Containment**: each child is held in a composite role of its parent's
-/// class (SACM 2.3). Every `ModelElement` can hold descriptions,
-/// implementation constraints, notes and tagged values (§8.6); an
-/// `AssuranceCasePackage` holds sub-packages (§9.2); an `ArgumentPackage`
-/// holds argumentation elements (§11.4); a `TerminologyPackage` holds
-/// terminology elements (§10.4); an `ArtifactPackage` holds any
-/// `ArtifactElement`, a `Claim` or a package included (§12.2, [ADR 0014]); and
-/// an `ArtifactAsset` holds properties (§12.6). Interfaces and bindings hold
-/// what their package holds, a `UtilityElement` contains nothing, and a group
-/// holds only utility elements, because its members are references. How many
-/// children a role holds is left to validation. So is the §11.4 rule that an
-/// `ArgumentPackage` holding nested packages holds only packages.
+/// Each child is held in a composite role of its parent's class (SACM 2.3).
+/// [`ElementKind::may_contain`] lists the roles and says what it leaves to validation.
+///
+/// - **An `ArtifactPackage`** holds any `ArtifactElement`, a `Claim` or a package included
+///   (§12.2, [ADR 0014]).
+/// - **A group** holds only utility elements, because its members are references.
+/// - **A `UtilityElement`** contains nothing.
 ///
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
-/// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// roots of the twelve package kinds (the four packages, their interfaces
-/// and their bindings) and with elements of every [`ElementKind`].
-/// [`edit::apply`](crate::edit::apply) creates every kind, edits
-/// the features and the order of elements of every kind, moves and copies
-/// them ([`MoveElement`](crate::edit::MoveElement),
-/// [`CopyElements`](crate::edit::CopyElements)), and deletes
-/// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
-/// [`Document::new`] is empty.
+/// # References
 ///
-/// **References** between elements, such as
-/// [`SacmElement::cited_element`] and [`SacmElement::sources`], are held as
-/// the ids they name, not as views: [`get`](Self::get) resolves them. A
-/// multi-valued end, such as `source`, keeps its ids in order, repeats
-/// included (D-ORDER, ADR 0027). A document may hold a reference whose id
-/// names no element, as a file can (ADR 0026);
-/// [`validation::validate`](crate::validation::validate) reports it
-/// (SACM-REF-001), no edit makes one (an edit keeps one the end already
-/// holds, ADR 0029), and no id an edit generates is one a reference names.
-/// Likewise a document may hold a reference to an element of a kind its end
-/// does not admit, such as a `metaClaim` naming an `ArgumentReasoning`;
-/// `validate` reports it (SACM-REF-002), and no edit makes one.
+/// - **Held as ids.** References between elements, such as [`SacmElement::cited_element`]
+///   and [`SacmElement::sources`], are the ids they name, not views: [`get`](Self::get)
+///   resolves them.
+/// - **In order.** A multi-valued end, such as `source`, keeps its ids in order, repeats
+///   included (D-ORDER, ADR 0027).
+/// - **Dangling.** A document may hold a reference whose id names no element, as a file can
+///   (ADR 0026). [`validation::validate`](crate::validation::validate) reports it
+///   (SACM-REF-001).
+/// - **Wrong kind.** A document may hold a reference to an element of a kind its end does
+///   not admit, such as a `metaClaim` naming an `ArgumentReasoning`. `validate` reports it
+///   (SACM-REF-002).
+/// - **Edits make neither.** An edit keeps a dangling reference the end already holds (ADR
+///   0029), and no id an edit generates is one a reference names.
 ///
-/// **Preserved content** is what [`xmi::read`](crate::xmi::read) kept, as
-/// written, because it is not SACM 2.3 where it stands, such as a vendor
-/// attribute or child element (ADR 0033), or, in tolerant mode, because a
-/// strict read refuses it, such as a value that is no literal (ADR 0035);
-/// XMI metadata, such as `xmi:uuid`, is not preserved content (ADR 0042).
-/// Each element that holds some says so
-/// ([`SacmElement::has_preserved_content`]), and the document holds what
-/// is on or under `xmi:XMI` outside its elements, placed among the roots
-/// ([`has_preserved_content`](Self::has_preserved_content) tells both). It
-/// has no API of its own besides that; [`xmi::write`](crate::xmi::write)
-/// writes it back in tolerant mode. The ids of its elements stay in the
-/// document's id space: [`get`](Self::get) does not find them, no edit can
-/// take or name one, and deleting the element that holds them frees them.
+/// # Preserved content
 ///
-/// Cloning a document copies all of it, preserved content included, and the
-/// counters that generated ids continue from; the copy is independent of the
-/// original. Cloning, dropping and traversal do not recurse, so arbitrarily
-/// deep nesting is safe, in preserved content too.
+/// What [`xmi::read`](crate::xmi::read) kept, as written, instead of reading it.
+///
+/// - **Not SACM 2.3 where it stands,** such as a vendor attribute or child element (ADR
+///   0033).
+/// - **What a strict read refuses,** which a tolerant read keeps, such as a value that is
+///   no literal (ADR 0035).
+/// - **Not XMI metadata.** XMI metadata, such as `xmi:uuid`, is not preserved content (ADR
+///   0042).
+/// - **Where.** Each element that holds some says so
+///   ([`SacmElement::has_preserved_content`]). The document holds what is on or under
+///   `xmi:XMI` outside its elements, placed among the roots;
+///   [`has_preserved_content`](Self::has_preserved_content) tells both.
+/// - **No other API.** [`xmi::write`](crate::xmi::write) writes it back in tolerant mode.
+/// - **Its ids** stay in the document's id space: [`get`](Self::get) does not find them, no
+///   edit can take or name one, and deleting the element that holds them frees them.
 ///
 /// # Equality
 ///
 /// `==` compares SACM content: two documents are equal exactly when
-/// [`semantic_compare`](crate::compare::semantic_compare) finds no
-/// difference between them. Elements are matched by id; kinds, parents,
-/// `gid`s, the `isCitation`, `isAbstract` and `isCounter` flags, the ids
-/// each reference end holds (`citedElement`, `abstractForm`, `metaClaim`,
-/// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`,
-/// an `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
-/// `artifactElement`, in order), names, the
-/// ids of names, `content`s, `key`s and `location`s with their ids,
-/// `version`s, `date`s, `startTime`s, `endTime`s, `assertionDeclaration`s, the order of roots and children, each element's
-/// preserved content and the document's own, outside its elements, are
-/// compared. Formatting, attribute order and
-/// namespace prefixes are not held, except in preserved content, which is
-/// compared exactly. `==` is order-sensitive, for the ids of the
-/// multi-valued ends too; see [`crate::compare`] to ignore order.
+/// [`semantic_compare`](crate::compare::semantic_compare) finds no difference between them.
 ///
-/// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
-/// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
-/// does not carry them. So two equal documents may generate different next
-/// ids: an edit can free an id, such as the `xmi:id` of a `value` that
-/// [`SetContent`](crate::edit::SetContent) drops, and a document whose
-/// counter has passed it generates above it, while one whose counter has
-/// not generates it. Nor is the [`revision`](Self::revision) compared: two
-/// reads of one file are `==` and have different revisions.
+/// - **Matched by id.** Elements are matched by id.
+/// - **Compared, per element.** Kind, parent, `gid`, the `isCitation`, `isAbstract` and
+///   `isCounter` flags, the ids and `href`s each reference end holds, in order, the proxies,
+///   and the `assertionDeclaration`.
+/// - **Compared, the texts.** The name and its id; the `content`, `key` and `location` with
+///   their ids; the `version`, `date`, `startTime`, `endTime`, `value` and
+///   `externalReference`.
+/// - **Compared, the rest.** The order of roots and children, and the XMI metadata and
+///   preserved content of each element and of the document, outside its elements.
+/// - **Not held.** Formatting, attribute order and namespace prefixes, except in preserved
+///   content, which is compared exactly.
+/// - **Order-sensitive,** for the ids of the multi-valued ends too; see [`crate::compare`]
+///   to ignore order.
+/// - **Not compared: the id counters** [`edit::apply`](crate::edit::apply) uses to generate
+///   ids such as `claim_1`. They are not SACM content, and XMI does not carry them.
+/// - **Not compared: the [`revision`](Self::revision).** Two reads of one file are `==` and
+///   have different revisions.
+///
+/// So two equal documents may generate different next ids. An edit can free an id, such as
+/// the `xmi:id` of a `value` that [`SetContent`](crate::edit::SetContent) drops. A document
+/// whose counter has passed it generates above it; one whose counter has not generates it.
 ///
 /// # Examples
 ///
@@ -151,32 +150,33 @@ pub struct Document {
     /// The handle of each element by id. Only looked up, never iterated, so
     /// nothing observable depends on its order.
     index: HashMap<ElementId, usize>,
-    /// How each id that is not in `index` is used: as an id that identifies
-    /// no element, the `xmi:id` of a `name` (ADR 0024), of a `content` or
-    /// `key`, or of a `value` in one (ADR 0025), which shares the file's id
-    /// space though [`get`](Self::get) does not look in it; or as a target of
-    /// references (ADR 0026), so that a generated id never makes a dangling
-    /// reference resolve. An element id that references hold is counted
-    /// here too. Derived from the nodes; only looked up, never iterated.
-    /// (One map, not two, keeps `Document` the size it was.)
+    /// How each id that is not in `index` is used. Derived from the nodes; only looked up,
+    /// never iterated. (One map, not two, keeps `Document` the size it was.)
+    ///
+    /// - **An id that identifies no element.** The `xmi:id` of a `name` (ADR 0024), of a
+    ///   `content` or `key`, or of a `value` in one (ADR 0025). It shares the file's id
+    ///   space though [`get`](Self::get) does not look in it.
+    /// - **A target of references** (ADR 0026), so that a generated id never makes a
+    ///   dangling reference resolve. An element id that references hold is counted here too.
     other_ids: HashMap<ElementId, IdUse>,
-    /// The `n` of the last id generated for each kind (`claim_<n>`, ADR
-    /// 0019); a kind with none generated yet is absent. Advanced only when a
-    /// generated id is used, and copied by `Clone`.
+    /// The `n` of the last id generated for each kind (`claim_<n>`, ADR 0019).
+    ///
+    /// A kind with none generated yet is absent. Advanced only when a generated id is used,
+    /// and copied by `Clone`.
     id_counters: BTreeMap<ElementKind, u64>,
     /// The state of the document within the process (ADR 0031): fresh for
     /// a new document and after every successful edit, copied by `Clone`.
     revision: Revision,
-    /// The preserved content outside every element (ADR 0035 D3): the
-    /// attributes of the `xmi:XMI` element besides its XMI metadata, and its
-    /// children that are neither a root nor XMI metadata, such as an
-    /// `xmi:foo` XMI does not define, placed among the roots. `None` when it
-    /// holds none.
+    /// The preserved content outside every element (ADR 0035 D3); `None` when it holds none.
+    ///
+    /// It is the attributes of the `xmi:XMI` element besides its XMI metadata, and its
+    /// children that are neither a root nor XMI metadata, such as an `xmi:foo` XMI does not
+    /// define, placed among the roots.
     preserved: Option<Box<Preserved>>,
-    /// The XMI metadata outside every element (SACM23-XMI-019, ADR 0042):
-    /// the metadata attributes of the `xmi:XMI` element, such as `xmi:uuid`,
-    /// and its XMI elements, such as `xmi:Documentation`, placed among the
-    /// roots. `None` when it holds none.
+    /// The XMI metadata outside every element (ADR 0042); `None` when it holds none.
+    ///
+    /// It is the metadata attributes of the `xmi:XMI` element, such as `xmi:uuid`, and its
+    /// XMI elements, such as `xmi:Documentation`, placed among the roots.
     metadata: Option<Box<Preserved>>,
 }
 
@@ -201,24 +201,22 @@ impl Default for Document {
 #[derive(Clone, Debug, Default)]
 struct IdUse {
     /// The handle of the element whose `name`, `content`, `key`, `location` or `value`
-    /// carries the id as its `xmi:id`, or whose preserved content does, if
-    /// one does.
+    /// carries the id as its `xmi:id`, or whose preserved content does, if one does.
     owner: Option<usize>,
-    /// Whether the owner holds the id in its preserved content (ADR 0033) or
-    /// its XMI metadata (ADR 0042 D5), rather than on a `name`, `content`,
-    /// `key`, `location` or `value`.
+    /// Whether the owner holds the id in its preserved content (ADR 0033) or its XMI
+    /// metadata (ADR 0042 D5), not on a `name`, `content`, `key`, `location` or `value`.
     preserved: bool,
-    /// Whether the document's own preserved content or XMI metadata, outside
-    /// every element, holds the id (ADR 0035 D3, ADR 0042 D5); `owner` is
-    /// then `None`.
+    /// Whether the document's own preserved content or XMI metadata, outside every element,
+    /// holds the id (ADR 0035 D3, ADR 0042 D5); `owner` is then `None`.
     document: bool,
     /// How many references, of every element and end, hold the id: the
     /// typed ones and those preserved content may hold.
     references: usize,
-    /// The handle of the element that holds the id in a typed end, once per
-    /// occurrence, in no particular order: the index of
-    /// [`Document::referrers`] (ADR 0036 D3). Preserved content's references
-    /// are not typed, so they are counted in `references` only.
+    /// The handle of the element that holds the id in a typed end, once per occurrence, in
+    /// no particular order: the index of [`Document::referrers`] (ADR 0036 D3).
+    ///
+    /// Preserved content's references are not typed, so they are counted in `references`
+    /// only.
     holders: Vec<usize>,
 }
 
@@ -251,10 +249,10 @@ struct Node {
     /// The element's `location` (§12.10): `None` when absent, and always
     /// `None` unless the kind is `Resource`.
     location: Option<Text>,
-    /// The string-valued attributes the element holds, each exactly as held
-    /// (D-DATE): only the ones given, each once, each one the kind holds
-    /// ([`StringAttribute::is_held_by`]), in no particular order (readers
-    /// look one up).
+    /// The string-valued attributes the element holds, each exactly as held (D-DATE).
+    ///
+    /// Only the ones given, each once, each one the kind holds
+    /// ([`StringAttribute::is_held_by`]), in no particular order (readers look one up).
     strings: Vec<(StringAttribute, String)>,
     /// The element's `assertionDeclaration`: `Some` exactly when the kind is
     /// an Assertion.
@@ -266,43 +264,45 @@ struct Node {
     /// `isCounter` (§11.13): absent is `false`, and always `false` unless
     /// the kind is an `AssertedRelationship`.
     is_counter: bool,
-    /// The ids each reference end of the element holds, unresolved and in
-    /// document order (ADR 0026): only the ends that hold one, each once, in
-    /// no particular order (readers look an end up), and never an empty list.
+    /// The ids each reference end of the element holds, unresolved and in document order
+    /// (ADR 0026).
+    ///
+    /// Only the ends that hold one, each once, in no particular order (readers look an end
+    /// up), and never an empty list.
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
-    /// The cross-document references (`href`s) each reference end of the
-    /// element holds, as read and in document order (ADR 0040 D2): only the
-    /// ends that hold one, each once, in no particular order, and never an
-    /// empty list. They name no element of this document, so no id use
-    /// counts them.
+    /// The cross-document references (`href`s) each reference end of the element holds, as
+    /// read and in document order (ADR 0040 D2).
+    ///
+    /// Only the ends that hold one, each once, in no particular order, and never an empty
+    /// list. They name no element of this document, so no id use counts them.
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
-    /// The element's proxies, in document order (SACM23-XMI-029, ADR 0040
-    /// amendment 1, A2): each a child in one of its composite roles that is
-    /// held in another document. They are no elements of this document, so
-    /// no id use and no child list counts them.
+    /// The element's proxies, in document order (ADR 0040 amendment 1, A2): each a child in
+    /// one of its composite roles that is held in another document.
+    ///
+    /// They are no elements of this document, so no id use and no child list counts them.
     proxies: Vec<Proxy>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
-    /// The element's index among its parent's children, or among the
-    /// roots: derived from `children` and `roots`, so that
-    /// [`Document::referrers`] can order holders by document order without
-    /// walking the document (ADR 0036 D3).
+    /// The element's index among its parent's children, or among the roots.
+    ///
+    /// Derived from `children` and `roots`, so that [`Document::referrers`] can order
+    /// holders by document order without walking the document (ADR 0036 D3).
     slot: usize,
     /// The role of the parent's class that holds the element: `Some` exactly
     /// when it has a parent.
     role: Option<Role>,
     /// The handles of the contained elements, in containment order.
     children: Vec<usize>,
-    /// What the element was read with and kept as written instead of read:
-    /// content that is not SACM 2.3 where it stands (LIB-COMPAT-003, ADR
-    /// 0033), or, in tolerant mode, a construct a strict read refuses (ADR
-    /// 0035); `None` when it holds none. Boxed, so an
-    /// element without it costs one word.
+    /// What the element was read with and kept as written instead of read; `None` when it
+    /// holds none. Boxed, so an element without it costs one word.
+    ///
+    /// It is content that is not SACM 2.3 where it stands (LIB-COMPAT-003, ADR 0033), or, in
+    /// tolerant mode, a construct a strict read refuses (ADR 0035).
     preserved: Option<Box<Preserved>>,
-    /// The element's XMI metadata (SACM23-XMI-019, ADR 0042): `xmi:uuid`,
-    /// `xmi:label` and the XSI schema locations on its start tag, and its
-    /// `xmi:extension` and `xmi:Extension` children, placed among its typed
-    /// children; `None` when it holds none.
+    /// The element's XMI metadata (SACM23-XMI-019, ADR 0042); `None` when it holds none.
+    ///
+    /// It is `xmi:uuid`, `xmi:label` and the XSI schema locations on its start tag, and its
+    /// `xmi:extension` and `xmi:Extension` children, placed among its typed children.
     metadata: Option<Box<Preserved>>,
     /// The XMI metadata of the element's `name`, its children all placed at
     /// index 0; `None` when it holds none, and whenever `name` is `None`.
@@ -323,16 +323,11 @@ impl Document {
         Self::default()
     }
 
-    /// The document's current state within the process, for
-    /// [`edit::apply_preview`](crate::edit::apply_preview) to tell whether
-    /// the document changed after a preview was taken (LIB-EDIT-007).
+    /// The document's current state within the process:
+    /// [`edit::apply_preview`](crate::edit::apply_preview) refuses a preview taken before it.
     ///
-    /// A new, default or read document has a revision no other document of
-    /// the process has had, and every successful edit gives a new one, even
-    /// one that changes nothing. A clone has its original's revision until
-    /// either changes. A refused edit, [`edit::check`](crate::edit::check)
-    /// and [`edit::preview`](crate::edit::preview) keep it. See
-    /// [`Revision`].
+    /// [`Revision`] says when it changes. Like a refused edit,
+    /// [`edit::check`](crate::edit::check) and [`edit::preview`](crate::edit::preview) keep it.
     ///
     /// ```
     /// use sacm::model::Document;
@@ -377,11 +372,11 @@ impl Document {
     }
 
     /// The element with the given id, or `None` if the document has none.
-    /// It resolves a reference such as [`SacmElement::cited_element`]: `None`
-    /// means the reference names no element of the document (SACM-REF-001).
     ///
-    /// Ids are compared exactly, byte for byte. The id may be given as a
-    /// `&str`, a `&String` or an `&ElementId`.
+    /// - **Resolves a reference,** such as [`SacmElement::cited_element`]: `None` means the
+    ///   reference names no element of the document (SACM-REF-001).
+    /// - **Exact.** Ids are compared byte for byte.
+    /// - **Any string.** The id may be given as a `&str`, a `&String` or an `&ElementId`.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage};
@@ -460,18 +455,17 @@ impl Document {
     /// Adds an element as the last child of `parent`, or as the last root
     /// when `parent` is `None`.
     ///
-    /// **Not part of the stable API.** This is the test seam of the
-    /// `test-support` feature: it builds documents for tests with the kinds
-    /// and states that the XMI reader and [`edit::apply`](crate::edit::apply)
-    /// do not produce yet. It may change or disappear in
-    /// any release. It checks identity, that `parent` exists, whether `kind`
-    /// can have a name, and whether a containment role of the parent's class
-    /// admits `kind` (see [`Document`]). It does not check how many children a
-    /// role holds; validation will. A root must be a package kind.
-    ///
-    /// `name` is the element's `name` (SACM 2.3 §8.6). `None` is a missing
-    /// name, held as missing ([ADR 0013]). Only `ModelElement` kinds have a
-    /// name, so the four `UtilityElement` kinds take `None`.
+    /// - **Not part of the stable API.** This is the test seam of the `test-support` feature:
+    ///   it builds documents for tests in states that [`xmi::read`](crate::xmi::read) and
+    ///   [`edit::apply`](crate::edit::apply) do not produce. It may change or disappear in
+    ///   any release.
+    /// - **Checked.** Identity, that `parent` exists, whether `kind` can have a name, and
+    ///   whether a containment role of the parent's class admits `kind`
+    ///   ([`ElementKind::may_contain`]). A root must be a package kind.
+    /// - **Not checked.** How many children a role holds; that is for validation.
+    /// - **`name`** is the element's `name` (SACM 2.3 §8.6). `None` is a missing name, held
+    ///   as missing ([ADR 0013]). Only `ModelElement` kinds have a name, so the four
+    ///   `UtilityElement` kinds take `None`.
     ///
     /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
     ///
@@ -1561,14 +1555,14 @@ impl Document {
         }
     }
 
-    /// Whether `id` is in the document's id space: an element's id, or the
-    /// `xmi:id` of a name, a `content`, a `key`, a `location`, a value,
-    /// preserved content or XMI metadata.
+    /// Whether `id` is in the document's id space.
     ///
-    /// These are exactly the ids a create's `with_id` refuses as
-    /// [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId). An
-    /// id only a reference names is not in use, and
-    /// [`contains`](Self::contains) is true only for an element's id.
+    /// - **In use.** An element's id, and the `xmi:id` of a name, a `content`, a `key`, a
+    ///   `location`, a value, preserved content or XMI metadata.
+    /// - **Refused by a create.** These are exactly the ids a create's `with_id` refuses as
+    ///   [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId).
+    /// - **Not in use.** An id only a reference names.
+    /// - **Not [`contains`](Self::contains),** which is true only for an element's id.
     ///
     /// # Examples
     ///
@@ -1642,14 +1636,17 @@ impl Document {
             .is_some_and(|used| (used.preserved && used.owner.is_some()) || used.document)
     }
 
-    /// Whether the document holds preserved content anywhere: in an element
-    /// ([`SacmElement::has_preserved_content`]), or outside every element,
-    /// on or under the `xmi:XMI` element, such as a vendor attribute or an
-    /// XMI-namespace element XMI does not define there (ADR 0035 D3). XMI
-    /// metadata, such as `xmi:uuid` or `xmi:Documentation`, is none
-    /// (SACM23-XMI-019). A strict [`xmi::write`](crate::xmi::write)
-    /// refuses a document that holds some
-    /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
+    /// Whether the document holds preserved content anywhere: in an element, or outside
+    /// every element.
+    ///
+    /// - **In an element.** [`SacmElement::has_preserved_content`] tells which.
+    /// - **Outside every element.** On or under the `xmi:XMI` element, such as a vendor
+    ///   attribute or an XMI-namespace element XMI does not define there (ADR 0035 D3).
+    /// - **Not XMI metadata.** `xmi:uuid` or `xmi:Documentation`, say, is none
+    ///   (SACM23-XMI-019).
+    /// - **Strict write.** A strict [`xmi::write`](crate::xmi::write) refuses a document that
+    ///   holds some
+    ///   ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
     ///
     /// ```
     /// use sacm::xmi::{self, Mode, ReadOptions};
@@ -1822,20 +1819,20 @@ impl Document {
 
 /// Referrers (LIB-API-014; ADR 0036 D3).
 impl Document {
-    /// Every typed reference that names `id`, whether or not an element has
-    /// that id: the holder, the end and the id's position in the end
-    /// (LIB-API-014).
+    /// Every typed reference that names `id`, whether or not an element has that id: the
+    /// holder, the end and the id's position in the end.
     ///
-    /// They are ordered by holder in document pre-order, then by end in
-    /// [`ReferenceEnd::ALL`] order, then by position; an id an end holds
-    /// twice gives two entries. A dangling id, the id of a name, `content`,
-    /// `key`, `location` or `value`, and the `xmi:id` of preserved content
-    /// have referrers too. References that preserved content may hold are
-    /// not typed, so they are not listed.
-    ///
-    /// The document keeps an index of the holders of each id, which every
-    /// edit updates, so the cost grows with the number of referrers and the
-    /// depth of their holders, not with the size of the document.
+    /// - **Every end.** Each [`ReferenceEnd`] is indexed, `reasoning` and the derived
+    ///   `expression` included.
+    /// - **Order.** By holder in document pre-order, then by end in [`ReferenceEnd::ALL`]
+    ///   order, then by position. An id an end holds twice gives two entries.
+    /// - **Any id.** A dangling id, the id of a name, `content`, `key`, `location` or
+    ///   `value`, and the `xmi:id` of preserved content have referrers too.
+    /// - **Typed only.** References that preserved content may hold are not typed, so they
+    ///   are not listed.
+    /// - **Cost.** The document keeps an index of the holders of each id, which every edit
+    ///   updates. So the cost grows with the number of referrers and the depth of their
+    ///   holders, not with the size of the document.
     ///
     /// # Examples
     ///
@@ -2760,19 +2757,17 @@ impl<'a> SacmElement<'a> {
     /// The element's `name` (SACM 2.3 §8.6), or `None` when the name is
     /// missing or the element's kind has no name.
     ///
-    /// Every `ModelElement` has a name in SACM, but a document can hold one
-    /// whose name is missing, as a file can leave it out. That is `None`:
-    /// nothing invents a name ([ADR 0013]). A name whose `lang` or `content`
-    /// is absent or empty is still a name.
+    /// - **Missing.** Every `ModelElement` has a name in SACM, but a document can hold one
+    ///   whose name is missing, as a file can leave it out. That is `None`: nothing invents
+    ///   a name ([ADR 0013]).
+    /// - **Still a name.** A name whose `lang` or `content` is absent or empty is a name.
+    /// - **No name at all.** The four `UtilityElement` kinds (`Description`,
+    ///   `ImplementationConstraint`, `Note` and `TaggedValue`) have none, so this is always
+    ///   `None` for them.
+    /// - **Which case.** `kind().is_a(AbstractClass::ModelElement)` tells the two apart.
+    /// - **Borrow.** The name borrows the document, not the view.
     ///
     /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
-    ///
-    /// The four `UtilityElement` kinds (`Description`,
-    /// `ImplementationConstraint`, `Note` and `TaggedValue`) have no name, so
-    /// this is always `None` for them.
-    /// `kind().is_a(AbstractClass::ModelElement)` tells the two cases apart.
-    ///
-    /// The name borrows the document, not the view.
     ///
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
@@ -2804,19 +2799,19 @@ impl<'a> SacmElement<'a> {
         self.node().name.as_ref()
     }
 
-    /// The `xmi:id` of the element's `name`, if the name was read with one,
-    /// or `None`. A `LangString` is a class, so its element may carry an id
-    /// (XMI 2.5.1 §7.8.3).
+    /// The `xmi:id` of the element's `name`, if the name was read with one, or `None`.
     ///
-    /// The id is kept with its owner, not on the [`LangString`] value (ADR
-    /// 0024). It shares the document's id space: no element and no other
-    /// name has it, and [`edit::apply`](crate::edit::apply) neither generates
-    /// it nor accepts it as a new element's id. It identifies no element, so
-    /// [`Document::get`] does not find it. [`xmi::write`](crate::xmi::write)
-    /// writes it as the first attribute of `name`. Only
-    /// [`xmi::read`](crate::xmi::read) gives one, and it is `None` whenever
-    /// [`name`](Self::name) is; a name replaced with
-    /// [`SetName`](crate::edit::SetName) keeps it (ADR 0029).
+    /// - **Why a name has one.** A `LangString` is a class, so its element may carry an id
+    ///   (XMI 2.5.1 §7.8.3).
+    /// - **Kept with its owner,** not on the [`LangString`] value (ADR 0024).
+    /// - **In the document's id space.** No element and no other name has it, and
+    ///   [`edit::apply`](crate::edit::apply) neither generates it nor accepts it as a new
+    ///   element's id.
+    /// - **No element.** It identifies none, so [`Document::get`] does not find it.
+    /// - **Written** by [`xmi::write`](crate::xmi::write) as the first attribute of `name`.
+    /// - **From a read only.** Only [`xmi::read`](crate::xmi::read) gives one, and it is
+    ///   `None` whenever [`name`](Self::name) is.
+    /// - **Kept.** A name replaced with [`SetName`](crate::edit::SetName) keeps it (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -2838,16 +2833,17 @@ impl<'a> SacmElement<'a> {
 
     /// The element's `gid` (SACM 2.3 §8.2), or `None` when it has none.
     ///
-    /// Every element, of every kind, may have one. It is held exactly as
-    /// read: `None`, `""` and any other string are three different values,
-    /// and nothing is trimmed ([ADR 0012], [ADR 0025]). A gid is not an
-    /// `xmi:id`: it is in no id space, so [`Document::get`] does not find it,
-    /// and it has no syntax check. The document does not stop two elements
-    /// from sharing one, though §8.2 requires a gid to be unique:
-    /// [`validation::validate`](crate::validation::validate) reports each
-    /// non-empty value two or more elements hold as a SACM-ID-003 Error
-    /// (SACM23-VAL-002). [`SetGid`](crate::edit::SetGid) sets or removes it,
-    /// exactly as given, and does not refuse a duplicate.
+    /// - **Every element,** of every kind, may have one.
+    /// - **As read.** `None`, `""` and any other string are three different values, and
+    ///   nothing is trimmed ([ADR 0012], [ADR 0025]).
+    /// - **Not an `xmi:id`.** It is in no id space, so [`Document::get`] does not find it,
+    ///   and it has no syntax check.
+    /// - **Uniqueness is for validation.** §8.2 requires a gid to be unique, but the document
+    ///   does not stop two elements from sharing one.
+    ///   [`validation::validate`](crate::validation::validate) reports each non-empty value
+    ///   two or more elements hold as a SACM-ID-003 Error (SACM23-VAL-002).
+    /// - **Edited by** [`SetGid`](crate::edit::SetGid), which sets or removes it exactly as
+    ///   given, and does not refuse a duplicate.
     ///
     /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
     /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
@@ -2880,15 +2876,16 @@ impl<'a> SacmElement<'a> {
     /// Whether the element cites another (SACM 2.3 §8.2
     /// `isCitation[0..1]=false`): `false` unless the document holds `true`.
     ///
-    /// Every element, of every kind, has the flag. Absent and `false` are the
-    /// same value, since a default is not written (ADR 0026). The flag and
-    /// [`cited_element`](Self::cited_element) are independent: either may be
-    /// present without the other, and nothing repairs a file on read. §8.2
-    /// requires `isCitation` to be true when there is a cited element;
-    /// [`validation::validate`](crate::validation::validate) reports a cited
-    /// element without it as SACM-CITE-001 (SACM23-VAL-007).
-    /// [`SetFlag`](crate::edit::SetFlag) sets the flag, independently of the
-    /// cited element (ADR 0029).
+    /// - **Every element,** of every kind, has the flag.
+    /// - **Absent is `false`.** They are the same value, since a default is not written (ADR
+    ///   0026).
+    /// - **Independent of [`cited_element`](Self::cited_element).** Either may be present
+    ///   without the other, and nothing repairs a file on read.
+    /// - **Validated.** §8.2 requires `isCitation` to be true when there is a cited element;
+    ///   [`validation::validate`](crate::validation::validate) reports a cited element
+    ///   without it as SACM-CITE-001 (SACM23-VAL-007).
+    /// - **Edited by** [`SetFlag`](crate::edit::SetFlag), independently of the cited element
+    ///   (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -2920,16 +2917,17 @@ impl<'a> SacmElement<'a> {
     /// The id of the element this one cites (SACM 2.3 §8.2
     /// `citedElement:SACMElement[0..1]`), or `None`.
     ///
-    /// The reference is held as the target's id, unresolved: look the target
-    /// up with [`Document::get`]. The id may name no element of the document,
-    /// such as an id absent from the file or the id of a `name`; the document
-    /// keeps it, and [`validation::validate`](crate::validation::validate)
-    /// reports it as SACM-REF-001 (SACM23-VAL-003).
-    /// [`SetReferences`](crate::edit::SetReferences) sets it to an id that
-    /// names an element (ADR 0029). See [`is_citation`](Self::is_citation)
-    /// for an example.
+    /// - **Unresolved.** The reference is held as the target's id: look the target up with
+    ///   [`Document::get`].
+    /// - **Dangling.** The id may name no element of the document, such as an id absent from
+    ///   the file or the id of a `name`. The document keeps it, and
+    ///   [`validation::validate`](crate::validation::validate) reports it as SACM-REF-001
+    ///   (SACM23-VAL-003).
+    /// - **Edited by** [`SetReferences`](crate::edit::SetReferences), which sets it to an id
+    ///   that names an element (ADR 0029).
+    /// - **An `href`** to another document is not here: see [`hrefs`](Self::hrefs).
     ///
-    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
+    /// See [`is_citation`](Self::is_citation) for an example.
     #[must_use]
     pub fn cited_element(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::CitedElement).first()
@@ -2939,10 +2937,9 @@ impl<'a> SacmElement<'a> {
     /// `isAbstract[0..1]=false`): `false` unless the document holds `true`.
     ///
     /// Every element, of every kind, has the flag, under the rules of
-    /// [`is_citation`](Self::is_citation). An abstract element is, for
-    /// example, part of a pattern or template (§8.2); a concrete element
-    /// names the abstract one it conforms to through its
-    /// [`abstract_form`](Self::abstract_form).
+    /// [`is_citation`](Self::is_citation). An abstract element is, for example, part of a
+    /// pattern or template (§8.2); a concrete element names the abstract one it conforms to
+    /// through its [`abstract_form`](Self::abstract_form).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -2972,38 +2969,37 @@ impl<'a> SacmElement<'a> {
     /// The id of the abstract element this concrete one conforms to (SACM
     /// 2.3 §8.2 `abstractForm:SACMElement[0..1]`), or `None`.
     ///
-    /// Held unresolved, as [`cited_element`](Self::cited_element) is. §8.2
-    /// asks that the element itself be concrete, and that the target be
-    /// abstract and of the same kind;
-    /// [`validation::validate`](crate::validation::validate) reports each
-    /// case that is not as SACM-ABS-001 (SACM23-VAL-008).
-    /// [`SetReferences`](crate::edit::SetReferences) sets it, and
-    /// [`SetFlag`](crate::edit::SetFlag) sets `isAbstract`, each
-    /// independently (ADR 0029). See [`is_abstract`](Self::is_abstract) for
-    /// an example.
+    /// - **Unresolved,** as [`cited_element`](Self::cited_element) is.
+    /// - **Validated.** §8.2 asks that the element itself be concrete, and that the target
+    ///   be abstract and of the same kind.
+    ///   [`validation::validate`](crate::validation::validate) reports each case that is not
+    ///   as SACM-ABS-001 (SACM23-VAL-008).
+    /// - **Edited by** [`SetReferences`](crate::edit::SetReferences); and
+    ///   [`SetFlag`](crate::edit::SetFlag) sets `isAbstract`, each independently (ADR 0029).
+    /// - **An `href`** to another document is not here: see [`hrefs`](Self::hrefs).
     ///
-    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
+    /// See [`is_abstract`](Self::is_abstract) for an example.
     #[must_use]
     pub fn abstract_form(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::AbstractForm).first()
     }
 
-    /// The ids of the Claims about this Assertion (SACM 2.3 §11.10
-    /// `metaClaim:Claim[0..*]`), such as Claims about the confidence in it,
-    /// in document order: empty when it has none or its kind is not an
-    /// Assertion.
+    /// The ids of the Claims about this Assertion, such as Claims about the confidence in it,
+    /// in document order (SACM 2.3 §11.10 `metaClaim:Claim[0..*]`).
     ///
-    /// Every Assertion (a `Claim` or one of the five asserted relationships;
-    /// see [`AbstractClass::Assertion`]) has the end. The ids are held
-    /// unresolved, as [`cited_element`](Self::cited_element) is, in the order
-    /// read and with repeats (ADR 0027): `metaClaim="m1 m1"` holds `m1`
-    /// twice. Each distinct id that names no element is one SACM-REF-001
-    /// finding of [`validation::validate`](crate::validation::validate), each
-    /// that names an element that is no Claim is one SACM-REF-002 finding
-    /// (SACM23-VAL-004), and each repeated id is one SACM-MULT-001 Warning
-    /// (SACM23-VAL-022). [`SetReferences`](crate::edit::SetReferences),
-    /// [`AddReference`](crate::edit::AddReference) and
-    /// [`RemoveReference`](crate::edit::RemoveReference) edit it.
+    /// - **Empty** when it has none or its kind is not an Assertion.
+    /// - **Every Assertion** (a `Claim` or one of the five asserted relationships; see
+    ///   [`AbstractClass::Assertion`]) has the end.
+    /// - **Unresolved,** as [`cited_element`](Self::cited_element) is, in the order read and
+    ///   with repeats (ADR 0027): `metaClaim="m1 m1"` holds `m1` twice.
+    /// - **Validated.** [`validation::validate`](crate::validation::validate) gives one
+    ///   SACM-REF-001 finding for each distinct id that names no element, and one
+    ///   SACM-REF-002 finding for each that names an element that is no Claim
+    ///   (SACM23-VAL-004).
+    /// - **Repeats.** Each repeated id is one SACM-MULT-001 Warning (SACM23-VAL-022).
+    /// - **Edited by** [`SetReferences`](crate::edit::SetReferences),
+    ///   [`AddReference`](crate::edit::AddReference) and
+    ///   [`RemoveReference`](crate::edit::RemoveReference).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -3035,28 +3031,26 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::MetaClaim)
     }
 
-    /// The ids of the sources of an asserted relationship (SACM 2.3 §11.13
-    /// `source:ArgumentAsset[1..*]`), its starting points, or of an
-    /// `ArtifactAssetRelationship` (§12.14 `source:ArtifactAsset[1..*]`), in
-    /// document order: empty when it has none or its kind is neither.
+    /// The ids of the sources, the starting points, of an asserted relationship or of an
+    /// `ArtifactAssetRelationship`, in document order.
     ///
-    /// On an `ArtifactAssetRelationship` they are its
-    /// [`ArtifactSource`](ReferenceEnd::ArtifactSource) end, on an asserted
-    /// relationship its [`Source`](ReferenceEnd::Source) end (ADR 0034
-    /// amendment 2).
+    /// | Kind | End | SACM 2.3 |
+    /// |---|---|---|
+    /// | an asserted relationship | [`Source`](ReferenceEnd::Source) | §11.13 `source:ArgumentAsset[1..*]` |
+    /// | an `ArtifactAssetRelationship` | [`ArtifactSource`](ReferenceEnd::ArtifactSource) (ADR 0034 amendment 2) | §12.14 `source:ArtifactAsset[1..*]` |
     ///
-    /// For an `AssertedInference` they are the premises; for an
-    /// `AssertedContext`, the context; for an `AssertedEvidence`, the
-    /// evidence, which §11.15 requires to be `ArtifactReference`s. They are
-    /// held unresolved and with repeats, as [`meta_claims`](Self::meta_claims)
-    /// are. A relationship needs at least one:
-    /// [`validation::validate`](crate::validation::validate) reports one with
-    /// none as SACM-MULT-001 (SACM23-VAL-005), and
-    /// [`CreateAssertedInference`](crate::edit::CreateAssertedInference)
-    /// refuses to create one. A source that is no `ArgumentAsset` is
-    /// SACM-REF-002 (SACM23-VAL-004), and so is one of an `AssertedEvidence`,
-    /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
-    /// `ArtifactReference` (SACM23-VAL-016).
+    /// - **Empty** when it has none or its kind is neither.
+    /// - **What they are.** For an `AssertedInference`, the premises; for an
+    ///   `AssertedContext`, the context; for an `AssertedEvidence`, the evidence, which
+    ///   §11.15 requires to be `ArtifactReference`s.
+    /// - **Unresolved and with repeats,** as [`meta_claims`](Self::meta_claims) are.
+    /// - **At least one.** [`validation::validate`](crate::validation::validate) reports a
+    ///   relationship with none as SACM-MULT-001 (SACM23-VAL-005), and
+    ///   [`CreateAssertedInference`](crate::edit::CreateAssertedInference) refuses to create
+    ///   one.
+    /// - **Wrong kind.** A source that is no `ArgumentAsset` is SACM-REF-002
+    ///   (SACM23-VAL-004). So is one of an `AssertedEvidence`, `AssertedArtifactSupport` or
+    ///   `AssertedArtifactContext` that is no `ArtifactReference` (SACM23-VAL-016).
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
@@ -3091,19 +3085,17 @@ impl<'a> SacmElement<'a> {
         }
     }
 
-    /// The ids of the targets of an `ArtifactAssetRelationship` (§12.14
-    /// `target:ArtifactAsset[1..*]`), or the one `target` of an asserted
-    /// relationship (§11.13), in order with repeats; empty when it has none
-    /// or the kind is neither.
+    /// The ids of the targets of an `ArtifactAssetRelationship`, or the one `target` of an
+    /// asserted relationship, in order with repeats.
     ///
-    /// On an `ArtifactAssetRelationship` they are its
-    /// [`ArtifactTarget`](ReferenceEnd::ArtifactTarget) end, which holds one
-    /// or more ids; on an asserted relationship its
-    /// [`Target`](ReferenceEnd::Target) end, which [`target`](Self::target)
-    /// also reads. A relationship needs at least one:
-    /// [`validation::validate`](crate::validation::validate) reports an
-    /// `ArtifactAssetRelationship` with none as SACM-MULT-001
-    /// (SACM23-ART-010).
+    /// - **Empty** when it has none or the kind is neither.
+    /// - **On an `ArtifactAssetRelationship`** they are its
+    ///   [`ArtifactTarget`](ReferenceEnd::ArtifactTarget) end, which holds one or more ids
+    ///   (§12.14 `target:ArtifactAsset[1..*]`).
+    /// - **On an asserted relationship** they are its [`Target`](ReferenceEnd::Target) end
+    ///   (§11.13), which [`target`](Self::target) also reads.
+    /// - **At least one.** [`validation::validate`](crate::validation::validate) reports an
+    ///   `ArtifactAssetRelationship` with none as SACM-MULT-001 (SACM23-ART-010).
     ///
     /// ```
     /// use sacm::edit::{self, CreateActivity, CreateArtifact, CreateArtifactAssetRelationship, CreateArtifactPackage};
@@ -3136,33 +3128,34 @@ impl<'a> SacmElement<'a> {
         }
     }
 
-    /// The id of the target of an asserted relationship (SACM 2.3 §11.13
-    /// `target:ArgumentAsset[1]`), its ending point, or `None` when it has
-    /// none or its kind is not an `AssertedRelationship`: `None` for an
-    /// `ArtifactAssetRelationship`, whose targets are
-    /// [`targets`](Self::targets).
+    /// The id of the target, the ending point, of an asserted relationship (SACM 2.3 §11.13
+    /// `target:ArgumentAsset[1]`).
     ///
-    /// For an `AssertedInference` it is the conclusion; for an
-    /// `AssertedContext`, the element the context is for, such as a Claim
-    /// (§11.16); for an `AssertedEvidence`, what the evidence supports, such
-    /// as a Claim (§11.15). It is held
-    /// unresolved. A relationship needs one:
-    /// [`validation::validate`](crate::validation::validate) reports one
-    /// without it as SACM-MULT-001 (SACM23-VAL-005). A target that is no
-    /// `ArgumentAsset` is SACM-REF-002 (SACM23-VAL-004), and so is one of an
-    /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
-    /// `ArtifactReference` (§11.17, §11.18, SACM23-VAL-016). See
-    /// [`sources`](Self::sources) for an example.
+    /// - **`None`** when it has none or its kind is not an `AssertedRelationship`. So it is
+    ///   `None` for an `ArtifactAssetRelationship`, whose targets are
+    ///   [`targets`](Self::targets).
+    /// - **What it is.** For an `AssertedInference`, the conclusion; for an
+    ///   `AssertedContext`, the element the context is for, such as a Claim (§11.16); for an
+    ///   `AssertedEvidence`, what the evidence supports, such as a Claim (§11.15).
+    /// - **Unresolved.**
+    /// - **Exactly one.** [`validation::validate`](crate::validation::validate) reports a
+    ///   relationship without it as SACM-MULT-001 (SACM23-VAL-005).
+    /// - **Wrong kind.** A target that is no `ArgumentAsset` is SACM-REF-002
+    ///   (SACM23-VAL-004). So is one of an `AssertedArtifactSupport` or
+    ///   `AssertedArtifactContext` that is no `ArtifactReference` (§11.17, §11.18,
+    ///   SACM23-VAL-016).
+    /// - **An `href`** to another document is not here: see [`hrefs`](Self::hrefs).
     ///
-    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
+    /// See [`sources`](Self::sources) for an example.
     #[must_use]
     pub fn target(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Target).first()
     }
 
-    /// The id of the `ArgumentReasoning` behind an asserted relationship
-    /// (SACM 2.3 §11.13 `reasoning:ArgumentReasoning[0..1]`), or `None` when
-    /// it has none or its kind is not an `AssertedRelationship`. It is held
+    /// The id of the `ArgumentReasoning` behind an asserted relationship (SACM 2.3 §11.13
+    /// `reasoning:ArgumentReasoning[0..1]`).
+    ///
+    /// `None` when it has none or its kind is not an `AssertedRelationship`. It is held
     /// unresolved. See [`sources`](Self::sources) for an example.
     ///
     /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
@@ -3171,10 +3164,11 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Reasoning).first()
     }
 
-    /// The id of the `ArgumentPackage` that gives the detailed structure of
-    /// an `ArgumentReasoning` (SACM 2.3 §11.12
-    /// `structure:ArgumentPackage[0..1]`), or `None` when it has none or the
-    /// element is not an `ArgumentReasoning`. It is held unresolved.
+    /// The id of the `ArgumentPackage` that gives the detailed structure of an
+    /// `ArgumentReasoning` (SACM 2.3 §11.12 `structure:ArgumentPackage[0..1]`).
+    ///
+    /// `None` when it has none or the element is not an `ArgumentReasoning`. It is held
+    /// unresolved.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateArgumentReasoning};
@@ -3198,23 +3192,18 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Structure).first()
     }
 
-    /// The ids of the elements an `ArtifactReference` refers to (SACM 2.3
-    /// §11.9 `referencedArtifactElement:Base::ArtifactElement[0..*]`), in
-    /// document order: empty when it has none or the element is not an
-    /// `ArtifactReference`.
+    /// The ids of the elements an `ArtifactReference` refers to, in document order (SACM 2.3
+    /// §11.9 `referencedArtifactElement:Base::ArtifactElement[0..*]`).
     ///
-    /// An `ArtifactReference` is how an argument cites an artifact, or any
-    /// other element, such as a Claim of another argument package (§11.1).
-    /// Artifacts themselves (§12, the `ArtifactPackage`) are not supported
-    /// yet, so for now it can name only elements of argument and
-    /// assurance-case packages, or nothing. Every kind except the
-    /// `UtilityElement`s (`Description`, `ImplementationConstraint`, `Note`
-    /// and `TaggedValue`) conforms to `ArtifactElement`, so any of them is a
-    /// well-typed target; a `UtilityElement` is not, and
-    /// [`validation::validate`](crate::validation::validate) reports one as
-    /// SACM-REF-002 (SACM23-VAL-004). The ids are held unresolved and with
-    /// repeats, as [`meta_claims`](Self::meta_claims) are; a repeated id is a
-    /// SACM-MULT-001 Warning (SACM23-VAL-022).
+    /// - **Empty** when it has none or the element is not an `ArtifactReference`.
+    /// - **What it is for.** An `ArtifactReference` is how an argument cites an artifact, or
+    ///   any other element, such as a Claim of another argument package (§11.1).
+    /// - **Well-typed targets.** Every kind except the `UtilityElement`s (`Description`,
+    ///   `ImplementationConstraint`, `Note` and `TaggedValue`) conforms to `ArtifactElement`.
+    /// - **Wrong kind.** [`validation::validate`](crate::validation::validate) reports a
+    ///   `UtilityElement` target as SACM-REF-002 (SACM23-VAL-004).
+    /// - **Unresolved and with repeats,** as [`meta_claims`](Self::meta_claims) are. A
+    ///   repeated id is a SACM-MULT-001 Warning (SACM23-VAL-022).
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateArtifactReference, CreateClaim};
@@ -3242,28 +3231,24 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::ReferencedArtifactElement)
     }
 
-    /// The ids of the members of an `ArgumentGroup` (SACM 2.3 §11.2
-    /// `argumentElement:ArgumentationElement[0..*]`, which the text spells
-    /// `argumentationElement`), of an `ArtifactGroup` (§12.3
-    /// `artifactElement:ArtifactElement[0..*]`) or of a `TerminologyGroup`
-    /// (§10.3 `terminologyElement:TerminologyElement[0..*]`), in document
-    /// order: empty when it has none or the element is no group.
+    /// The ids of the members of an `ArgumentGroup`, an `ArtifactGroup` or a
+    /// `TerminologyGroup`, in document order: empty when it has none or the element is no group.
     ///
-    /// In XMI the end is named `argumentElement` on an `ArgumentGroup`, like
-    /// the composite role of an `ArgumentPackage`, `artifactElement` on an
-    /// `ArtifactGroup`, like the composite role of an `ArtifactPackage`, and
-    /// `terminologyElement` on a `TerminologyGroup`, like the composite role
-    /// of a `TerminologyPackage`. Each is a reference: a member stays where
-    /// it is contained, and groups "serve no structural purpose" (§11.2,
-    /// §12.3, §10.3). The ids are held
-    /// unresolved and with repeats, as [`meta_claims`](Self::meta_claims)
-    /// are. A member of a kind its end does not admit, such as an
-    /// `AssuranceCasePackage` in an `ArgumentGroup` or a `Note` in either, is
-    /// a SACM-REF-002 finding of
-    /// [`validation::validate`](crate::validation::validate)
-    /// (SACM23-VAL-004). The three ends are [`ReferenceEnd::GroupMember`],
-    /// [`ReferenceEnd::ArtifactGroupMember`] and
-    /// [`ReferenceEnd::TerminologyGroupMember`].
+    /// | Group | End | SACM 2.3 |
+    /// |---|---|---|
+    /// | `ArgumentGroup` | [`ReferenceEnd::GroupMember`] | §11.2 `argumentElement:ArgumentationElement[0..*]`, which the text spells `argumentationElement` |
+    /// | `ArtifactGroup` | [`ReferenceEnd::ArtifactGroupMember`] | §12.3 `artifactElement:ArtifactElement[0..*]` |
+    /// | `TerminologyGroup` | [`ReferenceEnd::TerminologyGroupMember`] | §10.3 `terminologyElement:TerminologyElement[0..*]` |
+    ///
+    /// - **Name in XMI.** Each end has the name of the composite role of its package:
+    ///   `argumentElement`, `artifactElement` or `terminologyElement`.
+    /// - **A reference.** A member stays where it is contained, and groups "serve no
+    ///   structural purpose" (§11.2, §12.3, §10.3).
+    /// - **Unresolved and with repeats,** as [`meta_claims`](Self::meta_claims) are.
+    /// - **Wrong kind.** A member of a kind its end does not admit, such as an
+    ///   `AssuranceCasePackage` in an `ArgumentGroup` or a `Note` in either, is a
+    ///   SACM-REF-002 finding of [`validation::validate`](crate::validation::validate)
+    ///   (SACM23-VAL-004).
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentGroup, CreateArgumentPackage, CreateClaim};
@@ -3298,15 +3283,11 @@ impl<'a> SacmElement<'a> {
         }
     }
 
-    /// The ids of a Category's, Term's or Expression's `category` end, in
-    /// document order, repeats included (SACM 2.3 §10.8, §10.9
-    /// `category:Category[0..*]`); empty for every other kind.
+    /// The ids of a Category's, Term's or Expression's `category` end, in document order,
+    /// repeats included (SACM 2.3 §10.8, §10.9 `category:Category[0..*]`).
     ///
-    /// On a Term or an Expression they are the Categories it belongs to. On a
-    /// Category, formal/23-05-08 does not say which way the end points (spec
-    /// defect D21), so they are held as written. It is
-    /// [`references`](Self::references) of
-    /// [`ReferenceEnd::Category`].
+    /// Empty for every other kind. It is [`references`](Self::references) of
+    /// [`ReferenceEnd::Category`], which says what the ids mean on each kind.
     ///
     /// ```
     /// use sacm::edit::{self, CreateCategory, CreateTerm, CreateTerminologyPackage};
@@ -3330,10 +3311,11 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Category)
     }
 
-    /// The `ExpressionElements` an Expression is formed from (SACM 2.3 §10.10
-    /// `element:ExpressionElement[0..*]`), in document order, repeats
-    /// included; empty for every other kind. It is
-    /// [`references`](Self::references) of [`ReferenceEnd::Element`].
+    /// The `ExpressionElements` an Expression is formed from, in document order, repeats
+    /// included (SACM 2.3 §10.10 `element:ExpressionElement[0..*]`).
+    ///
+    /// Empty for every other kind. It is [`references`](Self::references) of
+    /// [`ReferenceEnd::Element`].
     #[doc(alias = "element")]
     ///
     /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
@@ -3342,10 +3324,10 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Element)
     }
 
-    /// The origin of a Term (SACM 2.3 §10.11
-    /// `origin:Base::ModelElement[0..1]`, "a reference which points to the
-    /// origin of the Term"), or `None` when it has none or the element is no
-    /// Term.
+    /// The origin of a Term, or `None` when it has none or the element is no Term.
+    ///
+    /// SACM 2.3 §10.11 `origin:Base::ModelElement[0..1]`: "a reference which points to the
+    /// origin of the Term".
     ///
     /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
@@ -3353,11 +3335,12 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Origin).first()
     }
 
-    /// The interfaces a package declares (`interface`, ptc/22-03-13), in
-    /// document order, repeats included; empty for a kind without the end.
-    /// It is [`references`](Self::references) of [`ReferenceEnd::Interface`].
-    /// The end is held as written: it is never synced with the interfaces'
-    /// [`implements`](Self::implements) (ADR 0039 D2).
+    /// The interfaces a package declares (`interface`, ptc/22-03-13), in document order,
+    /// repeats included; empty for a kind without the end.
+    ///
+    /// It is [`references`](Self::references) of [`ReferenceEnd::Interface`]. The end is held
+    /// as written: it is never synced with the interfaces' [`implements`](Self::implements)
+    /// (ADR 0039 D2).
     ///
     /// # Examples
     ///
@@ -3384,9 +3367,8 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Interface)
     }
 
-    /// The package an interface declares (SACM 2.3 §9.3, §10.5, §11.6,
-    /// §12.5 `implements:<package>[1]`), or `None` when it holds none or the
-    /// element is no interface.
+    /// The package an interface declares (SACM 2.3 §9.3, §10.5, §11.6, §12.5
+    /// `implements:<package>[1]`), or `None` when it holds none or the element is no interface.
     ///
     /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
@@ -3394,9 +3376,8 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Implements).first()
     }
 
-    /// The packages a binding binds (SACM 2.3 §9.4, §10.6, §11.5, §12.4
-    /// `participantPackage:<package>[2..*]`), in order, repeats included;
-    /// empty for a kind without the end.
+    /// The packages a binding binds, in order, repeats included (SACM 2.3 §9.4, §10.6, §11.5,
+    /// §12.4 `participantPackage:<package>[2..*]`); empty for a kind without the end.
     #[doc(alias = "participantPackage")]
     ///
     /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
@@ -3405,24 +3386,27 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::ParticipantPackage)
     }
 
-    /// Whether an asserted relationship counters its declared purpose (SACM
-    /// 2.3 §11.13 `isCounter:Boolean[1] = false`); §11.13's example is an
-    /// `AssertedEvidence` with `isCounter` true, which is counter-evidence.
-    /// `false` unless the document holds `true`, and always `false` when the
-    /// kind is not an `AssertedRelationship`.
+    /// Whether an asserted relationship counters its declared purpose (SACM 2.3 §11.13
+    /// `isCounter:Boolean[1] = false`).
     ///
-    /// Absent and `false` are the same value, since a default is not
-    /// written (ADR 0026, ADR 0027). See [`sources`](Self::sources) for an
-    /// example.
+    /// - **Example.** §11.13's is an `AssertedEvidence` with `isCounter` true, which is
+    ///   counter-evidence.
+    /// - **`false`** unless the document holds `true`, and always when the kind is not an
+    ///   `AssertedRelationship`.
+    /// - **Absent is `false`.** They are the same value, since a default is not written (ADR
+    ///   0026, ADR 0027).
+    ///
+    /// See [`sources`](Self::sources) for an example.
     #[must_use]
     pub fn is_counter(self) -> bool {
         self.node().is_counter
     }
 
-    /// The value of the flag `flag` of the element: what
-    /// [`is_citation`](Self::is_citation), [`is_abstract`](Self::is_abstract)
-    /// or [`is_counter`](Self::is_counter) gives. A flag the kind lacks
+    /// The value of the flag `flag` of the element; a flag the kind lacks
     /// ([`Flag::applies_to`]) is `false`.
+    ///
+    /// It is what [`is_citation`](Self::is_citation), [`is_abstract`](Self::is_abstract) or
+    /// [`is_counter`](Self::is_counter) gives.
     ///
     /// See [`references`](Self::references) for a property panel built on it.
     #[must_use]
@@ -3430,12 +3414,13 @@ impl<'a> SacmElement<'a> {
         self.node().flag(flag)
     }
 
-    /// The ids the reference end `end` of the element holds, in order,
-    /// repeats included: what the end's own accessor, such as
-    /// [`meta_claims`](Self::meta_claims) or [`target`](Self::target),
-    /// gives. An end the kind lacks ([`ReferenceEnd::applies_to`]) holds no
-    /// id; so does an `ArgumentGroup`'s `artifactElement` and an
-    /// `ArtifactGroup`'s `argumentElement`.
+    /// The ids the reference end `end` of the element holds, in order, repeats included.
+    ///
+    /// - **The same** as the end's own accessor gives, such as
+    ///   [`meta_claims`](Self::meta_claims) or [`target`](Self::target).
+    /// - **No id** for an end the kind lacks ([`ReferenceEnd::applies_to`]). So an
+    ///   `ArgumentGroup`'s `artifactElement` and an `ArtifactGroup`'s `argumentElement` hold
+    ///   none.
     ///
     /// # Examples
     ///
@@ -3485,12 +3470,14 @@ impl<'a> SacmElement<'a> {
         targets_of(&self.node().references, end)
     }
 
-    /// The cross-document references the end `end` holds: each the `href` of
-    /// a reference element that names an element of another document by its
-    /// id, in document order, repeats included, never resolved
-    /// (SACM23-XMI-027, ADR 0040). Empty when it holds none or the kind
-    /// lacks the end. [`references`](Self::references) gives the end's ids in
-    /// this document; its bounds count both.
+    /// The cross-document references the end `end` holds, in document order, repeats
+    /// included, never resolved (SACM23-XMI-027, ADR 0040).
+    ///
+    /// - **Each** is the `href` of a reference element that names an element of another
+    ///   document by its id.
+    /// - **Empty** when it holds none or the kind lacks the end.
+    /// - **Ids.** [`references`](Self::references) gives the end's ids in this document; its
+    ///   bounds count both.
     ///
     /// ```
     /// use std::collections::BTreeSet;
@@ -3520,19 +3507,19 @@ impl<'a> SacmElement<'a> {
         hrefs_of(&self.node().hrefs, end)
     }
 
-    /// The element's proxies, in document order: each a child in one of its
-    /// composite roles that the file holds in another document and names by
-    /// an `href` (XMI 2.5.1 §7.10.1; SACM23-XMI-029, ADR 0040 amendment 1).
+    /// The element's proxies, in document order: each a child in one of its composite roles
+    /// that the file holds in another document and names by an `href` (XMI 2.5.1 §7.10.1).
     ///
-    /// A proxy is never resolved, and it is no element of this document: it
-    /// is not among [`children`](Self::children), it has no id, and no
-    /// validation rule counts it. Both saves write it back, after the
-    /// element's children. A copy keeps the proxies, a move takes them
-    /// along, and
-    /// [`PackageDeletePolicy::RejectIfNonEmpty`](crate::edit::PackageDeletePolicy::RejectIfNonEmpty)
-    /// counts each as contained. Only [`xmi::read`](crate::xmi::read) gives
-    /// an element proxies, and a copy copies them; no edit adds a proxy to
-    /// an element or removes one from it yet.
+    /// - **Never resolved** (SACM23-XMI-029, ADR 0040 amendment 1).
+    /// - **No element of this document.** A [`Proxy`] is not among
+    ///   [`children`](Self::children), it has no id, and no validation rule counts it.
+    /// - **Written back** by both saves, after the element's children.
+    /// - **Copy and move.** A copy keeps the proxies, and a move takes them along.
+    /// - **Delete.**
+    ///   [`PackageDeletePolicy::RejectIfNonEmpty`](crate::edit::PackageDeletePolicy::RejectIfNonEmpty)
+    ///   counts each as contained.
+    /// - **From a read only.** Only [`xmi::read`](crate::xmi::read) gives an element proxies,
+    ///   and a copy copies them; no edit adds a proxy to an element or removes one from it.
     ///
     /// ```
     /// use sacm::model::ElementKind;
@@ -3560,8 +3547,10 @@ impl<'a> SacmElement<'a> {
     }
 
     /// The ids the element's `ExpressionLangStrings` (§8.4) name: its name's, then each
-    /// value's of its `content`, `key` and `location`, in order. An `ExpressionLangString`
-    /// with no `expression` adds none. It is `references(ReferenceEnd::Expression)`.
+    /// value's of its `content`, `key` and `location`, in order.
+    ///
+    /// An `ExpressionLangString` with no `expression` adds none. It is
+    /// `references(ReferenceEnd::Expression)`.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, CreateTerm, CreateTerminologyPackage};
@@ -3613,8 +3602,9 @@ impl<'a> SacmElement<'a> {
         self.children_in("description")
     }
 
-    /// The element's implementation constraints (SACM 2.3 §8.6, §8.8): its
-    /// children in the `implementationConstraint` role, in document order.
+    /// The element's implementation constraints (SACM 2.3 §8.6, §8.8): its children in the
+    /// `implementationConstraint` role, in document order.
+    ///
     /// See [`descriptions`](Self::descriptions).
     pub fn implementation_constraints(self) -> impl Iterator<Item = SacmElement<'a>> {
         self.children_in("implementationConstraint")
@@ -3626,14 +3616,16 @@ impl<'a> SacmElement<'a> {
         self.children_in("note")
     }
 
-    /// The element's tagged values (SACM 2.3 §8.6, §8.12): its children in
-    /// the `taggedValue` role, in document order, those with equal keys
-    /// included. See [`descriptions`](Self::descriptions).
+    /// The element's tagged values (SACM 2.3 §8.6, §8.12): its children in the `taggedValue`
+    /// role, in document order, those with equal keys included.
     ///
-    /// A tagged value is a key/value pair: its key is its
-    /// [`key`](Self::key), and its value is its [`content`](Self::content)
-    /// (§8.7). In XMI, a `<value>` element is one `LangString` inside a `key`
-    /// or `content` (§8.5), not the tagged value's value.
+    /// - **A key/value pair.** Its key is its [`key`](Self::key), and its value is its
+    ///   [`content`](Self::content) (§8.7).
+    /// - **Not `<value>`.** In XMI, a `<value>` element is one `LangString` inside a `key` or
+    ///   `content` (§8.5), not the tagged value's value.
+    /// - **Look one up** with [`tagged_value`](Self::tagged_value).
+    ///
+    /// See [`descriptions`](Self::descriptions).
     pub fn tagged_values(self) -> impl Iterator<Item = SacmElement<'a>> {
         self.children_in("taggedValue")
     }
@@ -3641,18 +3633,16 @@ impl<'a> SacmElement<'a> {
     /// The `content` of a `UtilityElement` (SACM 2.3 §8.7), or `None` when
     /// it has none or the element is not a `UtilityElement`.
     ///
-    /// Two things in SACM are called `content`. This one, the role of a
-    /// `UtilityElement` (§8.7), is a whole [`MultiLangString`]: the same
-    /// text in one or more languages. Each of its values is a [`LangString`],
-    /// whose own [`content`](LangString::content) (§8.3
-    /// `content:String[0..1]`) is the text itself.
-    ///
-    /// A `Description`, `ImplementationConstraint`, `Note` or `TaggedValue`
-    /// holds its text as a [`MultiLangString`]. No `content` is `None`, and
-    /// `<content/>` is an empty `MultiLangString`: the two are kept apart and
-    /// both are written back ([ADR 0025]). The values are kept in order, with
-    /// duplicates; [`validation::validate`](crate::validation::validate)
-    /// reports an empty one and a repeated language (SACM-MULT-001).
+    /// - **Two things in SACM are called `content`.** This one, the role of a
+    ///   `UtilityElement` (§8.7), is a whole [`MultiLangString`]: the same text in one or
+    ///   more languages.
+    /// - **The other** is each value's own [`content`](LangString::content) (§8.3
+    ///   `content:String[0..1]`): the text itself of a [`LangString`].
+    /// - **Held by** a `Description`, `ImplementationConstraint`, `Note` or `TaggedValue`.
+    /// - **Absent is not empty.** No `content` is `None`, and `<content/>` is an empty
+    ///   `MultiLangString`: the two are kept apart and both are written back ([ADR 0025]).
+    /// - **In order, with duplicates.** [`validation::validate`](crate::validation::validate)
+    ///   reports an empty one and a repeated language (SACM-MULT-001).
     ///
     /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
     ///
@@ -3690,14 +3680,14 @@ impl<'a> SacmElement<'a> {
     /// The `xmi:id` of the element's `content` element, if it was read with
     /// one, or `None`.
     ///
-    /// A `MultiLangString` is a class, so its element may carry an id (XMI
-    /// 2.5.1 §7.8.3). Like a name's id ([`name_id`](Self::name_id)), it is
-    /// kept with the owner, shares the document's id space, identifies no
-    /// element, and is written back as the first attribute of `content`
-    /// (ADR 0024, ADR 0025). Only [`xmi::read`](crate::xmi::read) gives
-    /// one; a `content` replaced with [`SetContent`](crate::edit::SetContent)
-    /// keeps it, and each value keeps the id of the value at its position
-    /// (ADR 0029).
+    /// - **Why it has one.** A `MultiLangString` is a class, so its element may carry an id
+    ///   (XMI 2.5.1 §7.8.3).
+    /// - **Like a name's id** ([`name_id`](Self::name_id)), it is kept with the owner, shares
+    ///   the document's id space, identifies no element, and is written back as the first
+    ///   attribute of `content` (ADR 0024, ADR 0025).
+    /// - **From a read only.** Only [`xmi::read`](crate::xmi::read) gives one.
+    /// - **Kept.** A `content` replaced with [`SetContent`](crate::edit::SetContent) keeps
+    ///   it, and each value keeps the id of the value at its position (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -3726,9 +3716,10 @@ impl<'a> SacmElement<'a> {
         self.node().content.as_ref().and_then(Text::id)
     }
 
-    /// The `xmi:id` of each `value` of the element's `content`, by position:
-    /// one entry per value of [`content`](Self::content), `None` for a value
-    /// read without one, and empty when there is no content. See
+    /// The `xmi:id` of each `value` of the element's `content`, by position.
+    ///
+    /// It has one entry per value of [`content`](Self::content), `None` for a value read
+    /// without one, and is empty when there is no content. See
     /// [`content_id`](Self::content_id).
     #[must_use]
     pub fn content_value_ids(self) -> &'a [Option<ElementId>] {
@@ -3738,15 +3729,13 @@ impl<'a> SacmElement<'a> {
     /// The `key` of a `TaggedValue` (SACM 2.3 §8.12), or `None` when it has
     /// none or the element is not a `TaggedValue`.
     ///
-    /// It follows the rules of [`content`](Self::content): absent and empty
-    /// are kept apart, and the values are kept in order, with duplicates.
-    /// SACM requires a key (`key:MultiLangString[1]`), so
-    /// [`validation::validate`](crate::validation::validate) reports a
-    /// `TaggedValue` without one (SACM-MULT-001).
-    ///
-    /// The tagged value's value is its [`content`](Self::content) (§8.7). In
-    /// XMI, a `<value>` element is one `LangString` inside `key` or `content`
-    /// (§8.5), not the tagged value's value.
+    /// - **As [`content`](Self::content).** Absent and empty are kept apart, and the values
+    ///   are kept in order, with duplicates.
+    /// - **Required.** SACM requires a key (`key:MultiLangString[1]`), so
+    ///   [`validation::validate`](crate::validation::validate) reports a `TaggedValue`
+    ///   without one (SACM-MULT-001).
+    /// - **The value** of the tagged value is its [`content`](Self::content) (§8.7); see
+    ///   [`tagged_values`](Self::tagged_values).
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateTaggedValue};
@@ -3774,21 +3763,20 @@ impl<'a> SacmElement<'a> {
         self.node().key.as_ref().and_then(Text::id)
     }
 
-    /// The `xmi:id` of each `value` of the element's `key`, by position: one
-    /// entry per value of [`key`](Self::key), and empty when there is no
-    /// key. See [`content_id`](Self::content_id).
+    /// The `xmi:id` of each `value` of the element's `key`, by position: one entry per value
+    /// of [`key`](Self::key), and empty when there is no key. See [`content_id`](Self::content_id).
     #[must_use]
     pub fn key_value_ids(self) -> &'a [Option<ElementId>] {
         self.node().key.as_ref().map_or(&[], Text::value_ids)
     }
 
-    /// The `version` of an `Artifact` (SACM 2.3 §12.7 `version: String[0..1]`,
-    /// "the version of the artifact"), exactly as written, or `None` when it
-    /// has none or the element is not an `Artifact`.
+    /// The `version` of an `Artifact`, exactly as written, or `None` when it has none or the
+    /// element is not an `Artifact`.
     ///
-    /// Nothing is trimmed or normalised: `""` and `" v2 "` are values. An
-    /// `xmi:version` on the document element is the XMI version, never this
-    /// one.
+    /// - **SACM 2.3 §12.7.** `version: String[0..1]`, "the version of the artifact".
+    /// - **As written.** Nothing is trimmed or normalised: `""` and `" v2 "` are values.
+    /// - **Not `xmi:version`.** An `xmi:version` on the document element is the XMI version,
+    ///   never this one.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArtifact, CreateArtifactPackage, SetVersion};
@@ -3810,16 +3798,16 @@ impl<'a> SacmElement<'a> {
         self.string(StringAttribute::Version)
     }
 
-    /// The `date` of an `Artifact` (§12.7, "the date on which the artifact
-    /// was created") or an `Event` (§12.9, "the date on which the Event
-    /// occurred"), exactly as written, or `None` when it has none or the
-    /// element is neither.
+    /// The `date` of an `Artifact` or an `Event`, exactly as written, or `None` when it has
+    /// none or the element is neither.
     ///
-    /// SACM 2.3 gives `date` no lexical form, and the XML Schema its XMI
-    /// rules produce types it `xsd:string`, so any string is held as written
-    /// and never diagnosed: `2024-03-01`, `2024-03-01T09:30:00Z`,
-    /// `spring 2024` and `""` alike (D-DATE). Parsing it is up to the
-    /// application.
+    /// - **`Artifact`** (§12.7). "the date on which the artifact was created".
+    /// - **`Event`** (§12.9). "the date on which the Event occurred".
+    /// - **Any string.** SACM 2.3 gives `date` no lexical form, and the XML Schema its XMI
+    ///   rules produce types it `xsd:string`. So any string is held as written and never
+    ///   diagnosed: `2024-03-01`, `2024-03-01T09:30:00Z`, `spring 2024` and `""` alike
+    ///   (D-DATE).
+    /// - **Parsing** it is up to the application.
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -3847,28 +3835,28 @@ impl<'a> SacmElement<'a> {
         self.string(StringAttribute::Date)
     }
 
-    /// The `startTime` of an `Activity` (§12.11, "time when the activity
-    /// started"), held as [`date`](Self::date) is, or `None` when it has none
-    /// or the element is not an `Activity`.
+    /// The `startTime` of an `Activity` (§12.11, "time when the activity started"), or `None`
+    /// when it has none or the element is not an `Activity`. Held as [`date`](Self::date) is.
     #[must_use]
     pub fn start_time(self) -> Option<&'a str> {
         self.string(StringAttribute::StartTime)
     }
 
-    /// The `endTime` of an `Activity` (§12.11, "time when the activity
-    /// ended"), held as [`date`](Self::date) is, or `None` when it has none
-    /// or the element is not an `Activity`. Nothing checks it against the
-    /// [`start_time`](Self::start_time): SACM 2.3 states no order.
+    /// The `endTime` of an `Activity` (§12.11, "time when the activity ended"), or `None`
+    /// when it has none or the element is not an `Activity`. Held as [`date`](Self::date) is.
+    ///
+    /// Nothing checks it against the [`start_time`](Self::start_time): SACM 2.3 states no
+    /// order.
     #[must_use]
     pub fn end_time(self) -> Option<&'a str> {
         self.string(StringAttribute::EndTime)
     }
 
-    /// The `value` of a Term or an Expression (SACM 2.3 §10.9
-    /// `value:String[1]`, "the value of the expression"), exactly as written,
-    /// or `None` when it has none, which
-    /// [`validate`](crate::validation::validate) reports, or the element is
-    /// no `ExpressionElement`.
+    /// The `value` of a Term or an Expression, exactly as written (SACM 2.3 §10.9
+    /// `value:String[1]`, "the value of the expression").
+    ///
+    /// `None` when it has none, which [`validate`](crate::validation::validate) reports, or
+    /// the element is no `ExpressionElement`.
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -3892,27 +3880,28 @@ impl<'a> SacmElement<'a> {
         self.string(StringAttribute::Value)
     }
 
-    /// A Term's `externalReference` (SACM 2.3 §10.11
-    /// `externalReference:String[0..1]`, "an external reference (e.g., URI) to
-    /// the object referred to by the Term"), exactly as written, or `None`
-    /// when it has none or the element is no Term. See
-    /// [`value`](Self::value) for an example.
+    /// A Term's `externalReference`, exactly as written, or `None` when it has none or the
+    /// element is no Term.
+    ///
+    /// SACM 2.3 §10.11 `externalReference:String[0..1]`: "an external reference (e.g., URI)
+    /// to the object referred to by the Term". See [`value`](Self::value) for an example.
     #[must_use]
     pub fn external_reference(self) -> Option<&'a str> {
         self.string(StringAttribute::ExternalReference)
     }
 
-    /// The `location` of a `Resource` (§12.10 `location:Base::MultiLangString`,
-    /// "the path or URL specifying the location of the Resource, can be in
-    /// multiple languages"), or `None` when it has none or the element is not
-    /// a `Resource`.
+    /// The `location` of a `Resource`, or `None` when it has none or the element is not a
+    /// `Resource`.
     ///
-    /// It is held as a [`content`](Self::content) is: no `location` is
-    /// `None` and `<location/>` an empty `MultiLangString`, and the values
-    /// are kept in order, with duplicates.
-    /// [`validation::validate`](crate::validation::validate) checks it as
-    /// every `MultiLangString` (SACM-MULT-001); the text gives `location` no
-    /// multiplicity, so a Resource without one gives no finding.
+    /// - **SACM 2.3 §12.10.** `location:Base::MultiLangString`, "the path or URL specifying
+    ///   the location of the Resource, can be in multiple languages".
+    /// - **Held as a [`content`](Self::content) is.** No `location` is `None` and
+    ///   `<location/>` an empty `MultiLangString`; the values are kept in order, with
+    ///   duplicates.
+    /// - **Validated** as every `MultiLangString` is
+    ///   ([`validation::validate`](crate::validation::validate), SACM-MULT-001).
+    /// - **Not required.** The text gives `location` no multiplicity, so a Resource without
+    ///   one gives no finding.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArtifactPackage, CreateResource};
@@ -3940,10 +3929,10 @@ impl<'a> SacmElement<'a> {
         self.node().location.as_ref().and_then(Text::id)
     }
 
-    /// The `xmi:id` of each `value` of the element's `location`, by
-    /// position: one entry per value of [`location`](Self::location), and
-    /// empty when there is no location. See
-    /// [`content_value_ids`](Self::content_value_ids).
+    /// The `xmi:id` of each `value` of the element's `location`, by position.
+    ///
+    /// It has one entry per value of [`location`](Self::location), and is empty when there is
+    /// no location. See [`content_value_ids`](Self::content_value_ids).
     #[must_use]
     pub fn location_value_ids(self) -> &'a [Option<ElementId>] {
         self.node().location.as_ref().map_or(&[], Text::value_ids)
@@ -3958,11 +3947,11 @@ impl<'a> SacmElement<'a> {
     /// The element's properties (SACM 2.3 §12.6 `property:Property[0..*]`):
     /// its children in the `property` role, in document order.
     ///
-    /// Every `ArtifactAsset` has the role, such as a `Property`, a `Technique`,
-    /// an `Artifact` or a `Resource`; for any other kind it is empty. A `Property` held
-    /// directly in an `ArtifactPackage`'s `artifactElement` is a child of the
-    /// package, not a property of it. The properties are among
-    /// [`children`](Self::children).
+    /// - **Every `ArtifactAsset`** has the role, such as a `Property`, a `Technique`, an
+    ///   `Artifact` or a `Resource`; for any other kind it is empty.
+    /// - **Not a package's.** A `Property` held directly in an `ArtifactPackage`'s
+    ///   `artifactElement` is a child of the package, not a property of it.
+    /// - **Among [`children`](Self::children).**
     ///
     /// ```
     /// use sacm::edit::{self, CreateArtifactPackage, CreateProperty, CreateTechnique};
@@ -3999,15 +3988,14 @@ impl<'a> SacmElement<'a> {
         self.node().text(role)
     }
 
-    /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is
-    /// asserted, assumed, needs support and so on, or `None` when its kind is
-    /// not an Assertion.
+    /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is asserted,
+    /// assumed, needs support and so on, or `None` when its kind is not an Assertion.
     ///
-    /// Every Assertion (a `Claim` or one of the five asserted relationships;
-    /// see [`AbstractClass::Assertion`]) has exactly one declaration:
-    /// [`AssertionDeclaration::Asserted`] unless the document holds another.
-    /// There is no absent state (§11.10 `[1] = asserted`), so `None` never
-    /// means "missing".
+    /// - **Exactly one.** Every Assertion (a `Claim` or one of the five asserted
+    ///   relationships; see [`AbstractClass::Assertion`]) has one declaration:
+    ///   [`AssertionDeclaration::Asserted`] unless the document holds another.
+    /// - **Never missing.** There is no absent state (§11.10 `[1] = asserted`), so `None`
+    ///   never means "missing".
     ///
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
@@ -4131,14 +4119,14 @@ impl<'a> SacmElement<'a> {
 
     /// The elements this one contains directly, in document order.
     ///
-    /// They are held in every role of the element's class, so a
-    /// `ModelElement`'s children include its descriptions, implementation
-    /// constraints, notes and tagged values, among its other children. To
-    /// get one role, use [`descriptions`](Self::descriptions),
-    /// [`implementation_constraints`](Self::implementation_constraints),
-    /// [`notes`](Self::notes) or [`tagged_values`](Self::tagged_values); to
-    /// skip them, filter by kind, for example on
-    /// `!child.kind().is_a(AbstractClass::UtilityElement)`.
+    /// - **Every role.** They are held in every role of the element's class, so a
+    ///   `ModelElement`'s children include its descriptions, implementation constraints,
+    ///   notes and tagged values, among its other children.
+    /// - **One role.** Use [`descriptions`](Self::descriptions),
+    ///   [`implementation_constraints`](Self::implementation_constraints),
+    ///   [`notes`](Self::notes) or [`tagged_values`](Self::tagged_values).
+    /// - **Without them.** Filter by kind, for example on
+    ///   `!child.kind().is_a(AbstractClass::UtilityElement)`.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
         self.node()
@@ -4147,12 +4135,12 @@ impl<'a> SacmElement<'a> {
             .map(move |&child| document.view(child))
     }
 
-    /// The elements that contain this one, nearest first: its
-    /// [`parent`](Self::parent), the parent's parent, and so on up to the
-    /// root. Not the element itself; a root has none.
+    /// The elements that contain this one, nearest first: its [`parent`](Self::parent), the
+    /// parent's parent, and so on up to the root.
     ///
-    /// It follows the parent links, so it is safe on any depth. It borrows
-    /// the document, not the view.
+    /// - **Not the element itself.** A root has none.
+    /// - **Any depth.** It follows the parent links, so it is safe on any depth.
+    /// - **Borrow.** It borrows the document, not the view.
     ///
     /// # Examples
     ///
@@ -4179,12 +4167,14 @@ impl<'a> SacmElement<'a> {
     }
 
     /// Every element this one contains, at any depth, in document
-    /// [pre-order](Document::elements), each with its depth below this one:
-    /// a child is at depth 1, a grandchild at 2. Not the element itself.
+    /// [pre-order](Document::elements), each with its depth below this one.
     ///
-    /// `UtilityElement`s are included. The walk keeps its own stack and does
-    /// not recurse, so it is safe on any depth. It borrows the document, not
-    /// the view.
+    /// - **Depth.** A child is at depth 1, a grandchild at 2.
+    /// - **Not the element itself.**
+    /// - **`UtilityElement`s are included.**
+    /// - **Any depth.** The walk keeps its own stack and does not recurse, so it is safe on
+    ///   any depth.
+    /// - **Borrow.** It borrows the document, not the view.
     ///
     /// # Examples
     ///
@@ -4217,9 +4207,11 @@ impl<'a> SacmElement<'a> {
         }
     }
 
-    /// The first of [`tagged_values`](Self::tagged_values) whose key has a
-    /// value with the content `key`: SACM 2.3 §8.12 gives a `TaggedValue`
-    /// one `key:MultiLangString[1]`, and this finds it by plain text.
+    /// The first of [`tagged_values`](Self::tagged_values) whose key has a value with the
+    /// content `key`.
+    ///
+    /// SACM 2.3 §8.12 gives a `TaggedValue` one `key:MultiLangString[1]`, and this finds it
+    /// by plain text.
     ///
     /// - A tagged value has the key `key` when any value of its key has a
     ///   [`content`](LangString::content) equal to `key`, byte for byte.
@@ -4253,24 +4245,23 @@ impl<'a> SacmElement<'a> {
             .find(|tag| tag.key().is_some_and(|held| has_key(held, key)))
     }
 
-    /// Whether the element holds preserved content: something it was read
-    /// with from XMI and kept exactly as written instead of read, such as a
-    /// vendor attribute or child element that is not SACM 2.3 where it stands
-    /// (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a construct a strict
-    /// read refuses, such as a value that is no literal (ADR 0035), or the
-    /// type of a class the application declared a subclass of the element's
-    /// kind ([`subclass`](Self::subclass), LIB-COMPAT-017). XMI metadata,
-    /// such as `xmi:uuid`, is never preserved content (SACM23-XMI-019, ADR
-    /// 0042).
+    /// Whether the element holds preserved content: something it was read with from XMI and
+    /// kept exactly as written instead of read.
     ///
-    /// [`xmi::read`](crate::xmi::read) keeps it, with one diagnostic per
-    /// construct (SACM-XMI-003 for content that is not SACM 2.3 where it
-    /// stands; in tolerant mode, the Warning of the strict refusal), rather
-    /// than drop it. A tolerant
-    /// [`xmi::write`](crate::xmi::write) writes it back where it stood, and a
-    /// strict one refuses the document
-    /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
-    /// An element built with [`edit::apply`](crate::edit::apply) holds none.
+    /// - **Not SACM 2.3 where it stands,** such as a vendor attribute or child element
+    ///   (LIB-COMPAT-003, ADR 0033).
+    /// - **What a strict read refuses,** which a tolerant read keeps, such as a value that is
+    ///   no literal (ADR 0035).
+    /// - **A declared subclass.** The type of a class the application declared a subclass
+    ///   of the element's kind ([`subclass`](Self::subclass), LIB-COMPAT-017).
+    /// - **Never XMI metadata,** such as `xmi:uuid` (SACM23-XMI-019, ADR 0042).
+    /// - **Read.** [`xmi::read`](crate::xmi::read) keeps it rather than drop it, with one
+    ///   diagnostic per construct: SACM-XMI-003 for content that is not SACM 2.3 where it
+    ///   stands; in tolerant mode, the Warning of the strict refusal.
+    /// - **Written.** A tolerant [`xmi::write`](crate::xmi::write) writes it back where it
+    ///   stood, and a strict one refuses the document
+    ///   ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
+    /// - **Edits.** An element built with [`edit::apply`](crate::edit::apply) holds none.
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -4290,12 +4281,15 @@ impl<'a> SacmElement<'a> {
         self.node().preserved.is_some()
     }
 
-    /// The class outside SACM 2.3 that this element was read as an instance
-    /// of, if a tolerant read read it as a declared subclass of its kind
-    /// ([`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass),
-    /// LIB-COMPAT-017). It is preserved content: a tolerant write writes it
-    /// as the element's `xmi:type`, and a strict write refuses the element.
-    /// Only [`xmi::read`](crate::xmi::read) gives one.
+    /// The class outside SACM 2.3 that this element was read as an instance of, if a tolerant
+    /// read read it as a declared subclass of its kind.
+    ///
+    /// - **Declared with**
+    ///   [`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass)
+    ///   (LIB-COMPAT-017).
+    /// - **Preserved content.** A tolerant write writes it as the element's `xmi:type`, and a
+    ///   strict write refuses the element; see [`Subclass`].
+    /// - **From a read only.** Only [`xmi::read`](crate::xmi::read) gives one.
     ///
     /// ```
     /// use sacm::model::ElementKind;
@@ -4328,9 +4322,8 @@ impl<'a> SacmElement<'a> {
         self.node().preserved.as_deref()
     }
 
-    /// The element's `xmi:uuid` (XMI 2.5.1 §7.6.1), exactly as read, or
-    /// `None`: XMI metadata, which both saves write back and a copy drops
-    /// (SACM23-XMI-019, ADR 0042).
+    /// The element's `xmi:uuid` (XMI 2.5.1 §7.6.1), exactly as read, or `None`: XMI metadata,
+    /// which both saves write back and a copy drops (SACM23-XMI-019, ADR 0042).
     ///
     /// Only [`xmi::read`](crate::xmi::read) gives one; an element built with
     /// [`edit::apply`](crate::edit::apply) has none.
@@ -4357,10 +4350,10 @@ impl<'a> SacmElement<'a> {
             .and_then(|metadata| metadata.xmi_attribute("uuid"))
     }
 
-    /// The element's `xmi:label`, exactly as read, or `None`. "The value of
-    /// the label attribute is ignored on import" (XMI 2.5.1 §7.6.1): the
-    /// library never uses it, and both saves write it back (SACM23-XMI-019,
-    /// ADR 0042).
+    /// The element's `xmi:label`, exactly as read, or `None`.
+    ///
+    /// "The value of the label attribute is ignored on import" (XMI 2.5.1 §7.6.1): the
+    /// library never uses it, and both saves write it back (SACM23-XMI-019, ADR 0042).
     #[must_use]
     pub fn label(self) -> Option<&'a str> {
         self.metadata()
@@ -4869,9 +4862,8 @@ impl fmt::Debug for SacmElement<'_> {
     }
 }
 
-/// One typed reference to an id, as [`Document::referrers`] lists it: the
-/// element that holds it, the end, and the id's position in the end
-/// (LIB-API-014).
+/// One typed reference to an id, as [`Document::referrers`] lists it: the element that holds
+/// it, the end, and the id's position in the end.
 ///
 /// It borrows the document, like [`SacmElement`].
 ///
@@ -4944,13 +4936,11 @@ pub enum InsertError {
     DuplicateId(ElementId),
     /// The parent is not an element of the document.
     UnknownParent(ElementId),
-    /// The element was given a name, but its kind is one of the four
-    /// `UtilityElement` kinds, which have no name. Holds the element's id and
-    /// kind.
+    /// The element was given a name, but its kind is one of the four `UtilityElement` kinds,
+    /// which have no name. Holds the element's id and kind.
     NameNotAllowed(ElementId, ElementKind),
-    /// No SACM containment role of the parent's class admits the element's
-    /// kind: a Claim directly under an AssuranceCasePackage, say, rather than
-    /// under one of its argument packages.
+    /// No SACM containment role of the parent's class admits the element's kind: a Claim
+    /// directly under an AssuranceCasePackage, say, not under one of its argument packages.
     ContainmentNotAllowed {
         /// The refused element's id.
         id: ElementId,
@@ -4961,9 +4951,10 @@ pub enum InsertError {
         /// The parent's kind.
         parent_kind: ElementKind,
     },
-    /// The element has no parent and its kind is not a package kind: a root
-    /// must be a package, a package interface or a package binding (ADR 0010
-    /// D1). Holds the element's id and kind.
+    /// The element has no parent and its kind is not a package kind. Holds the element's id
+    /// and kind.
+    ///
+    /// A root must be a package, a package interface or a package binding (ADR 0010 D1).
     RootNotAllowed(ElementId, ElementKind),
 }
 

@@ -98,9 +98,10 @@ pub(crate) enum Event {
     Start {
         /// The element's name.
         name: QName,
-        /// The namespace bindings it declares, the default one (`None`)
-        /// first, then by prefix. The outermost element declares every
-        /// binding in scope that the written document might not.
+        /// The namespace bindings it declares, the default one (`None`) first, then by prefix.
+        ///
+        /// The outermost element declares every binding in scope that the written document
+        /// might not.
         namespaces: Vec<(Option<String>, String)>,
         /// Its attributes, in input order.
         attributes: Vec<Attr>,
