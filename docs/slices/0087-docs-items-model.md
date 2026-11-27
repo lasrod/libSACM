@@ -1,8 +1,8 @@
 ---
 slice: 0087
 name: docs-items-model
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-DOC-012]
 mode: pr
 ---
@@ -38,3 +38,5 @@ Docs row: acceptance by the lead; docs/style.md (LIB-DOC-009). Fable 5.2 writes 
 - 2026-11-27 verification: PASS, non-blocking findings only. Fix round: the check counts
   trait-impl items, which rustdoc shows (approved test change, re-verified), and the five
   summaries it then finds; the verifier's wording; follow-ups retagged to LIB-DOC-014/-015.
+- 2026-11-27 verification: re-verify PASS (c5bd2ed); the verifier's one-line wrap applied
+  after. Record `docs/verification/0087-docs-items-model.md`. Row `verified`.

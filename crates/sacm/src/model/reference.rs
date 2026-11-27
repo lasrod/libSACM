@@ -399,7 +399,8 @@ impl ReferenceEnd {
     /// The end's name, spelled as in the machine-readable model and in XMI. It is the `end`
     /// an [`EditError`](crate::edit::EditError) names.
     ///
-    /// The name is the variant's in lower camel case, such as `citedElement` for `CitedElement`, except:
+    /// The name is the variant's in lower camel case, such as `citedElement` for
+    /// `CitedElement`, except:
     ///
     /// | Variant | Name |
     /// |---|---|

@@ -9284,7 +9284,7 @@ title = "Item docs follow the style guide"
 requirement = "The item docs of the `model`, `compare`, `diagnostic` and `validation` modules follow the LIB-DOC-009 style guide: a short summary of what the item is for, then only what a caller needs that the signature does not say, as short bullets where there are several points. The `edit` and `xmi` item docs follow in LIB-DOC-014 and LIB-DOC-015."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-011"]
 acceptance = [
   "In the `///` docs of crates/sacm/src/model.rs and model/, compare.rs, diagnostic.rs and diagnostic/, and validation.rs and validation/, a test finds no prose paragraph or list item over four display lines, and no summary (the first paragraph of an item's docs) over two.",
@@ -9305,6 +9305,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines",
   "xtask/tests/docs_style.rs::lib_doc_012_no_item_summary_runs_over_two_lines",
 ]
+verification = "docs/verification/0087-docs-items-model.md"
 
 [[row]]
 id = "LIB-DOC-013"
