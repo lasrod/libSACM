@@ -67,8 +67,8 @@ use super::{
 ///
 /// - **Not SACM 2.3 where it stands,** such as a vendor attribute or child element (ADR
 ///   0033).
-/// - **Refused by a strict read,** in tolerant mode, such as a value that is no literal
-///   (ADR 0035).
+/// - **What a strict read refuses,** which a tolerant read keeps, such as a value that is
+///   no literal (ADR 0035).
 /// - **Not XMI metadata.** XMI metadata, such as `xmi:uuid`, is not preserved content (ADR
 ///   0042).
 /// - **Where.** Each element that holds some says so
@@ -86,12 +86,13 @@ use super::{
 ///
 /// - **Matched by id.** Elements are matched by id.
 /// - **Compared, per element.** Kind, parent, `gid`, the `isCitation`, `isAbstract` and
-///   `isCounter` flags, the ids each reference end holds, in order, and the
-///   `assertionDeclaration`.
+///   `isCounter` flags, the ids and `href`s each reference end holds, in order, the proxies,
+///   and the `assertionDeclaration`.
 /// - **Compared, the texts.** The name and its id; the `content`, `key` and `location` with
-///   their ids; the `version`, `date`, `startTime` and `endTime`.
-/// - **Compared, the rest.** The order of roots and children, each element's preserved
-///   content and the document's own, outside its elements.
+///   their ids; the `version`, `date`, `startTime`, `endTime`, `value` and
+///   `externalReference`.
+/// - **Compared, the rest.** The order of roots and children, and the XMI metadata and
+///   preserved content of each element and of the document, outside its elements.
 /// - **Not held.** Formatting, attribute order and namespace prefixes, except in preserved
 ///   content, which is compared exactly.
 /// - **Order-sensitive,** for the ids of the multi-valued ends too; see [`crate::compare`]
@@ -4249,8 +4250,8 @@ impl<'a> SacmElement<'a> {
     ///
     /// - **Not SACM 2.3 where it stands,** such as a vendor attribute or child element
     ///   (LIB-COMPAT-003, ADR 0033).
-    /// - **Refused by a strict read,** in tolerant mode, such as a value that is no literal
-    ///   (ADR 0035).
+    /// - **What a strict read refuses,** which a tolerant read keeps, such as a value that is
+    ///   no literal (ADR 0035).
     /// - **A declared subclass.** The type of a class the application declared a subclass
     ///   of the element's kind ([`subclass`](Self::subclass), LIB-COMPAT-017).
     /// - **Never XMI metadata,** such as `xmi:uuid` (SACM23-XMI-019, ADR 0042).

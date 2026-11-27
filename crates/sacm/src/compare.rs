@@ -30,8 +30,11 @@
 //! | `SACMElement` features (§8.2) | `gid`, `isCitation`, `isAbstract`, and the ids `citedElement` and `abstractForm` hold |
 //! | Argumentation (§11.2, §11.9, §11.10, §11.12, §11.13) | `isCounter`, the [`assertionDeclaration`](crate::model::AssertionDeclaration), and the ids of `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` and a group's `argumentElement` |
 //! | `ArtifactGroup` (§12.3) | the ids of `artifactElement` |
+//! | `ArtifactAssetRelationship` (§12.14) | the ids of its `source` and `target` |
 //! | Packages (§11.5, §11.6, §12.4, §12.5; ptc/22-03-13) | a package's `interface`, an interface's `implements` and a binding's `participantPackage` |
+//! | Terminology (§10.3, §10.8 to §10.11) | the ids of `category`, an `Expression`'s `element`, a `Term`'s `origin` and a group's `terminologyElement`; a Term's or an Expression's `value` and a Term's `externalReference` |
 //! | Cross-document references (ADR 0040) | the `href`s of each end, as [`Difference::Hrefs`]; those of a multi-valued end in order, with repeats |
+//! | Proxies (ADR 0040 amendment 1) | each element's proxies, in order, as [`Difference::Proxies`] |
 //! | Name and texts | its name and the `xmi:id` of its name ([`SacmElement::name_id`](crate::model::SacmElement::name_id)); its `content` and `key` with their ids ([`SacmElement::content`](crate::model::SacmElement::content) and the like) |
 //! | Artifact values (§12.7, §12.9, §12.10, §12.11) | an `Artifact`'s `version`, the `date` of an `Artifact` or an `Event`, a `Resource`'s `location` with its ids, an `Activity`'s `startTime` and `endTime` |
 //! | XMI metadata | as read (SACM23-XMI-019, ADR 0042) |
@@ -1086,9 +1089,9 @@ impl Difference {
 }
 
 impl fmt::Display for Difference {
-    /// One line: the quoted id, the SACM feature and both values. Ids and
-    /// names are quoted with quotes and line breaks escaped, so the line
-    /// never breaks.
+    /// One line: the quoted id, the SACM feature and both values.
+    ///
+    /// Ids and names are quoted with quotes and line breaks escaped, so the line never breaks.
     #[expect(
         clippy::too_many_lines,
         reason = "one arm per variant reads best as one match"
@@ -1489,9 +1492,9 @@ impl fmt::Display for Declaration {
 /// order; an empty result means the documents are equal.
 ///
 /// - **Matched by id.** Elements are matched across the whole document.
-/// - **What is compared.** The [module docs](crate::compare#what-is-compared)
-///   list it. Every feature of an element both documents hold is compared,
-///   exactly, even when its kind differs.
+/// - **What is compared.** Every feature of an element both documents hold, exactly, even
+///   when its kind differs. The [table below](#order-of-the-result) names each one's
+///   variant.
 /// - **Not compared.** The per-kind counters that generate ids.
 /// - **Swapping the arguments** gives the same differences with left and
 ///   right swapped, though possibly in another order.
@@ -2293,10 +2296,11 @@ fn common_children<'a>(
 }
 
 impl PartialEq for Document {
-    /// Whether the documents hold the same SACM content: whether
-    /// [`semantic_compare`] finds no difference. It stops at the first
-    /// difference and builds no [`Difference`]. The per-kind counters that
-    /// generate ids are not compared.
+    /// Whether the documents hold the same SACM content: whether [`semantic_compare`] finds no
+    /// difference.
+    ///
+    /// It stops at the first difference and builds no [`Difference`]. The per-kind counters
+    /// that generate ids are not compared.
     fn eq(&self, other: &Self) -> bool {
         walk(self, other, stop_at_first).is_continue()
     }

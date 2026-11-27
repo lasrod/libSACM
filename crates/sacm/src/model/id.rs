@@ -6,13 +6,9 @@ use std::fmt;
 /// The identifier of an element: its `xmi:id`, or an id generated for it. Every other `xmi:id`
 /// a document holds has this type too: XMI has one id space (XMI 2.5.1 §7.6.1).
 ///
-/// - **Part ids.** The `xmi:id`s of an element's parts are `ElementId`s too: those of its
-///   name ([`name_id`](crate::model::SacmElement::name_id)) and content
-///   ([`content_id`](crate::model::SacmElement::content_id)).
-/// - **Also** those of its key ([`key_id`](crate::model::SacmElement::key_id)) and location
-///   ([`location_id`](crate::model::SacmElement::location_id)).
-/// - **Value ids.** So is the `xmi:id` of each value of those parts
-///   ([`content_value_ids`](crate::model::SacmElement::content_value_ids) and the like).
+/// - **Part ids.** The `xmi:id` of an element's name, content, key and location, and of each
+///   of their values, is an `ElementId` too ([`name_id`], [`content_id`], [`key_id`],
+///   [`location_id`], [`content_value_ids`] and the like).
 /// - **A part is no element.** [`Document::get`](crate::model::Document::get) finds none of
 ///   them. [`Document::is_id_in_use`](crate::model::Document::is_id_in_use) covers them all,
 ///   so an edit never gives an element the id of a part.
@@ -24,6 +20,12 @@ use std::fmt;
 ///   maps and sets keyed by `ElementId` can be searched with a `&str`.
 /// - **Compares with `str`.** It equals a `str` with the same value, either way round:
 ///   `id == "c1"`.
+///
+/// [`name_id`]: crate::model::SacmElement::name_id
+/// [`content_id`]: crate::model::SacmElement::content_id
+/// [`key_id`]: crate::model::SacmElement::key_id
+/// [`location_id`]: crate::model::SacmElement::location_id
+/// [`content_value_ids`]: crate::model::SacmElement::content_value_ids
 ///
 /// # Examples
 ///

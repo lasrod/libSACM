@@ -335,9 +335,9 @@ impl LangString {
 }
 
 impl From<&str> for LangString {
-    /// A `LangString` with the content `content` and no `lang`, as
-    /// [`LangString::new`] gives. Every operation's `name` takes one, so a
-    /// name can be plain text.
+    /// A `LangString` with the content `content` and no `lang`, as [`LangString::new`] gives.
+    ///
+    /// Every operation's `name` takes one, so a name can be plain text.
     ///
     /// ```
     /// use sacm::model::LangString;
@@ -359,9 +359,10 @@ impl From<String> for LangString {
 }
 
 impl fmt::Debug for LangString {
-    /// A plain value as `LangString { lang, content }`; an
-    /// `ExpressionLangString` as `ExpressionLangString { lang, content,
-    /// expression }`, the expression as its id, its href or `None`.
+    /// A plain value as `LangString { lang, content }`; an `ExpressionLangString` as
+    /// `ExpressionLangString { lang, content, expression }`.
+    ///
+    /// The expression shows as its id, its href or `None`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.form {
             Form::Plain => f

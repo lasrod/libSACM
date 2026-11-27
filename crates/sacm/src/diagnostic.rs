@@ -300,7 +300,8 @@ catalog! {
     ///   text in element-only content, and an attribute or text on the
     ///   `xmi:XMI` element.
     /// - **Kept exactly as written.** [`xmi::read`](crate::xmi::read) keeps
-    ///   it, in both modes, as preserved content of the element it sits in.
+    ///   it as preserved content of the element it sits in, in both modes,
+    ///   except what a strict read refuses (below).
     /// - **One per construct,** affecting that element: a Warning in tolerant
     ///   mode and an Error in strict mode (LIB-COMPAT-003, ADR 0033).
     /// - **Refused by a strict read** as
@@ -2035,6 +2036,9 @@ where
 ///   Every other key may be left out.
 /// - **Refused.** An unknown key, an empty `requirement_id`, `null` for
 ///   `template` or `arguments`, and one of those two without the other.
+/// - **Checked against the catalog.** A `template` other than the code's text must be one of
+///   the code's diagnostic templates, and `arguments` exactly its arguments; the code's text
+///   takes no arguments.
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Diagnostic {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {

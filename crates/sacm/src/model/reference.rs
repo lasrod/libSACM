@@ -399,7 +399,7 @@ impl ReferenceEnd {
     /// The end's name, spelled as in the machine-readable model and in XMI. It is the `end`
     /// an [`EditError`](crate::edit::EditError) names.
     ///
-    /// The name is the variant's in camel case, such as `citedElement`, except:
+    /// The name is the variant's in lower camel case, such as `citedElement` for `CitedElement`, except:
     ///
     /// | Variant | Name |
     /// |---|---|
@@ -734,8 +734,7 @@ impl ReferenceEnd {
 }
 
 impl fmt::Display for ReferenceEnd {
-    /// Writes [`ReferenceEnd::name`]: `source` for both
-    /// [`Source`](ReferenceEnd::Source) and
+    /// Writes [`ReferenceEnd::name`]: `source` for both [`Source`](ReferenceEnd::Source) and
     /// [`ArtifactSource`](ReferenceEnd::ArtifactSource).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad(self.name())

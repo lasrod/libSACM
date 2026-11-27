@@ -35,3 +35,6 @@ Docs row: acceptance by the lead; docs/style.md (LIB-DOC-009). Fable 5.2 writes 
   per-rule facts moved to `validate`; stale claims corrected (artifacts "not supported yet",
   the document-level `Difference` variants, `XMI_UNKNOWN_CONTENT`, `REF_DANGLING`). Row
   `implemented`.
+- 2026-11-27 verification: PASS, non-blocking findings only. Fix round: the check counts
+  trait-impl items, which rustdoc shows (approved test change, re-verified), and the five
+  summaries it then finds; the verifier's wording; follow-ups retagged to LIB-DOC-014/-015.

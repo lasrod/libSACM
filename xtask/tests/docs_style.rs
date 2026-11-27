@@ -900,6 +900,9 @@ struct DocBlock {
     item: String,
     /// Whether the block is inside a `#[cfg(test)]` module.
     in_test: bool,
+    /// Whether the innermost `impl` block around the block is a trait impl,
+    /// `impl … for … {`.
+    in_trait_impl: bool,
 }
 
 /// The text of a `///` line, at any indentation, without the `///` and the
@@ -966,6 +969,31 @@ fn test_modules(lines: &[&str]) -> Vec<(usize, usize)> {
     ranges
 }
 
+/// The `impl` blocks of `lines`, as index ranges, each with whether it is a
+/// trait impl: from the header line, `impl…` at indentation N, to the first
+/// line after it that is exactly N spaces and `}` (the sources are
+/// rustfmt-formatted). A header with ` for ` in it is a trait impl's; an
+/// `impl … {}` on one line holds nothing.
+fn impl_blocks(lines: &[&str]) -> Vec<(usize, usize, bool)> {
+    let mut ranges = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !(trimmed.starts_with("impl ") || trimmed.starts_with("impl<"))
+            || trimmed.ends_with("{}")
+            || trimmed.ends_with(';')
+        {
+            continue;
+        }
+        let close = format!("{}}}", &line[..line.len() - line.trim_start().len()]);
+        let end = lines[i + 1..]
+            .iter()
+            .position(|line| *line == close)
+            .map_or(lines.len(), |k| i + 1 + k);
+        ranges.push((i, end, trimmed.contains(" for ")));
+    }
+    ranges
+}
+
 /// The `///` blocks of a Rust source. A block is a run of `///` lines, at any
 /// indentation, and the attribute lines between them (`#[doc(alias = …)]`):
 /// it ends at the first line that is neither. A bare `///` is a blank line;
@@ -973,6 +1001,7 @@ fn test_modules(lines: &[&str]) -> Vec<(usize, usize)> {
 fn doc_blocks(source: &str) -> Vec<DocBlock> {
     let lines: Vec<&str> = source.lines().collect();
     let tests = test_modules(&lines);
+    let impls = impl_blocks(&lines);
     let mut blocks = Vec::new();
     let mut i = 0;
     while i < lines.len() {
@@ -1007,6 +1036,11 @@ fn doc_blocks(source: &str) -> Vec<DocBlock> {
             lines: block,
             item: lines.get(next).map_or("", |line| line.trim()).to_owned(),
             in_test: tests.iter().any(|(from, to)| start > *from && start < *to),
+            in_trait_impl: impls
+                .iter()
+                .filter(|(from, to, _)| start > *from && start < *to)
+                .max_by_key(|(from, _, _)| *from)
+                .is_some_and(|(_, _, is_trait)| *is_trait),
         });
     }
     blocks
@@ -1022,8 +1056,9 @@ fn outer_doc_blocks(source: &str) -> Vec<Vec<(usize, String)>> {
 
 /// Whether the item line `item` is clearly not public: restricted
 /// (`pub(crate)`, `pub(super)`, `pub(in …)`) or an item keyword without
-/// `pub`. Enum variants, fields, `impl` blocks and the items of trait impls
-/// count; the parent's visibility is not resolved.
+/// `pub`. Enum variants, fields and `impl` blocks count; the parent's
+/// visibility is not resolved. The items of trait impls are left to
+/// [`counts`].
 fn is_non_public_item(item: &str) -> bool {
     const RESTRICTED: [&str; 3] = ["pub(crate)", "pub(super)", "pub(in"];
     const PRIVATE: [&str; 11] = [
@@ -1045,12 +1080,31 @@ fn is_non_public_item(item: &str) -> bool {
         .any(|prefix| item.starts_with(prefix))
 }
 
+/// Whether LIB-DOC-012 checks `block`: outside `#[cfg(test)]` modules, the
+/// docs of a `fn`, `type` or `const` of a trait impl, which rustdoc shows,
+/// and of any item [`is_non_public_item`] does not rule out.
+fn counts(block: &DocBlock) -> bool {
+    const TRAIT_IMPL_ITEMS: [&str; 3] = ["fn ", "type ", "const "];
+    if block.in_test {
+        return false;
+    }
+    if block.in_trait_impl
+        && TRAIT_IMPL_ITEMS
+            .iter()
+            .any(|prefix| block.item.starts_with(prefix))
+    {
+        return true;
+    }
+    !is_non_public_item(&block.item)
+}
+
 /// The lines of the `///` blocks of a Rust source that LIB-DOC-012 checks:
-/// those of public items, outside `#[cfg(test)]` modules.
+/// those of public items and of the items of trait impls, outside
+/// `#[cfg(test)]` modules, per [`counts`].
 fn public_doc_blocks(source: &str) -> Vec<Vec<(usize, String)>> {
     doc_blocks(source)
         .into_iter()
-        .filter(|block| !block.in_test && !is_non_public_item(&block.item))
+        .filter(counts)
         .map(|block| block.lines)
         .collect()
 }
@@ -1085,6 +1139,20 @@ mod tests {
 }
 /// After the test module.
 pub fn d() {}
+impl fmt::Display for E {
+    /// Writes it.
+    fn fmt(..) {}
+}
+impl S {
+    /// A private method of an inherent impl.
+    fn p() {}
+    /// A public method of an inherent impl.
+    pub fn q() {}
+}
+/// Private, behind a blank line and an attribute.
+
+#[inline]
+fn r() {}
 ";
     let counted: Vec<usize> = public_doc_blocks(source)
         .iter()
@@ -1104,6 +1172,14 @@ pub fn d() {}
         ),
         (23, "a block inside `#[cfg(test)] mod tests { … }`", false),
         (26, "a `pub fn` after the test module", true),
+        (29, "a `fn` of a trait impl, `impl … for … {`", true),
+        (33, "a private `fn` of an inherent impl", false),
+        (35, "a `pub fn` of an inherent impl", true),
+        (
+            38,
+            "a private `fn` behind a blank line and an attribute",
+            false,
+        ),
     ] {
         assert_eq!(
             counted.contains(&line),
