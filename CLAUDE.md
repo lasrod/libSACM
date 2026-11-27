@@ -14,7 +14,7 @@ safety tooling on this.
   run the loop with `/loop /sacm-slice`.
 - Design: [docs/architecture.md](docs/architecture.md), [docs/adr/](docs/adr/).
 - The standard: load the `sacm-expert` skill. Normative sources, XMI 2.5.1, its XMI.xsd and
-  XML Schema Part 2 (Datatypes): `cargo xtask fetch-spec` → `third_party/sacm-2.3/` (never commit them).
+  XML Schema Parts 1 (Structures) and 2 (Datatypes): `cargo xtask fetch-spec` → `third_party/sacm-2.3/` (never commit them).
 - Rust conventions: load the `rust-library-craft` skill.
 
 ## Layout

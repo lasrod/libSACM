@@ -320,6 +320,16 @@ fn applied(doc: &mut Document, operation: impl Into<Operation>) -> Mutation {
     mutation
 }
 
+/// Applies `operation` with the test seam, which skips the refusal of text
+/// XML 1.0 cannot represent (LIB-EDIT-025), so a write refusal can be shown.
+fn applied_unchecked(doc: &mut Document, operation: impl Into<Operation>) -> Mutation {
+    let operation = operation.into();
+    match edit::apply_unchecked_text(doc, operation.clone()) {
+        Ok(mutation) => mutation,
+        Err(error) => panic!("{ROW}: setup: {operation:?} was refused: {error} ({error:?})"),
+    }
+}
+
 fn refused_edit(doc: &mut Document, operation: impl Into<Operation>) -> EditError {
     let operation = operation.into();
     let before = doc.clone();
@@ -895,23 +905,23 @@ fn sacm23_art_002_set_date_start_time_and_end_time_set_remove_and_refuse_in_orde
             );
         }
     }
-    // U+0001 is held, and the write refuses it: after Gid and Version, before
-    // NameLang.
+    // U+0001 set with the test seam (an edit refuses it, LIB-EDIT-025) is
+    // held, and the write refuses it: after Gid and Version, before NameLang.
     let mut doc = fixture();
-    applied(&mut doc, SetGid::new("report", "g\u{1}"));
-    applied(&mut doc, SetVersion::new("report", "v\u{1}"));
-    applied(&mut doc, SetDate::new("report", "d\u{1}"));
-    applied(
+    applied_unchecked(&mut doc, SetGid::new("report", "g\u{1}"));
+    applied_unchecked(&mut doc, SetVersion::new("report", "v\u{1}"));
+    applied_unchecked(&mut doc, SetDate::new("report", "d\u{1}"));
+    applied_unchecked(
         &mut doc,
         SetName::new("report", LangString::new("n\u{1}").with_lang("e\u{1}")),
     );
-    applied(&mut doc, SetStartTime::new("testing", "s\u{1}"));
-    applied(&mut doc, SetEndTime::new("testing", "e\u{1}"));
-    applied(
+    applied_unchecked(&mut doc, SetStartTime::new("testing", "s\u{1}"));
+    applied_unchecked(&mut doc, SetEndTime::new("testing", "e\u{1}"));
+    applied_unchecked(
         &mut doc,
         SetName::new("testing", LangString::new("n\u{1}").with_lang("e\u{1}")),
     );
-    applied(&mut doc, SetDate::new("released", "d\u{1}"));
+    applied_unchecked(&mut doc, SetDate::new("released", "d\u{1}"));
     assert_eq!(
         (
             element(&doc, "report").date(),

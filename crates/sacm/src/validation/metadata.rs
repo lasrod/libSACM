@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 
 use crate::diagnostic::template::{ID_002_METADATA_ID_NOT_AN_NCNAME, REF_001_METADATA_DANGLING};
 use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
-use crate::model::{Attr, Document, ElementId, Event, Item, Preserved, QName, XMI_NS, is_ncname};
+use crate::model::{
+    Attr, Document, ElementId, Event, Item, Preserved, QName, Region, Scope, XMI_NS, is_ncname,
+};
 
 /// The row the findings enforce.
 const ROW: &str = "SACM23-XMI-019";
@@ -128,7 +130,8 @@ pub(super) fn unwritten(document: &Document, found: &mut Vec<Diagnostic>) {
 
 /// Checks the elements of `metadata`, which `holder` holds, or the document
 /// for `None`: each `xmi:id` in them, and the references of each element
-/// XMI.xsd types, walked from the top of each fragment by type.
+/// XMI.xsd types, walked from the top of each fragment by type. Nothing in a
+/// Difference's `target` is checked (SACM23-XMI-031).
 fn check_fragments(
     document: &Document,
     metadata: &Preserved,
@@ -139,18 +142,28 @@ fn check_fragments(
         let Item::Element(fragment) = &placed.item else {
             continue;
         };
-        // The type of each open element, innermost last; `None` for one that
-        // is not walked, whose children are not either.
-        let mut open: Vec<Option<Type>> = Vec::new();
+        // For each open element, innermost last: its type, `None` for one
+        // that is not walked, whose children are not either; and the scope
+        // of its children.
+        let mut open: Vec<(Option<Type>, Scope)> = Vec::new();
         for event in &fragment.events {
             match event {
                 Event::Start {
                     name, attributes, ..
                 } => {
-                    let kind = match open.last() {
-                        None => Type::of_xmi(name),
-                        Some(parent) => parent.and_then(|parent| parent.child(name)),
+                    let (kind, scope) = match open.last() {
+                        None => (Type::of_xmi(name), Scope::default()),
+                        Some(&(parent, scope)) => {
+                            (parent.and_then(|parent| parent.child(name)), scope)
+                        }
                     };
+                    let namespace = name.namespace.as_deref();
+                    let (region, below) =
+                        scope.enter(namespace, &name.local, namespace == Some(XMI_NS));
+                    open.push((kind, below));
+                    if region == Region::Skip {
+                        continue;
+                    }
                     let written = name.written();
                     for attr in attributes {
                         let attribute = &attr.name;
@@ -161,7 +174,6 @@ fn check_fragments(
                             check_references(document, attr, &written, holder, found);
                         }
                     }
-                    open.push(kind);
                 }
                 Event::End => {
                     open.pop();

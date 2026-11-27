@@ -302,11 +302,11 @@ fn tolerant_document(input: &str) -> Document {
 }
 
 /// A document holding the root ArgumentPackage `arguments`, whose name holds
-/// U+0001.
+/// U+0001. An edit refuses it (LIB-EDIT-025), so the test seam creates it.
 fn unrepresentable_name() -> Document {
     let mut document = Document::new();
     let name = LangString::new("bad\u{1}");
-    if let Err(error) = edit::apply(
+    if let Err(error) = edit::apply_unchecked_text(
         &mut document,
         CreateArgumentPackage::root(name).with_id("arguments"),
     ) {
@@ -316,7 +316,8 @@ fn unrepresentable_name() -> Document {
 }
 
 /// A document holding the root ArgumentPackage `p` and its Note `n1`, whose
-/// second content value holds U+0004 (slice 0082, LIB-API-013).
+/// second content value holds U+0004 (slice 0082, LIB-API-013), built with
+/// the test seam.
 fn unrepresentable_value() -> Document {
     let mut document = Document::new();
     let content: MultiLangString = [LangString::new("ok"), LangString::new("bad\u{4}")]
@@ -326,7 +327,7 @@ fn unrepresentable_value() -> Document {
         Operation::from(CreateArgumentPackage::root(LangString::new("P")).with_id("p")),
         CreateNote::new("p", content).with_id("n1").into(),
     ] {
-        if let Err(error) = edit::apply(&mut document, operation) {
+        if let Err(error) = edit::apply_unchecked_text(&mut document, operation) {
             panic!("{ROW}: setup: the note is not created: {error}");
         }
     }

@@ -57,7 +57,7 @@ const XSI_TYPE: &str = "SACM-XMI-010/xsi-type";
 #[cfg(feature = "serde")]
 const KEPT_ROOT_TYPE_JSON: &str = r#"{"type":"KeptRootType","code":"SACM-CMD-005","element":"a","attribute":"xmi:type","value":"p:Bundle"}"#;
 
-/// `edit-errors.json`, whose last sample is [`KEPT_ROOT_TYPE_JSON`].
+/// `edit-errors.json`, whose `KeptRootType` sample is [`KEPT_ROOT_TYPE_JSON`].
 #[cfg(feature = "serde")]
 const EDIT_ERRORS_JSON: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -1281,7 +1281,7 @@ fn lib_compat_019_the_kept_root_type_refusal_has_its_code_message_and_json() {
 }
 
 /// With `serde`, `error` (a's refusal) is written as the `KeptRootType`
-/// sample of `edit-errors.json`, its last, and reads back equal.
+/// sample of `edit-errors.json`, and reads back equal.
 #[cfg(feature = "serde")]
 fn assert_json(error: &EditError) {
     let written = serde_json::to_string(error)
@@ -1298,9 +1298,11 @@ fn assert_json(error: &EditError) {
     let samples: Vec<EditError> = serde_json::from_str(&golden)
         .unwrap_or_else(|failure| panic!("{ROW}: edit-errors.json does not read: {failure}"));
     assert_eq!(
-        samples.last(),
+        samples
+            .iter()
+            .find(|sample| matches!(sample, EditError::KeptRootType { .. })),
         Some(error),
-        "{ROW}: the last sample of edit-errors.json is not the refusal"
+        "{ROW}: the KeptRootType sample of edit-errors.json is not the refusal"
     );
 }
 

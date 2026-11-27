@@ -16,10 +16,11 @@ repository.workspace = true
 include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
 
 [features]
-# Makes `Document::insert`, `InsertError`, `Document::set_assertion_declaration` and
-# `SetAssertionDeclarationError` public, so tests can build documents, and the
-# constructors of `Code`, `SourceLocation` and `Diagnostic` and the `with_*` builders of
-# `Diagnostic` public, so tests can build diagnostics.
+# Makes `Document::insert`, `InsertError`, `Document::set_assertion_declaration`,
+# `SetAssertionDeclarationError` and `edit::apply_unchecked_text` public, so tests can
+# build documents, including ones a write refuses, and the constructors of `Code`,
+# `SourceLocation` and `Diagnostic` and the `with_*` builders of `Diagnostic` public, so
+# tests can build diagnostics.
 # Not part of the stable API: it may change or disappear in any release.
 test-support = []
 # `Serialize` and `Deserialize` for operations, mutations, edit errors, diagnostics, read

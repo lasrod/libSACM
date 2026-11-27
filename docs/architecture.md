@@ -122,8 +122,9 @@ A `Document` is the centre. Each call below takes one or returns one.
 
 ### Validation
 
-- **Two layers** (D-VAL-LAYER). Structural invariants hold after every edit; content
-  constraints are reported by `validation::validate`.
+- **Two layers** (D-VAL-LAYER). Structural invariants hold after every edit, every
+  string held being an `xsd:string` among them (LIB-EDIT-025); content constraints are
+  reported by `validation::validate`.
 - **Severity** follows the clause's modal verb (D-SEV).
 
 ### Editing ([ADR 0019](adr/0019-edit-operations.md))

@@ -231,8 +231,9 @@ fn tolerant_document(input: &str) -> Document {
 /// One refusal per `WriteError` variant, in declaration order, and after the
 /// first `UnrepresentableCharacter` a second, in a value (slice 0082).
 fn write_samples() -> Vec<WriteError> {
+    // An edit refuses the U+0001 (LIB-EDIT-025), so the test seam creates it.
     let mut unrepresentable = Document::new();
-    if let Err(error) = edit::apply(
+    if let Err(error) = edit::apply_unchecked_text(
         &mut unrepresentable,
         CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),
     ) {
@@ -267,7 +268,7 @@ fn write_samples() -> Vec<WriteError> {
         Operation::from(CreateArgumentPackage::root(LangString::new("P")).with_id("p")),
         CreateNote::new("p", content).with_id("n1").into(),
     ] {
-        if let Err(error) = edit::apply(&mut in_value, operation) {
+        if let Err(error) = edit::apply_unchecked_text(&mut in_value, operation) {
             panic!("{ROW}: setup: {error}");
         }
     }

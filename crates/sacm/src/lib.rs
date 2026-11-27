@@ -112,6 +112,9 @@
 //! lists them all.
 //!
 //! - **Atomic.** A refused operation changes nothing, and no edit creates a dangling reference.
+//! - **Savable.** An edit refuses text XML 1.0 cannot represent, so a document read and
+//!   edited writes in tolerant mode while it has a root, and one built by edits alone
+//!   writes in strict mode too.
 //! - **Ask first.** [`edit::check`] says whether an operation would be accepted;
 //!   [`edit::preview`] says what it would do.
 //! - **Batches.** [`edit::batch`] and [`edit::apply_all`] apply several operations as one change.
@@ -137,10 +140,11 @@
 //!
 //! - **`serde`.** `Serialize` and `Deserialize` for edits, diagnostics and refusals; see
 //!   [below](#the-serde-feature).
-//! - **`test-support`.** Not stable API: it may change or disappear in any release. It
-//!   makes `Document::insert`, `Document::set_assertion_declaration` and the constructors
-//!   of diagnostics public, so tests can build documents and diagnostics. Enable it only
-//!   under `[dev-dependencies]`.
+//! - **`test-support`.** Not stable API: it may change or disappear in any release.
+//!   Enable it only under `[dev-dependencies]`. It makes these public, for tests:
+//!   - `Document::insert` and `Document::set_assertion_declaration`, to build documents;
+//!   - `edit::apply_unchecked_text`, to build one a write refuses;
+//!   - the constructors of diagnostics, to build diagnostics.
 //!
 //! ## The `serde` feature
 //!

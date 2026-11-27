@@ -1561,7 +1561,8 @@ impl Document {
     ///   `location`, a value, preserved content or XMI metadata.
     /// - **Refused by a create.** These are exactly the ids a create's `with_id` refuses as
     ///   [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId).
-    /// - **Not in use.** An id only a reference names.
+    /// - **Not in use.** An id only a reference names. Nothing inside a Difference's `target`
+    ///   is an id (SACM23-XMI-031).
     /// - **Not [`contains`](Self::contains),** which is true only for an element's id.
     ///
     /// # Examples

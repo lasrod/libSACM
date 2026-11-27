@@ -287,5 +287,21 @@
     "element": "a",
     "attribute": "xmi:type",
     "value": "p:Bundle"
+  },
+  {
+    "type": "UnrepresentableCharacter",
+    "code": "SACM-XML-003",
+    "element": "arguments",
+    "character": "\u0001",
+    "attribute": "NameContent",
+    "position": null
+  },
+  {
+    "type": "UnrepresentableCharacter",
+    "code": "SACM-XML-003",
+    "element": "n1",
+    "character": "\u0004",
+    "attribute": "ContentValueContent",
+    "position": 1
   }
 ]

@@ -63,10 +63,10 @@ fn strict_refusal(what: &str, input: &[u8]) -> ReadError {
 }
 
 /// A document holding the root ArgumentPackage `arguments`, whose name holds
-/// U+0001.
+/// U+0001. An edit refuses it (LIB-EDIT-025), so the test seam creates it.
 fn unrepresentable_name() -> Document {
     let mut document = Document::new();
-    if let Err(error) = edit::apply(
+    if let Err(error) = edit::apply_unchecked_text(
         &mut document,
         CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),
     ) {

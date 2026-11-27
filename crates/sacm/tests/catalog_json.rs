@@ -698,10 +698,11 @@ mod with_serde {
 
     /// The documents of slice 0082's two `UnrepresentableCharacter` cases:
     /// U+0001 in a package's name, and U+0004 in the second value of a
-    /// Note's content.
+    /// Note's content. An edit refuses both (LIB-EDIT-025), so the documents
+    /// are built with the test seam.
     fn unrepresentable_documents() -> Vec<Document> {
         let apply = |doc: &mut Document, operation: Operation| {
-            if let Err(error) = edit::apply(doc, operation) {
+            if let Err(error) = edit::apply_unchecked_text(doc, operation) {
                 panic!("{ROW}: setup: {error}");
             }
         };

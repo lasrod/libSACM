@@ -40,8 +40,8 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Event, Flag, Fragment, Href, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd,
-    SacmElement, StringAttribute, Text, TextRole, is_xml_char,
+    Event, Flag, Fragment, Href, Item, LangString, MultiLangString, OWNERS, Preserved, QName,
+    ReferenceEnd, SacmElement, StringAttribute, Text, TextRole, is_xml_char,
 };
 use crate::validation;
 
@@ -614,20 +614,48 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 /// ids, which `xmi::read` or a checked `with_id` gave, or ids `xmi::read`
 /// read from a reference, and each of those is representable.
 fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, Option<usize>, char)> {
-    let name = element.name();
     let fields = [
         (WriteAttribute::Id, None, Some(element.id().as_str())),
         (WriteAttribute::Gid, None, element.gid()),
-        (WriteAttribute::Version, None, element.version()),
-        (WriteAttribute::Date, None, element.date()),
-        (WriteAttribute::StartTime, None, element.start_time()),
-        (WriteAttribute::EndTime, None, element.end_time()),
-        (WriteAttribute::Value, None, element.value()),
-        (
-            WriteAttribute::ExternalReference,
-            None,
-            element.external_reference(),
-        ),
+    ];
+    let strings = StringAttribute::ALL
+        .into_iter()
+        .map(move |attribute| (string_attribute(attribute), None, element.string(attribute)));
+    let values = TextRole::ALL.into_iter().flat_map(move |role| {
+        element
+            .text(role)
+            .into_iter()
+            .flat_map(move |text| value_texts(role, text.value()))
+    });
+    first_unrepresentable(
+        fields
+            .into_iter()
+            .chain(strings)
+            .chain(name_texts(element.name()))
+            .chain(values),
+    )
+}
+
+/// The first character XML 1.0 cannot represent in the first of `texts`
+/// that holds one, with that text's attribute and position: the one rule
+/// [`xmi::write`](super::write) and the edits share (SACM23-XMI-011,
+/// LIB-EDIT-025). A text is `None` when absent.
+pub(crate) fn first_unrepresentable<'a>(
+    texts: impl IntoIterator<Item = (WriteAttribute, Option<usize>, Option<&'a str>)>,
+) -> Option<(WriteAttribute, Option<usize>, char)> {
+    texts.into_iter().find_map(|(attribute, position, value)| {
+        value
+            .and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
+            .map(|character| (attribute, position, character))
+    })
+}
+
+/// The texts of a name, for [`first_unrepresentable`]: its `lang`, then its
+/// `content`.
+pub(crate) fn name_texts(
+    name: Option<&LangString>,
+) -> [(WriteAttribute, Option<usize>, Option<&str>); 2] {
+    [
         (
             WriteAttribute::NameLang,
             None,
@@ -638,45 +666,51 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, Option<u
             None,
             name.and_then(LangString::content),
         ),
-    ];
-    let texts = [
-        (
-            TextRole::Content,
+    ]
+}
+
+/// The texts of the values `values` of `role`, for
+/// [`first_unrepresentable`]: by index, `lang` before `content`.
+pub(crate) fn value_texts(
+    role: TextRole,
+    values: &MultiLangString,
+) -> impl Iterator<Item = (WriteAttribute, Option<usize>, Option<&str>)> {
+    let (lang, content) = match role {
+        TextRole::Content => (
             WriteAttribute::ContentValueLang,
             WriteAttribute::ContentValueContent,
         ),
-        (
-            TextRole::Key,
+        TextRole::Key => (
             WriteAttribute::KeyValueLang,
             WriteAttribute::KeyValueContent,
         ),
-        (
-            TextRole::Location,
+        TextRole::Location => (
             WriteAttribute::LocationValueLang,
             WriteAttribute::LocationValueContent,
         ),
-    ];
-    let values = texts.into_iter().flat_map(move |(role, lang, content)| {
-        element
-            .text(role)
-            .map_or(&[][..], |text| text.value().values())
-            .iter()
-            .enumerate()
-            .flat_map(move |(position, value)| {
-                [
-                    (lang, Some(position), value.lang()),
-                    (content, Some(position), value.content()),
-                ]
-            })
-    });
-    fields
-        .into_iter()
-        .chain(values)
-        .find_map(|(attribute, position, value)| {
-            value
-                .and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
-                .map(|character| (attribute, position, character))
+    };
+    values
+        .values()
+        .iter()
+        .enumerate()
+        .flat_map(move |(position, value)| {
+            [
+                (lang, Some(position), value.lang()),
+                (content, Some(position), value.content()),
+            ]
         })
+}
+
+/// The [`WriteAttribute`] that names `attribute`.
+pub(crate) const fn string_attribute(attribute: StringAttribute) -> WriteAttribute {
+    match attribute {
+        StringAttribute::Version => WriteAttribute::Version,
+        StringAttribute::Date => WriteAttribute::Date,
+        StringAttribute::StartTime => WriteAttribute::StartTime,
+        StringAttribute::EndTime => WriteAttribute::EndTime,
+        StringAttribute::Value => WriteAttribute::Value,
+        StringAttribute::ExternalReference => WriteAttribute::ExternalReference,
+    }
 }
 
 /// Writes the flags of `element`, its `declaration` and its references as

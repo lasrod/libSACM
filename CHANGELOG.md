@@ -26,6 +26,12 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   from the parameter now needs it written: `CreateClaim::new("p", Default::default())` is
   `CreateClaim::new("p", LangString::default())`, and a name given as `x.into()` or
   deserialized in place needs `LangString` as its type [LIB-API-022].
+- Every edit refuses a name, gid, `content`, `key`, `location`, `version`, `date`,
+  `startTime`, `endTime`, `value`, `externalReference` or tagged-value key holding a character
+  XML 1.0 cannot represent (such as U+0001, U+FFFE or U+FFFF), as the new
+  `EditError::UnrepresentableCharacter` (SACM-XML-003). Such an edit used to succeed, and every
+  later `xmi::write` refused the document. What an edit accepts can now be written
+  [LIB-EDIT-025].
 - `Href` now compares with `str` and `&str`, so the element type of an empty array or vector
   is no longer inferred: `assert_eq!(element.hrefs(end), [])` needs `[] as [Href; 0]`, or
   `.is_empty()`; `href == x.into()` and `href == s.parse()?` likewise need the target type
@@ -64,6 +70,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `diagnostic::CATALOG_JSON`, also shipped as `src/diagnostic/catalog.json`: every code with
   its severities, and every message template with its code, carrier, arguments and English,
   as JSON [LIB-DIAG-006].
+- The JSON form of `EditError::UnrepresentableCharacter`; `edit::apply_unchecked_text` under
+  `test-support`, for tests that need a document `xmi::write` refuses [LIB-EDIT-025].
+- `cargo xtask fetch-spec` also downloads XML Schema Part 1 (Structures) [LIB-TOOL-024].
 - Names take plain text: `LangString` converts from `&str` and `String`, and every operation's
   `name` takes `impl Into<LangString>`, so `CreateClaim::new("p", "The system is safe")` works
   [LIB-API-022].
@@ -81,6 +90,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - An unrepresentable character in a value of a `content`, `key` or `location` gives the
   template `SACM-XML-003/unrepresentable-character-in-value`, whose message names the
   value's index, not `SACM-XML-003/unrepresentable-character` [LIB-API-013].
+- A read no longer refuses a repeated or empty `xmi:id` inside a Difference's `target`, and a
+  strict write no longer refuses one that is no NCName: nothing there is an id (XMI.xsd
+  `processContents="skip"`) [SACM23-XMI-031].
 - A `Diagnostic` read from JSON without `specification`, as 0.4.0 wrote it, has
   `specification() == None`, so it is no longer `==` to the diagnostic the crate now gives;
   a `WriteError::UnrepresentableCharacter` in a value read without `position` likewise

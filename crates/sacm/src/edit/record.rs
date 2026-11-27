@@ -17,6 +17,7 @@ use crate::model::{
     AbstractClass, ElementId, ElementKind, Flag, Href, ReferenceEnd, Revision, StringAttribute,
     TextRole,
 };
+use crate::xmi::WriteAttribute;
 
 /// A name as serialized: an end, feature or class name, which reads back to
 /// the crate's static name.
@@ -168,6 +169,16 @@ pub(super) enum EditErrorRecord {
         attribute: String,
         value: String,
     },
+    /// [`EditError::UnrepresentableCharacter`]; `position` is required,
+    /// `null` outside a value.
+    UnrepresentableCharacter {
+        code: Code,
+        element: ElementId,
+        character: char,
+        attribute: WriteAttribute,
+        #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+        position: Option<usize>,
+    },
 }
 
 impl From<EditError> for EditErrorRecord {
@@ -314,6 +325,18 @@ impl From<EditError> for EditErrorRecord {
                 element,
                 attribute,
                 value,
+            },
+            EditError::UnrepresentableCharacter {
+                element,
+                character,
+                attribute,
+                position,
+            } => Self::UnrepresentableCharacter {
+                code,
+                element,
+                character,
+                attribute,
+                position,
             },
         }
     }
@@ -522,6 +545,21 @@ impl TryFrom<EditErrorRecord> for EditError {
                     element,
                     attribute,
                     value,
+                },
+            ),
+            R::UnrepresentableCharacter {
+                code,
+                element,
+                character,
+                attribute,
+                position,
+            } => (
+                code,
+                Self::UnrepresentableCharacter {
+                    element,
+                    character,
+                    attribute,
+                    position,
                 },
             ),
         };
@@ -786,6 +824,9 @@ mod tests {
             EditError::ParentInSubtree { .. } => sampled!(EDIT_ERRORS, "ParentInSubtree"),
             EditError::PositionOutOfRange { .. } => sampled!(EDIT_ERRORS, "PositionOutOfRange"),
             EditError::KeptRootType { .. } => sampled!(EDIT_ERRORS, "KeptRootType"),
+            EditError::UnrepresentableCharacter { .. } => {
+                sampled!(EDIT_ERRORS, "UnrepresentableCharacter")
+            }
         }
     }
 

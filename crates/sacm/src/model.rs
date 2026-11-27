@@ -125,7 +125,8 @@ pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
 pub(crate) use preserved::{
-    Attr, EMF_XMI_NS, Event, Fragment, Item, Placed, Preserved, QName, XMI_NS, XSI_NS,
+    Attr, EMF_XMI_NS, Event, Fragment, Item, Placed, Preserved, QName, Region, Scope, XMI_NS,
+    XSI_NS,
 };
 pub use reference::{Flag, ReferenceEnd};
 pub(crate) use reference::{OWNERS, flag_named, reference_end_named};

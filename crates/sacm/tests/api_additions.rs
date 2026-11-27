@@ -89,6 +89,13 @@ fn apply(what: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mut
         .unwrap_or_else(|error| panic!("{ROW}: setup: {what}: refused: {error}"))
 }
 
+/// [`apply`] with the test seam, which skips the refusal of text XML 1.0
+/// cannot represent (LIB-EDIT-025), so a write refusal can be shown.
+fn apply_unchecked(what: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mutation {
+    edit::apply_unchecked_text(doc, operation)
+        .unwrap_or_else(|error| panic!("{ROW}: setup: {what}: refused: {error}"))
+}
+
 fn element<'d>(doc: &'d Document, id: &str) -> SacmElement<'d> {
     doc.get(id)
         .unwrap_or_else(|| panic!("{ROW}: setup: the document has no element {id:?}"))
@@ -1475,7 +1482,8 @@ fn write_refusal(what: &str, doc: &Document, mode: Mode) -> WriteError {
     }
 }
 
-/// A root ArgumentPackage `p` holding a Note `n1` with `content`.
+/// A root ArgumentPackage `p` holding a Note `n1` with `content`, created
+/// with the test seam.
 fn note_with(content: MultiLangString) -> Document {
     let mut doc = Document::new();
     apply(
@@ -1483,7 +1491,7 @@ fn note_with(content: MultiLangString) -> Document {
         &mut doc,
         CreateArgumentPackage::root(LangString::new("P")).with_id("p"),
     );
-    apply("n1", &mut doc, CreateNote::new("p", content).with_id("n1"));
+    apply_unchecked("n1", &mut doc, CreateNote::new("p", content).with_id("n1"));
     doc
 }
 
@@ -1539,7 +1547,7 @@ fn lib_api_013_a_value_error_names_the_value_s_position() {
 
     // A bad lang of the first key value.
     let mut doc = note_with(MultiLangString::from("ok"));
-    apply(
+    apply_unchecked(
         "t1",
         &mut doc,
         CreateTaggedValue::new("p", LangString::new("K").with_lang("e\u{4}"), "V").with_id("t1"),
@@ -1625,7 +1633,7 @@ fn assert_location_value_errors() {
             &mut doc,
             CreateArtifactPackage::root(LangString::new("A")).with_id("a"),
         );
-        apply(
+        apply_unchecked(
             "r1",
             &mut doc,
             CreateResource::new("a", LangString::new("R1"))
@@ -1658,7 +1666,7 @@ fn assert_location_value_errors() {
 #[test]
 fn lib_api_013_a_write_error_outside_a_value_has_no_position() {
     let mut doc = Document::new();
-    apply(
+    apply_unchecked(
         "arguments",
         &mut doc,
         CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),
@@ -1706,7 +1714,7 @@ fn lib_api_013_a_write_error_outside_a_value_has_no_position() {
         &mut doc,
         CreateArgumentPackage::root(LangString::new("P")).with_id("p"),
     );
-    apply("gid", &mut doc, edit::SetGid::new("p", "g\u{2}"));
+    apply_unchecked("gid", &mut doc, edit::SetGid::new("p", "g\u{2}"));
     let error = write_refusal("U+0002 in a gid", &doc, Mode::Strict);
     assert!(
         matches!(
@@ -1729,7 +1737,7 @@ fn lib_api_013_a_write_error_outside_a_value_has_no_position() {
 fn assert_position_records() {
     {
         let mut doc = Document::new();
-        apply(
+        apply_unchecked(
             "arguments",
             &mut doc,
             CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),

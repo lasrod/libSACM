@@ -1,6 +1,7 @@
 //! Download the reference artifacts, pinned by SHA-256: the OMG SACM 2.3
 //! sources, the XMI 2.5.1 specification they reference and its normative
-//! XML Schema, XMI.xsd, and XML Schema Part 2: Datatypes ([`ARTIFACTS`]),
+//! XML Schema, XMI.xsd, XML Schema Part 2: Datatypes and XML Schema Part 1:
+//! Structures ([`ARTIFACTS`]),
 //! and the W3C XML Conformance Test Suite ([`XMLCONF`]).
 //!
 //! The artifacts are not redistributed in this repository; each contributor
@@ -55,7 +56,8 @@ pub struct Artifact {
 /// The reference artifacts: the SACM 2.3 sources in source-priority order,
 /// then XMI 2.5.1, which they reference, and its XMI.xsd (LIB-TOOL-021), and
 /// XML Schema Part 2 (LIB-TOOL-022), whose boolean, `NCName` and ID, IDREFS,
-/// list and whiteSpace rules the crate relies on.
+/// list and whiteSpace rules the crate relies on, and XML Schema Part 1
+/// (LIB-TOOL-024), whose `skip` wildcard and ID table it relies on.
 pub const ARTIFACTS: &[Artifact] = &[
     Artifact {
         file_name: "SACM-2.3-formal-23-05-08.pdf",
@@ -86,6 +88,12 @@ pub const ARTIFACTS: &[Artifact] = &[
         url: "https://www.w3.org/TR/2004/REC-xmlschema-2-20041028/datatypes.html",
         sha256: "980de872aa2c50013d5202176eb85eef3f183a7df635fdcb6b4aa34c1c12eb72",
         what: "XML Schema Part 2: Datatypes Second Edition (W3C Recommendation 28 October 2004)",
+    },
+    Artifact {
+        file_name: "XMLSchema-1-REC-20041028-structures.html",
+        url: "https://www.w3.org/TR/2004/REC-xmlschema-1-20041028/structures.html",
+        sha256: "92bfd116316332b1153941436430afbdb2040e036d5fb2d21d4c8fba36a7765a",
+        what: "XML Schema Part 1: Structures Second Edition (W3C Recommendation 28 October 2004)",
     },
 ];
 

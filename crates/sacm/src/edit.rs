@@ -93,6 +93,8 @@
 //! - **Any plain name is accepted,** `LangString::default()` included: an empty name is
 //!   still a name. An `ExpressionLangString` name must have an `expression` that names
 //!   a `Term` or an `Expression` (checks 5a to 8 of [Creates](#creates)).
+//! - **Every text must be savable.** A name, value or other text holding a character
+//!   XML 1.0 cannot represent is refused, last (check 9 of [Creates](#creates)).
 //! - **`UtilityElement`s have no name.** A description, implementation constraint, note
 //!   or tagged value goes in any `ModelElement`, in the role of its kind. It contains no
 //!   elements, so it is never a parent.
@@ -152,10 +154,11 @@
 //!
 //! - **One feature, by id.** Each names the element it changes by id, and replaces one
 //!   feature exactly as given (ADR 0029).
-//! - **A value is never refused** (D-DATE): a name, gid, flag, declaration, `content`,
-//!   key, `version`, `date`, `location`, `startTime` or `endTime`. An empty name or
-//!   `content`, a duplicate gid or an `asCited` declaration on an element that cites
-//!   nothing is content, which `validate` reports (D-VAL-LAYER).
+//! - **A value is never refused for its content** (D-DATE, D-VAL-LAYER): a name, gid,
+//!   flag, declaration, `content`, key, `version`, `date`, `location`, `startTime` or
+//!   `endTime`. Only a character XML 1.0 cannot represent is refused, last (LIB-EDIT-025).
+//! - **Content is for `validate`,** which reports an empty name or `content`, a duplicate
+//!   gid, or an `asCited` declaration on an element that cites nothing.
 //! - **A flag and its reference are independent,** such as `isCitation` and `citedElement`.
 //! - **A reference end stays within its bounds:** `source` `[1..*]`, an asserted
 //!   relationship's `target` `[1]`, an `ArtifactAssetRelationship`'s `target` `[1..*]`,
@@ -377,6 +380,7 @@
 //! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids, the group members (`argumentElement` or `artifactElement`), an interface's `implements` and a binding's participants (`participantPackage`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
+//! | 9. every text the new element would hold has only characters XML 1.0 can represent | [`EditError::UnrepresentableCharacter`] | SACM-XML-003 | Remove the character. |
 //!
 //! In checks 6 to 8, the `expression`s of the name's and texts'
 //! `ExpressionLangStrings` come last, as the end `expression`, which must
@@ -394,14 +398,19 @@
 //!
 //! What each checks after that:
 //!
-//! - **Nothing more:** [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`],
-//!   [`SetVersion`], [`SetDate`], [`SetStartTime`] and [`SetEndTime`]. Every element has
-//!   a gid, `isCitation` and `isAbstract`, so those skip check 2 too.
+//! - **Nothing more:** [`SetFlag`] and [`SetAssertionDeclaration`]. Every element has a
+//!   gid, `isCitation` and `isAbstract`, so [`SetGid`] and those flags skip check 2 too.
 //! - **The `ExpressionLangString`s they set** (SACM23-BASE-009): [`SetName`],
 //!   [`SetContent`], [`SetKey`], [`SetLocation`] and [`SetTaggedValue`], for its content.
 //!   - One with no `expression` is [`EditError::TooFewReferences`] of the end `expression`.
 //!   - Each `expression` the element does not hold already is checked as checks 6 to 8
 //!     below check a new id, for the end `expression`.
+//! - **Last, the text they store** (LIB-EDIT-025). A character XML 1.0 cannot represent
+//!   is [`EditError::UnrepresentableCharacter`] (SACM-XML-003). A set of the value held
+//!   stores nothing, so it is not checked. The operations:
+//!   - [`SetName`], [`SetGid::new`], [`SetContent::new`], [`SetKey`] and [`SetTaggedValue`];
+//!   - [`SetVersion::new`], [`SetDate::new`], [`SetLocation::new`], [`SetStartTime::new`],
+//!     [`SetEndTime::new`], [`SetValue`] and [`SetExternalReference::new`].
 //!
 //! The reference operations then check, in this order:
 //!
@@ -538,7 +547,7 @@ pub use utility::{
 };
 
 use crate::diagnostic::Code;
-use crate::model::{Document, ElementId, ElementKind, Href, Revision};
+use crate::model::{Document, ElementId, ElementKind, Href, Revision, StringAttribute, TextRole};
 use plan::{Features, Outcome, Plan};
 
 /// Checks `operation` against `document` and applies it, or refuses it and
@@ -586,7 +595,9 @@ use plan::{Features, Outcome, Plan};
 /// - a referenced id names no element of the document
 ///   ([`EditError::ReferenceNotFound`]);
 /// - a referenced id names an element of a kind its end does not admit
-///   ([`EditError::WrongReferenceType`]).
+///   ([`EditError::WrongReferenceType`]);
+/// - a text the new element would hold has a character XML 1.0 cannot
+///   represent ([`EditError::UnrepresentableCharacter`]).
 ///
 /// Refuses an operation that changes an element, checked in this order,
 /// when:
@@ -601,7 +612,9 @@ use plan::{Features, Outcome, Plan};
 ///   fails the create's last three checks;
 /// - for [`ReorderElements`], the list is empty or names an id twice
 ///   ([`EditError::InvalidOrder`]), or names an id that is no direct child
-///   or root ([`EditError::ChildNotFound`]).
+///   or root ([`EditError::ChildNotFound`]);
+/// - last, a text it would store has a character XML 1.0 cannot represent
+///   ([`EditError::UnrepresentableCharacter`]).
 ///
 /// Refuses a [`DeleteElement`], checked in this order, when the element is
 /// not in the document ([`EditError::ElementNotFound`]), when it is not
@@ -641,6 +654,32 @@ pub fn apply(
 fn apply_operation(
     document: &mut Document,
     operation: Operation,
+) -> Result<Mutation, (Box<Operation>, EditError)> {
+    apply_planned(document, operation, plan)
+}
+
+/// [`apply`] without the LIB-EDIT-025 text check, so a test can build a
+/// document that [`xmi::write`](crate::xmi::write) refuses. Only with
+/// `test-support`; not part of the stable API.
+///
+/// # Errors
+///
+/// Every refusal of [`apply`] except
+/// [`EditError::UnrepresentableCharacter`].
+#[cfg(feature = "test-support")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+pub fn apply_unchecked_text(
+    document: &mut Document,
+    operation: impl Into<Operation>,
+) -> Result<Mutation, EditError> {
+    apply_planned(document, operation.into(), plan_unchecked_text).map_err(|(_, error)| error)
+}
+
+/// The body of [`apply_operation`], planned with `plan`.
+fn apply_planned(
+    document: &mut Document,
+    operation: Operation,
+    plan: for<'o> fn(&Document, &'o Operation) -> Result<Plan<'o>, EditError>,
 ) -> Result<Mutation, (Box<Operation>, EditError)> {
     // Every check runs in `plan`, before the one change, so a refusal leaves
     // the document untouched, its revision included. The plan also knows
@@ -1024,11 +1063,108 @@ fn apply_each(
 /// change needs: the one code path of [`check`] and [`apply`]. Every refusal
 /// is built here; [`Plan::commit`] builds none.
 fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, EditError> {
+    let plan = plan_unchecked_text(document, operation)?;
+    check_text(&plan)?;
+    Ok(plan)
+}
+
+/// [`plan`] without its last check, [`check_text`]: the plan of
+/// `apply_unchecked_text`.
+fn plan_unchecked_text<'o>(
+    document: &Document,
+    operation: &'o Operation,
+) -> Result<Plan<'o>, EditError> {
     let plan = plan_operation(document, operation)?;
     if let Plan::Create(new) = &plan {
         check_new_expressions(document, &new.features)?;
     }
     Ok(plan)
+}
+
+/// The last check of every operation that stores text: no text it stores
+/// holds a character XML 1.0 cannot represent (LIB-EDIT-025). The texts are
+/// checked in the order `xmi::write` checks them. A plan that stores no new
+/// text, such as [`Plan::Unchanged`] or a copy, passes.
+fn check_text(plan: &Plan<'_>) -> Result<(), EditError> {
+    use crate::xmi::{first_unrepresentable, name_texts, string_attribute, value_texts};
+    use plan::Value;
+
+    let (element, found) = match plan {
+        Plan::Create(new) => {
+            let found = match &new.features {
+                Features::Name(name) | Features::Referencing { name, .. } => {
+                    first_unrepresentable(name_texts(Some(name)))
+                }
+                Features::Texts { content, key } => first_unrepresentable(
+                    value_texts(TextRole::Content, content).chain(
+                        key.iter()
+                            .flat_map(|key| value_texts(TextRole::Key, key.as_ref())),
+                    ),
+                ),
+                Features::Asset {
+                    name,
+                    strings,
+                    location,
+                } => first_unrepresentable(
+                    written_strings(strings)
+                        .chain(name_texts(Some(name)))
+                        .chain(
+                            location
+                                .iter()
+                                .flat_map(|location| value_texts(TextRole::Location, location)),
+                        ),
+                ),
+                Features::Terminology { name, strings, .. } => {
+                    first_unrepresentable(written_strings(strings).chain(name_texts(Some(name))))
+                }
+            };
+            (&new.id, found)
+        }
+        Plan::Set { element, value } => {
+            let found = match value {
+                Value::Name(name) => first_unrepresentable(name_texts(Some(name))),
+                Value::Gid(Some(gid)) => {
+                    first_unrepresentable([(crate::xmi::WriteAttribute::Gid, None, Some(*gid))])
+                }
+                Value::String(attribute, Some(value)) => {
+                    first_unrepresentable([(string_attribute(*attribute), None, Some(*value))])
+                }
+                Value::Text(role, Some(text)) => {
+                    first_unrepresentable(value_texts(*role, text.value()))
+                }
+                _ => None,
+            };
+            (element.as_ref(), found)
+        }
+        Plan::Unchanged
+        | Plan::Reorder { .. }
+        | Plan::Delete(_)
+        | Plan::Move { .. }
+        | Plan::Copy(_) => return Ok(()),
+    };
+    match found {
+        Some((attribute, position, character)) => Err(EditError::UnrepresentableCharacter {
+            element: element.clone(),
+            character,
+            attribute,
+            position,
+        }),
+        None => Ok(()),
+    }
+}
+
+/// The string-valued attributes a create gives, for
+/// [`check_text`], in the order they are written.
+fn written_strings<'a>(
+    strings: &'a [(StringAttribute, Option<&'a str>)],
+) -> impl Iterator<Item = (crate::xmi::WriteAttribute, Option<usize>, Option<&'a str>)> {
+    StringAttribute::ALL.into_iter().map(move |attribute| {
+        let value = strings
+            .iter()
+            .find(|(given, _)| *given == attribute)
+            .and_then(|(_, value)| *value);
+        (crate::xmi::string_attribute(attribute), None, value)
+    })
 }
 
 /// The last checks of a create with no reference end of its own: each
@@ -2376,6 +2512,61 @@ pub enum EditError {
         /// Its value exactly as held, such as `p:Bundle`.
         value: String,
     },
+    /// A text the operation would store holds a character XML 1.0 cannot
+    /// represent (SACM-XML-003, LIB-EDIT-025): one outside its `Char`
+    /// production, such as U+0000, another C0 control other than TAB, LF and
+    /// CR, U+FFFE or U+FFFF. No file can carry it, so no edit stores it.
+    /// Remove the character.
+    ///
+    /// - **Last.** Every other refusal comes first.
+    /// - **First character.** The texts are checked in the order
+    ///   [`xmi::write`](crate::xmi::write) checks them, and the first such
+    ///   character of the first text holding one is named, as
+    ///   [`WriteError::UnrepresentableCharacter`](crate::xmi::WriteError::UnrepresentableCharacter)
+    ///   names it.
+    /// - **Only what is stored.** A remove, or a set of the value held, is
+    ///   not checked.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, EditError};
+    /// use sacm::model::{Document, LangString};
+    /// use sacm::xmi::WriteAttribute;
+    ///
+    /// let mut doc = Document::new();
+    /// let name = LangString::new("bad\u{1}");
+    /// let error = edit::apply(&mut doc, CreateArgumentPackage::root(name).with_id("arguments"))
+    ///     .unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::UnrepresentableCharacter {
+    ///         attribute: WriteAttribute::NameContent,
+    ///         character: '\u{1}',
+    ///         position: None,
+    ///         ..
+    ///     }
+    /// ));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the name's content given to the element \"arguments\" holds U+0001, which XML 1.0 \
+    ///      cannot represent"
+    /// );
+    /// assert_eq!(doc.element_count(), 0); // unchanged
+    /// ```
+    #[non_exhaustive]
+    UnrepresentableCharacter {
+        /// The element that would hold the text: the element a set changes;
+        /// the new element of a create, with its given id or the id it
+        /// would be generated; for [`SetTaggedValue`], the tagged value it
+        /// sets or would create.
+        element: ElementId,
+        /// The first such character.
+        character: char,
+        /// The text that holds it.
+        attribute: crate::xmi::WriteAttribute,
+        /// The value's index, from 0, for the six *Value* attributes; `None`
+        /// otherwise.
+        position: Option<usize>,
+    },
 }
 
 impl EditError {
@@ -2402,8 +2593,9 @@ impl EditError {
     /// [`CrossPackageReference`](Self::CrossPackageReference), SACM-CMD-005
     /// for [`InvalidRoot`](Self::InvalidRoot),
     /// [`ParentInSubtree`](Self::ParentInSubtree) and
-    /// [`KeptRootType`](Self::KeptRootType), and SACM-CMD-009 for
-    /// [`PositionOutOfRange`](Self::PositionOutOfRange).
+    /// [`KeptRootType`](Self::KeptRootType), SACM-CMD-009 for
+    /// [`PositionOutOfRange`](Self::PositionOutOfRange), and SACM-XML-003
+    /// for [`UnrepresentableCharacter`](Self::UnrepresentableCharacter).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
@@ -2431,6 +2623,7 @@ impl EditError {
             Self::PreviewExpired { .. } => Code::CMD_PREVIEW_EXPIRED,
             Self::NotEmpty { .. } => Code::CMD_PACKAGE_NOT_EMPTY,
             Self::CrossPackageReference { .. } => Code::CMD_EXTERNAL_REFERENCES,
+            Self::UnrepresentableCharacter { .. } => Code::XML_UNREPRESENTABLE_CHARACTER,
         }
     }
 }
@@ -2633,6 +2826,23 @@ impl fmt::Display for EditError {
                  can carry, so it cannot be a child",
                 element.as_str()
             ),
+            Self::UnrepresentableCharacter {
+                element,
+                character,
+                attribute,
+                position,
+            } => {
+                write!(f, "the {attribute}")?;
+                if let Some(position) = position {
+                    write!(f, " at index {position}")?;
+                }
+                write!(
+                    f,
+                    " given to the element {:?} holds U+{:04X}, which XML 1.0 cannot represent",
+                    element.as_str(),
+                    u32::from(*character)
+                )
+            }
         }
     }
 }

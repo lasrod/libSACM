@@ -170,3 +170,29 @@ accessor or a separate undo type.
 - **E14.** `check` is a free function, not a method, as E1 is.
 
 *Amendment 3 status: accepted (the maintainer, 2026-11-15).*
+
+## Amendment 4 (2026-11-27): edits store only text XML can hold
+
+LIB-EDIT-025; the maintainer's decision of 2026-11-27.
+- **Rule.** An edit never stores a string holding a character outside XML 1.0's `Char`
+  production. Such a string is no `xsd:string` (XML Schema Part 2 §3.2.1), the type XMI 2.5.1
+  rule 4j gives SACM's string attributes, so no file can carry it. Before, an edit stored it
+  and every `xmi::write` refused the document (SACM-XML-003).
+- **Refusal.** `EditError::UnrepresentableCharacter { element, character, attribute, position }`,
+  SACM-XML-003. `attribute` and `position` name the text as `WriteError::UnrepresentableCharacter`
+  does. `element` is the element that would hold it: the element a set changes, the new element
+  of a create (given or to be generated), or the tagged value a `SetTaggedValue` sets or creates.
+- **Order.** It is the last check of every operation that stores text, so every earlier refusal
+  keeps its precedence. Texts are checked in `xmi::write`'s order; the first such character of
+  the first text holding one is named. An operation that stores nothing is not checked.
+- **Not checked:** ids (an `NCName` holds only `Char`s), hrefs (`Href::new` refuses), and
+  `CopyElements`, which copies text its source holds.
+- **Guarantee.** `xmi::read` cannot hold such text, so a document read and changed by accepted
+  edits writes tolerantly while it has a root, and one built by edits alone also writes strictly.
+- **The writer keeps its check;** only the test-support seams `Document::insert` and
+  `edit::apply_unchecked_text` can still give a document such text.
+- **No template:** `EditError` has none (ADR 0030 amendment 3); the English is the `Display`.
+- **Amends** this ADR's "Any value is accepted" for the name, and ADR 0029's "Content is never
+  refused": such a character is not content.
+
+*Amendment 4 status: accepted (the maintainer, 2026-11-27).*

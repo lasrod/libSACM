@@ -466,7 +466,10 @@ fn sacm23_xmi_008_a_document_whose_only_finding_is_a_preserved_target_is_still_r
 fn sacm23_xmi_008_preserved_content_is_refused_before_an_unrepresentable_character() {
     let input = fill(&[("C2_ATTR", " v:w=\"2\"")]);
     let mut doc = read_in("a holder", Mode::Tolerant, input.as_bytes());
-    if let Err(error) = edit::apply(&mut doc, SetName::new("c1", LangString::new("bad\u{1}"))) {
+    // An edit refuses the U+0001 (LIB-EDIT-025), so the test seam sets it.
+    if let Err(error) =
+        edit::apply_unchecked_text(&mut doc, SetName::new("c1", LangString::new("bad\u{1}")))
+    {
         panic!("{ROW}: setup: SetName: {error}");
     }
     let error = strict_err("a holder and a control character", &doc);
@@ -497,7 +500,10 @@ fn sacm23_xmi_008_without_preserved_content_the_schema_check_comes_before_an_unr
     // c2 cites an id no element has: SACM-REF-001, a schema error.
     let input = fill(&[("C2_ATTR", " isCitation=\"true\" citedElement=\"zz\"")]);
     let mut doc = read_in("a dangling reference", Mode::Tolerant, input.as_bytes());
-    if let Err(error) = edit::apply(&mut doc, SetName::new("c1", LangString::new("bad\u{1}"))) {
+    // An edit refuses the U+0001 (LIB-EDIT-025), so the test seam sets it.
+    if let Err(error) =
+        edit::apply_unchecked_text(&mut doc, SetName::new("c1", LangString::new("bad\u{1}")))
+    {
         panic!("{ROW}: setup: SetName: {error}");
     }
     let error = strict_err("a dangling reference and a control character", &doc);

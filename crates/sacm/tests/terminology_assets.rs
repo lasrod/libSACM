@@ -483,6 +483,16 @@ fn applied(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mu
     mutation
 }
 
+/// Applies `operation` with the test seam, which skips the refusal of text
+/// XML 1.0 cannot represent (LIB-EDIT-025), so a write refusal can be shown.
+fn applied_unchecked(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mutation {
+    let operation = operation.into();
+    match edit::apply_unchecked_text(doc, operation.clone()) {
+        Ok(mutation) => mutation,
+        Err(error) => panic!("{row}: setup: {operation:?} was refused: {error} ({error:?})"),
+    }
+}
+
 /// Applies `operation`, which the test expects to be refused leaving `doc`
 /// `==` to before, with `check` and `preview` refusing it the same, and
 /// returns why.
@@ -2143,13 +2153,14 @@ fn unrepresentable(row: &str, doc: &Document) -> (String, WriteAttribute) {
 }
 
 #[test]
-fn sacm23_term_003_a_value_holding_u_0001_is_accepted_and_refused_by_the_write_in_order() {
+fn sacm23_term_003_a_value_holding_u_0001_is_refused_by_the_write_in_order() {
     let row = TERM_003;
     let mut doc = built(row);
-    applied(row, &mut doc, SetGid::new("t1", "g\u{1}"));
-    applied(row, &mut doc, SetValue::new("t1", "v\u{1}"));
-    applied(row, &mut doc, SetExternalReference::new("t1", "u\u{1}"));
-    applied(
+    // An edit refuses U+0001 (LIB-EDIT-025), so the test seam sets it.
+    applied_unchecked(row, &mut doc, SetGid::new("t1", "g\u{1}"));
+    applied_unchecked(row, &mut doc, SetValue::new("t1", "v\u{1}"));
+    applied_unchecked(row, &mut doc, SetExternalReference::new("t1", "u\u{1}"));
+    applied_unchecked(
         row,
         &mut doc,
         SetName::new("t1", LangString::new("N").with_lang("e\u{1}")),
@@ -2179,7 +2190,7 @@ fn sacm23_term_003_a_value_holding_u_0001_is_accepted_and_refused_by_the_write_i
     );
     // On an Expression too.
     let mut doc = built(row);
-    applied(row, &mut doc, SetValue::new("e0", "\u{1}"));
+    applied_unchecked(row, &mut doc, SetValue::new("e0", "\u{1}"));
     assert_eq!(
         unrepresentable(row, &doc),
         ("e0".to_owned(), WriteAttribute::Value),

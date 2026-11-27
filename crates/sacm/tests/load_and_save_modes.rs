@@ -84,7 +84,9 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 23] = [
+const READABLE_GOLDEN: [&str; 24] = [
+    // The golden file of slice 0088 (SACM23-XMI-031).
+    "difference-target-ids.golden.sacm.xmi",
     // The golden file of slice 0073b (SACM23-XMI-029).
     "cross-document-links.golden.sacm.xmi",
     // The golden files of slice 0073a (SACM23-XMI-019, SACM23-XMI-030).
@@ -2332,7 +2334,8 @@ fn lib_compat_007_the_refusals_come_in_order() {
             " isCitation=\"true\" citedElement=\"nope\"",
         )),
     );
-    if let Err(error) = edit::apply(
+    // An edit refuses the U+0001 (LIB-EDIT-025), so the test seam sets it.
+    if let Err(error) = edit::apply_unchecked_text(
         &mut doc,
         edit::SetName::new("p", LangString::new("bad\u{1}")),
     ) {
