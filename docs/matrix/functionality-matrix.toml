@@ -8913,7 +8913,7 @@ title = "The content of a Difference's target is outside the id space"
 requirement = "In both modes, the attributes of a Difference's `target` element, and the attributes and elements inside it (XMI.xsd: `processContents=\"skip\"`), XMI 2.5.1's `xmi:id` included, are kept as written and are not ids: they are not checked as NCNames or for duplicates, do not reserve an id, and a strict write does not refuse them. The conformance statement's limit on them is removed."
 source = "XMI 2.5.1 XMI.xsd, complexType Difference, element target (`<xsd:any processContents=\"skip\"/>`, `<xsd:anyAttribute processContents=\"skip\"/>`); XML Schema Part 1 §3.10.1 (\"skip: No constraints at all: the item must simply be well-formed XML\"), §3.15.5; SACM 2.3 §2.4 (\"shall be able to import and export XMI documents that conform with the SACM XML Schema\"); ADR 0042 amendment 2; spec defect D33; SACM23-XMI-019; follow-up of slice 0073a"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-XMI-019", "LIB-COMPAT-002"]
 notes = "Filed at the M6 close (slice 0080). Today a duplicate `xmi:id` inside a target refuses the read in both modes (SACM-ID-001), and one that is no NCName makes a strict write refuse (SACM-ID-002); the conformance statement names the limit."
 acceptance = [
@@ -8940,6 +8940,7 @@ tests = [
   "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_only_the_target_of_a_difference_is_outside_the_id_space",
   "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_edits_and_generated_ids_ignore_a_target",
 ]
+verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
 id = "LIB-EDIT-022"
@@ -9385,7 +9386,7 @@ title = "XML Schema Part 1 is pinned"
 requirement = "`cargo xtask fetch-spec` downloads XML Schema Part 1: Structures (W3C REC 2004-10-28) into third_party/sacm-2.3/ and checks its pinned SHA-256, as LIB-TOOL-022 does for Part 2, so the rules SACM23-XMI-031 quotes (the `skip` wildcard, the ID table) are pinned too."
 source = "SACM23-XMI-031 (XML Schema Part 1 §3.10.1, §3.15.5); LIB-TOOL-022; the lead, 2026-11-27"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-TOOL-022"]
 acceptance = [
   "The sixth artifact is `XMLSchema-1-REC-20041028-structures.html` from its W3C URL with SHA-256 92bfd116316332b1153941436430afbdb2040e036d5fb2d21d4c8fba36a7765a; the first five are unchanged.",
@@ -9400,6 +9401,7 @@ tests = [
   "xtask/tests/fetch.rs::lib_tool_024_the_sixth_artifact_is_the_xml_schema_part_1_pin",
   "xtask/tests/fetch.rs::lib_tool_024_the_first_five_artifacts_are_unchanged",
 ]
+verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
 id = "LIB-EDIT-025"
@@ -9409,7 +9411,7 @@ title = "Edits refuse text XML 1.0 cannot represent"
 requirement = "No edit stores a string holding a character outside XML 1.0's `Char` production. It refuses one as `EditError::UnrepresentableCharacter` (SACM-XML-003), which names the element, the text, the value's index and the first such character, as `WriteError::UnrepresentableCharacter` would. So a document that `xmi::read` returned, changed by accepted edits, never holds text `xmi::write` must refuse. The refusal is each operation's last check; `check`, `preview` and `apply` agree; a refusal changes nothing."
 source = "XML Schema Part 2 §3.2.1 \"The ·value space· of string is the set of finite-length sequences of characters (as defined in [XML 1.0 (Second Edition)]) that ·match· the Char production from [XML 1.0 (Second Edition)].\"; XMI 2.5.1 §8.2.1 rule 4j (p. 51) \"Single-valued DataType-typed Properties of a Class that have a string representation for their data are mapped to XML attributes of type \"xsd:string;\"\"; the maintainer's decision of 2026-11-27; D-VAL-LAYER; ADR 0019 amendment 4; ADR 0030 amendment 9"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-EDIT-008", "LIB-EDIT-012", "LIB-EDIT-013", "LIB-EDIT-023", "SACM23-XMI-011", "LIB-API-013", "LIB-API-006"]
 acceptance = [
   "Every text an edit stores (names, gid, version, date, startTime, endTime, value, externalReference, content, key and location values, a tagged value's key) is refused with the stated attribute, position and element when it holds a character outside XML 1.0's `Char`; the document is unchanged.",
@@ -9452,6 +9454,7 @@ tests = [
   "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_read_never_holds_a_character_xml_cannot_represent",
   "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_document_built_by_accepted_edits_always_writes",
 ]
+verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
 id = "LIB-DOC-010"

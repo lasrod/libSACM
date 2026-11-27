@@ -30,8 +30,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `startTime`, `endTime`, `value`, `externalReference` or tagged-value key holding a character
   XML 1.0 cannot represent (such as U+0001, U+FFFE or U+FFFF), as the new
   `EditError::UnrepresentableCharacter` (SACM-XML-003). Such an edit used to succeed, and every
-  later `xmi::write` refused the document. What an edit accepts can now be written
-  [LIB-EDIT-025].
+  later `xmi::write` refused the document. Text an edit accepts can now always be
+  written [LIB-EDIT-025].
 - `Href` now compares with `str` and `&str`, so the element type of an empty array or vector
   is no longer inferred: `assert_eq!(element.hrefs(end), [])` needs `[] as [Href; 0]`, or
   `.is_empty()`; `href == x.into()` and `href == s.parse()?` likewise need the target type

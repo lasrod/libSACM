@@ -1,8 +1,8 @@
 ---
 slice: 0088
 name: xmi031-edit-text
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [SACM23-XMI-031, LIB-TOOL-024, LIB-EDIT-025]
 mode: pr
 ---
@@ -47,3 +47,9 @@ XMI.xsd `Difference`/`target` (`processContents="skip"`), XML Schema Part 1 §3.
   Approved test fixes: a caller id for the batch's good create; the dangling finding affects
   `["c2", "t1"]`; the two `Scope` unit tests untraced in `src`. Full gate green (3476 tests).
   Rows `implemented`.
+- 2026-11-27 implementation note: `sacm23_art_004_set_version_…`'s LIB-EDIT-025 assertions
+  moved unchanged into the helper `assert_version_holding_u_0001` (clippy `too_many_lines`).
+- 2026-11-27 verification: PASS on all three rows (f073dc9), non-blocking findings only;
+  the verifier's wording applied (spec defect D33, ADR 0042 amendment 2's §7.6.1 sentence,
+  the SACM-ID-002 row, `xmi::write`'s metadata paragraph, the CHANGELOG, architecture.md).
+- 2026-11-27 close: record `docs/verification/0088-xmi031-edit-text.md`. Rows `verified`.

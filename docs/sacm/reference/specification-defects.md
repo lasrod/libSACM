@@ -548,6 +548,24 @@ Rule 7 (p. 53) declares an Association as `"<xsd:element name='" 7a:AssnElmtName
 
 **Suggested resolution.** Name the Associations and their ends in the model, or say that rule 7 is not applied to SACM.
 
+## D33 — XMI 2.5.1 asks for unique xmi:ids where its schema checks none
+
+*Found by libSACM (slice 0088, 2026-11-27).*
+
+§7.6.1 (p. 14) says "it is important, to be a valid XML document, that the value for xmi:id
+is unique across all elements within the file". XMI.xsd declares a Difference's `target`
+with `<xsd:any processContents="skip"/>` and `<xsd:anyAttribute processContents="skip"/>`,
+and skip is "No constraints at all: the item must simply be well-formed XML" (XML Schema
+Part 1 §3.10.1): an attribute there is validated against no declaration, so it joins no
+ID/IDREF table (§3.15.5). A file that repeats an `xmi:id` only inside a target is valid
+against XMI.xsd and the SACM XML Schema.
+
+**This crate** follows the schema, which SACM 2.3 §2.4 makes the test of conformance:
+nothing inside a target is an id, in both modes (SACM23-XMI-031, ADR 0042 amendment 2).
+
+**Suggested resolution.** Say in §7.6.1 whether its uniqueness rule covers the content of a
+Difference's `target`.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

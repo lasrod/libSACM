@@ -494,10 +494,10 @@ pub(crate) use output::{first_unrepresentable, name_texts, string_attribute, val
 /// element's own values. Metadata ids share the document's id space, as
 /// preserved ids do; nothing inside a Difference's `target` is an id
 /// (XMI.xsd: `processContents="skip"`). A copy drops the `xmi:uuid` of each
-/// element and part
-/// it copies (XMI 2.5.1 §7.6.1: elements with one `xmi:uuid` "are all
-/// deemed to reference the same MOF element"), a delete removes the metadata with the
-/// element, and a move keeps it. Differences are kept, never applied.
+/// element and part it copies (XMI 2.5.1 §7.6.1: elements with one `xmi:uuid`
+/// "are all deemed to reference the same MOF element"), a delete removes the
+/// metadata with the element, and a move keeps it. Differences are kept,
+/// never applied.
 ///
 /// Any other XMI-namespace element where metadata may stand, an `href` or
 /// an `xmi:idref` on a definition (production 2a), and an identity
@@ -1861,13 +1861,12 @@ pub enum ReadError {
     },
     /// Two or more elements carry the same `xmi:id`, outside a Difference's
     /// `target` (SACM-ID-001, SACM23-VAL-001): two elements, two names, or an
-    /// element and a name
-    /// (ADR 0024). XMI 2.5.1 §7.6.1 requires the value to be unique across
-    /// all elements within the file, and a [`Document`] holds each id once,
-    /// so the input is refused rather than read with an element dropped or
-    /// renamed. Ids compare by their `xsd:ID` value: XML white space around
-    /// an `NCName` is trimmed first, so `" c1 "` and `c1` repeat, and
-    /// otherwise as exact strings, so `c1` and `C1` differ. A generated id
+    /// element and a name (ADR 0024). XMI 2.5.1 §7.6.1 requires the value to
+    /// be unique across all elements within the file, and a [`Document`] holds
+    /// each id once, so the input is refused rather than read with an element
+    /// dropped or renamed. Ids compare by their `xsd:ID` value: XML white
+    /// space around an `NCName` is trimmed first, so `" c1 "` and `c1` repeat,
+    /// and otherwise as exact strings, so `c1` and `C1` differ. A generated id
     /// never repeats one.
     ///
     /// The refusal concerns the first id that repeats in document order.
@@ -2847,8 +2846,9 @@ impl std::error::Error for ReadError {}
 /// every element is wrapped in `xmi:XMI`. A strict write checks it as
 /// XMI.xsd types it: an `xmi:id` that is no `NCName` (SACM-ID-002) and an
 /// `IDREF` or `IDREFS` token that names no `xmi:id` of the output
-/// (SACM-REF-001) are [`WriteError::Invalid`]; what an extension holds is
-/// not checked otherwise.
+/// (SACM-REF-001) are [`WriteError::Invalid`]; nothing inside a Difference's
+/// `target` is checked (SACM23-XMI-031), and what an extension holds is not
+/// checked otherwise.
 ///
 /// ```
 /// use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};

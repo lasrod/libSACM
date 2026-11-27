@@ -114,7 +114,9 @@ D5 gains an exception. XMI.xsd declares a Difference's `target` with
 `<xsd:any processContents="skip"/>` and `<xsd:anyAttribute processContents="skip"/>`; skip is
 "No constraints at all: the item must simply be well-formed XML" (XML Schema Part 1 §3.10.1),
 so nothing there is an `xsd:ID` (§3.15.5), and a file that repeats an `xmi:id` only there is
-valid against the SACM XML Schema, which §2.4 requires us to import.
+valid against the SACM XML Schema, which §2.4 requires us to import. XMI 2.5.1 §7.6.1
+(p. 14) asks for unique values "to be a valid XML document"; validity is the schema's,
+which skips the target (spec defect D33).
 - **What is kept.** The attributes of an unqualified `target` child of a Difference
   (`xmi:Difference`, `xmi:difference`, `xmi:Add`, `xmi:Replace`, `xmi:Delete`, or an
   unqualified `difference` or `container` in one), and all it holds, are kept as written in
@@ -128,4 +130,3 @@ Rejected: keeping them as ids (refuses schema-valid files); counting their token
 references (a copy would refuse for text that names nothing).
 
 *Amendment 2 status: accepted (the lead, 2026-11-27, under SACM 2.3 §2.4; the maintainer's rule that compliance comes first).*
-
