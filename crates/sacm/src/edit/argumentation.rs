@@ -16,22 +16,25 @@ use super::references::Link;
 use super::references::{check_bounds, check_targets, expression_ids};
 use crate::model::{Document, ElementId, ElementKind, Flag, Href, LangString, ReferenceEnd};
 
-/// Creates an `ArgumentReasoning` (SACM 2.3 §11.12) as the last child of an
-/// element whose class can hold one, such as an `ArgumentPackage`: a
-/// description of the reasoning behind an asserted relationship, which its
-/// [`reasoning`](crate::model::SacmElement::reasoning) names.
+/// Creates an `ArgumentReasoning` (SACM 2.3 §11.12) as the last child of an element
+/// whose class can hold one, such as an `ArgumentPackage`.
 ///
-/// With [`with_structure`](Self::with_structure) it names an
-/// `ArgumentPackage` that gives the reasoning's detailed structure
-/// (`structure:ArgumentPackage[0..1]`). Apply it with
-/// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, a
-/// structure whose id holds XML white space, such as the `a b` of an
-/// element read from a file, is [`EditError::InvalidReference`], and one
-/// that names no element of the document is
-/// [`EditError::ReferenceNotFound`]; then one that names an element that is
-/// not an `ArgumentPackage` is [`EditError::WrongReferenceType`]
-/// (SACM-REF-002, ADR 0028). Without [`with_id`](Self::with_id), the id is
-/// generated: `argument_reasoning_<n>`.
+/// - **What it is.** A description of the reasoning behind an asserted relationship,
+///   which its [`reasoning`](crate::model::SacmElement::reasoning) names.
+/// - **Structure.** With [`with_structure`](Self::with_structure) it names an
+///   `ArgumentPackage` that gives the reasoning's detailed structure
+///   (`structure:ArgumentPackage[0..1]`).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `argument_reasoning_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// After [ADR 0019]'s four checks, the structure is checked in this order:
+///
+/// | The structure's id | Refusal |
+/// |---|---|
+/// | holds XML white space, such as the `a b` of an element read from a file | [`EditError::InvalidReference`] |
+/// | names no element of the document | [`EditError::ReferenceNotFound`] |
+/// | names an element that is not an `ArgumentPackage` | [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028) |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -88,11 +91,11 @@ impl CreateArgumentReasoning {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -102,12 +105,11 @@ impl CreateArgumentReasoning {
     }
 
     /// Gives the new element the `structure` `structure`: the id of the
-    /// `ArgumentPackage` that details the reasoning. It must name an
-    /// `ArgumentPackage` of the document; otherwise [`apply`](super::apply)
-    /// refuses with
-    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
-    /// or
-    /// [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
+    /// `ArgumentPackage` that details the reasoning.
+    ///
+    /// It must name an `ArgumentPackage` of the document; otherwise [`apply`](super::apply)
+    /// refuses with [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
+    /// or [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
     #[must_use]
     pub fn with_structure(self, structure: impl Into<ElementId>) -> Self {
         Self {
@@ -156,36 +158,37 @@ impl CreateArgumentReasoning {
     }
 }
 
-/// Creates an `ArtifactReference` (SACM 2.3 §11.9) as the last child of an
-/// element whose class can hold one, such as an `ArgumentPackage`: an
-/// argument's reference to artifacts, or to other elements, through its
-/// [`referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements)
-/// (`referencedArtifactElement:Base::ArtifactElement[0..*]`).
+/// Creates an `ArtifactReference` (SACM 2.3 §11.9) as the last child of an element whose
+/// class can hold one, such as an `ArgumentPackage`.
 ///
-/// An `ArtifactReference` is an `ArgumentAsset`, so it can be the source of
-/// an `AssertedEvidence` (§11.15), or either end of an
-/// `AssertedArtifactSupport` or `AssertedArtifactContext` (§11.17, §11.18).
-/// It is no Assertion: it has no `assertionDeclaration` and no `metaClaim`.
-/// Artifacts themselves (§12.7) are not supported yet, so for now an
-/// `ArtifactReference` can name only elements of argument, artifact and
-/// assurance-case packages, such as a `Technique`, or nothing.
+/// - **What it is.** An argument's reference to artifacts, or to other elements, through
+///   its
+///   [`referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements)
+///   (`referencedArtifactElement:Base::ArtifactElement[0..*]`).
+/// - **An `ArgumentAsset`,** so it can be the source of an `AssertedEvidence` (§11.15),
+///   or either end of an `AssertedArtifactSupport` or `AssertedArtifactContext` (§11.17,
+///   §11.18).
+/// - **No Assertion:** it has no `assertionDeclaration` and no `metaClaim`.
+/// - **Its ids.** With
+///   [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements) it
+///   names the elements it refers to. None is required.
+/// - **Order and repeats.** The ids are kept in the order given, repeats included;
+///   validation warns about a repeat (SACM23-VAL-022).
+/// - **Any kind but a `UtilityElement`** (`Description`, `ImplementationConstraint`,
+///   `Note` and `TaggedValue`) conforms to `ArtifactElement`. So a Claim or a package is
+///   a well-typed target, as when an argument cites a Claim of another argument package
+///   (§11.1).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `artifact_reference_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
-/// With
-/// [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements)
-/// it names the elements it refers to: none is required, and the ids are
-/// kept in the order given, repeats included (validation warns about a
-/// repeat, SACM23-VAL-022). Every kind except the `UtilityElement`s
-/// (`Description`, `ImplementationConstraint`, `Note` and `TaggedValue`)
-/// conforms to `ArtifactElement`, so a Claim or a package is a well-typed
-/// target, as when an argument cites a Claim of another argument package
-/// (§11.1). Apply it with
-/// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, an id that
-/// holds XML white space is [`EditError::InvalidReference`], then one that
-/// names no element is [`EditError::ReferenceNotFound`], then one that names
-/// a `UtilityElement`, which is no `ArtifactElement`, is
-/// [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028). Without
-/// [`with_id`](Self::with_id), the id is generated:
-/// `artifact_reference_<n>`.
+/// After [ADR 0019]'s four checks, the ids are checked in this order:
+///
+/// | An id | Refusal |
+/// |---|---|
+/// | holds XML white space | [`EditError::InvalidReference`] |
+/// | names no element | [`EditError::ReferenceNotFound`] |
+/// | names a `UtilityElement`, which is no `ArtifactElement` | [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028) |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -242,11 +245,11 @@ impl CreateArtifactReference {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -255,12 +258,12 @@ impl CreateArtifactReference {
         }
     }
 
-    /// Gives the new element the `referencedArtifactElement` ids `ids`, in
-    /// the order given, repeats included, replacing any given before. Each
-    /// must name an `ArtifactElement` of the document (any element but a
+    /// Gives the new element the `referencedArtifactElement` ids `ids`, in the order
+    /// given, repeats included, replacing any given before.
+    ///
+    /// Each must name an `ArtifactElement` of the document (any element but a
     /// `UtilityElement`); otherwise [`apply`](super::apply) refuses with
-    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
-    /// or
+    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound) or
     /// [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
     #[must_use]
     pub fn with_referenced_artifact_elements(
@@ -292,9 +295,10 @@ impl CreateArtifactReference {
         &self.name
     }
 
-    /// The `referencedArtifactElement` ids given with
-    /// [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements),
-    /// in the order given: empty unless given.
+    /// The `referencedArtifactElement` ids, in the order given: empty unless given.
+    ///
+    /// They are given with
+    /// [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements).
     #[must_use]
     pub fn referenced_artifact_elements(&self) -> &[ElementId] {
         &self.referenced_artifact_elements
@@ -317,24 +321,27 @@ impl CreateArtifactReference {
     }
 }
 
-/// Creates an `ArgumentGroup` (SACM 2.3 §11.2) as the last child of an
-/// element whose class can hold one, such as an `ArgumentPackage`: a named
-/// grouping of argumentation elements, its
-/// [`group_members`](crate::model::SacmElement::group_members)
-/// (`argumentElement:ArgumentationElement[0..*]`).
+/// Creates an `ArgumentGroup` (SACM 2.3 §11.2) as the last child of an element whose
+/// class can hold one, such as an `ArgumentPackage`.
 ///
-/// The members are references, not children: a member stays where it is
-/// contained, and `ArgumentGroups` "serve no structural purpose in the
-/// formation of the argument network" (§11.2). With
-/// [`with_group_members`](Self::with_group_members) it names its members:
-/// none is required, and the ids are kept in the order given, repeats
-/// included. Apply it with [`edit::apply`](super::apply). After
-/// [ADR 0019]'s four checks, an id that holds XML white space is
-/// [`EditError::InvalidReference`], then one that names no element is
-/// [`EditError::ReferenceNotFound`], then one that names an element that is
-/// no `ArgumentationElement`, such as an `AssuranceCasePackage` or a Note,
-/// is [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028). Without
-/// [`with_id`](Self::with_id), the id is generated: `argument_group_<n>`.
+/// - **What it is.** A named grouping of argumentation elements, its
+///   [`group_members`](crate::model::SacmElement::group_members)
+///   (`argumentElement:ArgumentationElement[0..*]`).
+/// - **Members are references, not children.** A member stays where it is contained, and
+///   `ArgumentGroups` "serve no structural purpose in the formation of the argument
+///   network" (§11.2).
+/// - **Its members.** With [`with_group_members`](Self::with_group_members) it names
+///   them. None is required, and the ids are kept in the order given, repeats included.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `argument_group_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// After [ADR 0019]'s four checks, the ids are checked in this order:
+///
+/// | An id | Refusal |
+/// |---|---|
+/// | holds XML white space | [`EditError::InvalidReference`] |
+/// | names no element | [`EditError::ReferenceNotFound`] |
+/// | names an element that is no `ArgumentationElement`, such as an `AssuranceCasePackage` or a Note | [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028) |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -385,11 +392,11 @@ impl CreateArgumentGroup {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -398,12 +405,12 @@ impl CreateArgumentGroup {
         }
     }
 
-    /// Gives the new group the members `ids`, its `argumentElement` ids, in
-    /// the order given, repeats included, replacing any given before. Each
-    /// must name an `ArgumentationElement` of the document; otherwise
+    /// Gives the new group the members `ids`, its `argumentElement` ids, in the order
+    /// given, repeats included, replacing any given before.
+    ///
+    /// Each must name an `ArgumentationElement` of the document; otherwise
     /// [`apply`](super::apply) refuses with
-    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
-    /// or
+    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound) or
     /// [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
     #[doc(alias = "argumentElement")]
     #[must_use]
@@ -591,8 +598,8 @@ macro_rules! interface_operation {
             #[doc = concat!(
                 "Creates a root `", stringify!($kind), "` named `name`, after the document's ",
                 "last root, declaring the `", $package, "` of another document that the ",
-                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1). The href is ",
-                "never checked: the package need not exist."
+                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1).\n\n",
+                "The href is never checked: the package need not exist."
             )]
             #[must_use]
             pub fn root_href(name: impl Into<LangString>, implements: $crate::model::Href) -> Self {
@@ -607,8 +614,8 @@ macro_rules! interface_operation {
             #[doc = concat!(
                 "Creates a `", stringify!($kind), "` named `name` as the last child of ",
                 "`parent`, declaring the `", $package, "` of another document that the ",
-                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1). The href is ",
-                "never checked: the package need not exist."
+                "href `implements` names (LIB-EDIT-020; ADR 0040 amendment 1).\n\n",
+                "The href is never checked: the package need not exist."
             )]
             #[must_use]
             pub fn new_href(
@@ -643,8 +650,9 @@ macro_rules! interface_operation {
             }
 
             /// Gives the new element the id `id` instead of a generated one.
-            /// It must be an XML `NCName` and not already in the document.
-            /// Otherwise [`apply`](super::apply) refuses with
+            ///
+            /// It must be an XML `NCName` and not already in the document. Otherwise
+            /// [`apply`](super::apply) refuses with
             /// [`EditError::InvalidId`](super::EditError::InvalidId) or
             /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
             #[must_use]
@@ -674,17 +682,15 @@ macro_rules! interface_operation {
                 &self.name
             }
 
-            /// The id of the package the interface declares, its
-            /// `implements`, or `None` when an href names it
-            /// ([`implements_href`](Self::implements_href)).
+            /// The id of the package the interface declares, its `implements`, or
+            /// `None` when an href names it ([`implements_href`](Self::implements_href)).
             #[must_use]
             pub fn implements(&self) -> Option<&ElementId> {
                 self.implements.id()
             }
 
-            /// The href that names the package the interface declares, in
-            /// another document, or `None` when an id names it
-            /// ([`implements`](Self::implements)).
+            /// The href that names the package the interface declares, in another
+            /// document, or `None` when an id names it ([`implements`](Self::implements)).
             #[must_use]
             pub fn implements_href(&self) -> Option<&$crate::model::Href> {
                 self.implements.href()
@@ -856,12 +862,13 @@ macro_rules! binding_operation {
                 }
             }
 
-            /// This binding with `hrefs` as the cross-document references of
-            /// its `participantPackage`, beside its ids, in order, repeats
-            /// included, replacing any given before (LIB-EDIT-020; ADR 0040
-            /// amendment 1): each names a package of another document, which
-            /// is never checked. The two distinct participants a binding
-            /// needs count the distinct ids plus the distinct hrefs.
+            /// This binding with `hrefs` as the cross-document references of its
+            /// `participantPackage`, beside its ids (LIB-EDIT-020; ADR 0040 amendment 1).
+            ///
+            /// - **Kept** in order, repeats included, replacing any given before.
+            /// - **Never checked.** Each names a package of another document.
+            /// - **The bound.** The two distinct participants a binding needs count the
+            ///   distinct ids plus the distinct hrefs.
             #[must_use]
             pub fn with_participant_package_hrefs(
                 self,
@@ -874,8 +881,9 @@ macro_rules! binding_operation {
             }
 
             /// Gives the new element the id `id` instead of a generated one.
-            /// It must be an XML `NCName` and not already in the document.
-            /// Otherwise [`apply`](super::apply) refuses with
+            ///
+            /// It must be an XML `NCName` and not already in the document. Otherwise
+            /// [`apply`](super::apply) refuses with
             /// [`EditError::InvalidId`](super::EditError::InvalidId) or
             /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
             #[must_use]
@@ -913,8 +921,10 @@ macro_rules! binding_operation {
                 &self.participant_packages
             }
 
-            /// The cross-document references of the binding's
-            /// `participantPackage`, in the order given: empty unless
+            /// The cross-document references of the binding's `participantPackage`, in
+            /// the order given.
+            ///
+            /// Empty unless
             /// [`with_participant_package_hrefs`](Self::with_participant_package_hrefs)
             /// gave some.
             #[doc(alias = "participantPackage")]
@@ -954,18 +964,23 @@ pub(super) use {binding_operation, interface_operation};
 
 interface_operation! {
     /// Creates an `ArgumentPackageInterface` (SACM 2.3 §11.6) declaring the
-    /// ArgumentPackage `implements` names: a root, or a child of an
-    /// AssuranceCasePackage, an ArgumentPackage or an ArtifactPackage (or one
-    /// of their interfaces and bindings). The package's `interface` end is
-    /// not changed (ADR 0039).
+    /// ArgumentPackage that `implements` names.
     ///
-    /// `implements` is required (`implements:ArgumentPackage[1]`). After
-    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
-    /// XML white space is [`EditError::InvalidReference`], one that names no
-    /// element is [`EditError::ReferenceNotFound`], and one that names an
-    /// element of no ArgumentPackage kind is [`EditError::WrongReferenceType`]
-    /// (SACM-REF-002). Without [`with_id`](Self::with_id), the id is
-    /// generated: `argument_package_interface_<n>`.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage, an ArgumentPackage or
+    ///   an ArtifactPackage (or one of their interfaces and bindings).
+    /// - **`implements` is required** (`implements:ArgumentPackage[1]`). The package's
+    ///   `interface` end is not changed (ADR 0039).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `argument_package_interface_<n>`.
+    ///
+    /// After [ADR 0019]'s four checks and the name's expression, the `implements` id is
+    /// checked in this order:
+    ///
+    /// | The id | Refusal |
+    /// |---|---|
+    /// | holds XML white space | [`EditError::InvalidReference`] |
+    /// | names no element | [`EditError::ReferenceNotFound`] |
+    /// | names an element of no ArgumentPackage kind | [`EditError::WrongReferenceType`] (SACM-REF-002) |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
     ///
@@ -993,23 +1008,50 @@ interface_operation! {
 }
 
 binding_operation! {
-    /// Creates an `ArgumentPackageBinding` (SACM 2.3 §11.5) binding the
-    /// packages `participant_packages` names, each of an `ArgumentPackage`
-    /// kind: a root, or a child of
-    /// an AssuranceCasePackage, an ArgumentPackage or an ArtifactPackage (or
-    /// one of their interfaces and bindings).
+    /// Creates an `ArgumentPackageBinding` (SACM 2.3 §11.5) binding the packages that
+    /// `participant_packages` names, each of an `ArgumentPackage` kind.
     ///
-    /// `participantPackage:ArgumentPackage[2..*]`: after [ADR 0019]'s four
-    /// checks, fewer than two distinct ids is [`EditError::TooFewReferences`]
-    /// (ADR 0039 D3); then the name's expression; then an id that holds XML
-    /// white space is [`EditError::InvalidReference`], one that names no
-    /// element [`EditError::ReferenceNotFound`], and one that names an
-    /// element of no ArgumentPackage kind [`EditError::WrongReferenceType`],
-    /// each over the ids in order. Without [`with_id`](Self::with_id), the id
-    /// is generated: `argument_package_binding_<n>`. See
-    /// [`CreateArgumentPackageInterface`] for an example.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage, an ArgumentPackage or
+    ///   an ArtifactPackage (or one of their interfaces and bindings).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `argument_package_binding_<n>`.
+    /// - **With interfaces.** [`CreateArgumentPackageInterface`] shows a binding of two
+    ///   interfaces.
+    ///
+    /// After [ADR 0019]'s four checks, the participants
+    /// (`participantPackage:ArgumentPackage[2..*]`) are checked in this order, each check
+    /// over the ids in order:
+    ///
+    /// | Check | Refusal |
+    /// |---|---|
+    /// | fewer than two distinct ids | [`EditError::TooFewReferences`] (ADR 0039 D3) |
+    /// | then the name's expression | as [`apply`](super::apply#creates) lists |
+    /// | an id holds XML white space | [`EditError::InvalidReference`] |
+    /// | an id names no element | [`EditError::ReferenceNotFound`] |
+    /// | an id names an element of no ArgumentPackage kind | [`EditError::WrongReferenceType`] |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateArgumentPackageBinding, EditError};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root("Braking").with_id("braking"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root("Vehicle").with_id("vehicle"))?;
+    ///
+    /// let binding = CreateArgumentPackageBinding::root("Bound", ["braking", "vehicle"]);
+    /// edit::apply(&mut doc, binding.with_id("binding"))?;
+    /// assert_eq!(doc.get("binding").map(|b| b.participant_packages().len()), Some(2));
+    ///
+    /// // A binding needs two distinct participants.
+    /// let one = CreateArgumentPackageBinding::root("One", ["braking", "braking"]);
+    /// let error = edit::apply(&mut doc, one).unwrap_err();
+    /// assert!(matches!(error, EditError::TooFewReferences { given: 1, required: 2, .. }));
+    /// # Ok::<(), EditError>(())
+    /// ```
     CreateArgumentPackageBinding, ArgumentPackageBinding, "ArgumentPackage"
 }
 
@@ -1051,8 +1093,9 @@ macro_rules! relationship_operation {
             }
 
             /// Gives the new element the id `id` instead of a generated one.
-            /// It must be an XML `NCName` and not already in the document.
-            /// Otherwise [`apply`](super::apply) refuses with
+            ///
+            /// It must be an XML `NCName` and not already in the document. Otherwise
+            /// [`apply`](super::apply) refuses with
             /// [`EditError::InvalidId`](super::EditError::InvalidId) or
             /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
             #[must_use]
@@ -1061,12 +1104,12 @@ macro_rules! relationship_operation {
                 self
             }
 
-            /// Gives the new element the `reasoning` `reasoning`: the id of
-            /// the `ArgumentReasoning` that describes the reasoning behind
-            /// it. It must name an `ArgumentReasoning` of the document;
-            /// otherwise [`apply`](super::apply) refuses with
-            /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
-            /// or
+            /// Gives the new element the `reasoning` `reasoning`: the id of the
+            /// `ArgumentReasoning` that describes the reasoning behind it.
+            ///
+            /// It must name an `ArgumentReasoning` of the document; otherwise
+            /// [`apply`](super::apply) refuses with
+            /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound) or
             /// [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
             #[must_use]
             pub fn with_reasoning(mut self, reasoning: impl Into<ElementId>) -> Self {
@@ -1146,32 +1189,34 @@ macro_rules! relationship_operation {
 }
 
 relationship_operation! {
-    /// Creates an `AssertedInference` (SACM 2.3 §11.14) as the last child of
-    /// an element whose class can hold one, such as an `ArgumentPackage`: an
-    /// assertion that its sources, the premises, support its target, the
-    /// conclusion.
+    /// Creates an `AssertedInference` (SACM 2.3 §11.14): an assertion that its sources,
+    /// the premises, support its target, the conclusion.
     ///
-    /// It takes the sources (`source:ArgumentAsset[1..*]`) and the target
-    /// (`target:ArgumentAsset[1]`), and optionally a
-    /// [`reasoning`](Self::with_reasoning) and
-    /// [`isCounter`](Self::with_is_counter). Its `assertionDeclaration` is
-    /// `asserted`, the default (§11.10). Apply it with
-    /// [`edit::apply`](super::apply). After [ADR 0019]'s four checks it
-    /// refuses no source as [`EditError::TooFewReferences`], then a source
-    /// (in order), the target or the reasoning whose id holds XML white space
-    /// as [`EditError::InvalidReference`], since it could not be written as
-    /// one id, then one that names no element of the document as
-    /// [`EditError::ReferenceNotFound`], so an edit never makes a
-    /// dangling reference (D-VAL-LAYER). The id of a name, `content`, `key`
-    /// or `value` names no element. Then, in the same order, an id that
-    /// names an element of a kind its end does not admit (an
-    /// `ArgumentAsset` for a source or the target, an `ArgumentReasoning`
-    /// for the reasoning) is [`EditError::WrongReferenceType`]
-    /// (SACM-REF-002, ADR 0028), so an edit never makes a wrongly typed
-    /// reference either. A repeated source is kept (ADR 0027), and
-    /// validation warns about it (SACM23-VAL-022). Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `asserted_inference_<n>`.
+    /// - **Where.** The last child of an element whose class can hold one, such as an
+    ///   `ArgumentPackage`.
+    /// - **Takes** the sources (`source:ArgumentAsset[1..*]`) and the target
+    ///   (`target:ArgumentAsset[1]`), and optionally a
+    ///   [`reasoning`](Self::with_reasoning) and [`isCounter`](Self::with_is_counter).
+    /// - **Declaration.** Its `assertionDeclaration` is `asserted`, the default (§11.10).
+    /// - **A repeated source is kept** (ADR 0027), and validation warns about it
+    ///   (SACM23-VAL-022).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `asserted_inference_<n>`.
+    /// - **Apply it** with [`edit::apply`](super::apply).
+    ///
+    /// After [ADR 0019]'s four checks, it checks in this order, each over the sources
+    /// in order, then the target, then the reasoning:
+    ///
+    /// | Check | Refusal |
+    /// |---|---|
+    /// | there is a source | [`EditError::TooFewReferences`] |
+    /// | no id holds XML white space, since it could not be written as one id | [`EditError::InvalidReference`] |
+    /// | every id names an element of the document | [`EditError::ReferenceNotFound`] |
+    /// | every id names an element of a kind its end admits: an `ArgumentAsset` for a source or the target, an `ArgumentReasoning` for the reasoning | [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028) |
+    ///
+    /// - **No dangling or wrongly typed reference.** An edit never makes one
+    ///   (D-VAL-LAYER).
+    /// - **Not an element:** the id of a name, `content`, `key` or `value`.
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
     ///
@@ -1211,13 +1256,14 @@ relationship_operation! {
 }
 
 relationship_operation! {
-    /// Creates an `AssertedContext` (SACM 2.3 §11.16) as the last child of
-    /// an element whose class can hold one, such as an `ArgumentPackage`: an
-    /// assertion that its sources give the context of its target.
+    /// Creates an `AssertedContext` (SACM 2.3 §11.16): an assertion that its sources
+    /// give the context of its target.
     ///
-    /// It follows the rules of [`CreateAssertedInference`]. Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `asserted_context_<n>`.
+    /// - **Where.** The last child of an element whose class can hold one, such as an
+    ///   `ArgumentPackage`.
+    /// - **Rules.** Those of [`CreateAssertedInference`].
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `asserted_context_<n>`.
     ///
     /// # Examples
     ///
@@ -1242,20 +1288,21 @@ relationship_operation! {
 }
 
 relationship_operation! {
-    /// Creates an `AssertedEvidence` (SACM 2.3 §11.15) as the last child of
-    /// an element whose class can hold one, such as an `ArgumentPackage`: an
-    /// assertion that its sources, the evidence, support its target, such as
-    /// a Claim. With [`isCounter`](Self::with_is_counter) true it is
-    /// counter-evidence (§11.13).
+    /// Creates an `AssertedEvidence` (SACM 2.3 §11.15): an assertion that its sources,
+    /// the evidence, support its target, such as a Claim.
     ///
-    /// It follows the rules of [`CreateAssertedInference`]. §11.15 requires
-    /// each source to be an `ArtifactReference`; that is content, so a
-    /// create does not refuse another `ArgumentAsset`, such as a Claim, and
-    /// [`validation::validate`](crate::validation::validate) reports it as
-    /// SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER). Its target is not
-    /// narrowed. The §11.15 rule is not refused here, so validate before a
-    /// strict save. Without [`with_id`](Self::with_id), the id is generated:
-    /// `asserted_evidence_<n>`.
+    /// - **Where.** The last child of an element whose class can hold one, such as an
+    ///   `ArgumentPackage`.
+    /// - **Counter-evidence.** With [`isCounter`](Self::with_is_counter) true (§11.13).
+    /// - **Rules.** Those of [`CreateAssertedInference`].
+    /// - **Sources are content.** §11.15 requires each source to be an
+    ///   `ArtifactReference`. A create does not refuse another `ArgumentAsset`, such as a
+    ///   Claim; [`validation::validate`](crate::validation::validate) reports it as
+    ///   SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER).
+    /// - **Validate before a strict save,** since the §11.15 rule is not refused here.
+    ///   Its target is not narrowed.
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `asserted_evidence_<n>`.
     ///
     /// # Examples
     ///
@@ -1281,19 +1328,19 @@ relationship_operation! {
 }
 
 relationship_operation! {
-    /// Creates an `AssertedArtifactSupport` (SACM 2.3 §11.17) as the last
-    /// child of an element whose class can hold one, such as an
-    /// `ArgumentPackage`: an assertion that the artifacts its source
-    /// `ArtifactReference`s name support the one its target names.
+    /// Creates an `AssertedArtifactSupport` (SACM 2.3 §11.17): an assertion that the
+    /// artifacts its source `ArtifactReference`s name support the one its target names.
     ///
-    /// It follows the rules of [`CreateAssertedInference`]. §11.17 requires
-    /// its sources and target to be `ArtifactReference`s; that is content,
-    /// so a create does not refuse another `ArgumentAsset`, and
-    /// [`validation::validate`](crate::validation::validate) reports it as
-    /// SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER). The §11.17 rule is not
-    /// refused here, so validate before a strict save. Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `asserted_artifact_support_<n>`.
+    /// - **Where.** The last child of an element whose class can hold one, such as an
+    ///   `ArgumentPackage`.
+    /// - **Rules.** Those of [`CreateAssertedInference`].
+    /// - **Ends are content.** §11.17 requires its sources and target to be
+    ///   `ArtifactReference`s. A create does not refuse another `ArgumentAsset`;
+    ///   [`validation::validate`](crate::validation::validate) reports it as SACM-REF-002
+    ///   (SACM23-VAL-016, D-VAL-LAYER).
+    /// - **Validate before a strict save,** since the §11.17 rule is not refused here.
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `asserted_artifact_support_<n>`.
     ///
     /// # Examples
     ///
@@ -1317,15 +1364,16 @@ relationship_operation! {
 }
 
 relationship_operation! {
-    /// Creates an `AssertedArtifactContext` (SACM 2.3 §11.18) as the last
-    /// child of an element whose class can hold one, such as an
-    /// `ArgumentPackage`: an assertion that the artifacts its source
-    /// `ArtifactReference`s name are context for the one its target names.
+    /// Creates an `AssertedArtifactContext` (SACM 2.3 §11.18): an assertion that the
+    /// artifacts its source `ArtifactReference`s name are context for the one its target names.
     ///
-    /// It follows the rules of [`CreateAssertedArtifactSupport`], with
-    /// §11.18 in place of §11.17: the §11.18 rule is not refused here, so
-    /// validate before a strict save. Without [`with_id`](Self::with_id),
-    /// the id is generated: `asserted_artifact_context_<n>`.
+    /// - **Where.** The last child of an element whose class can hold one, such as an
+    ///   `ArgumentPackage`.
+    /// - **Rules.** Those of [`CreateAssertedArtifactSupport`], with §11.18 in place of
+    ///   §11.17.
+    /// - **Validate before a strict save,** since the §11.18 rule is not refused here.
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `asserted_artifact_context_<n>`.
     ///
     /// # Examples
     ///

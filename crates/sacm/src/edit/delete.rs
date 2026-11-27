@@ -11,76 +11,64 @@ use crate::model::{
 };
 
 /// Deletes an element, everything it contains, and whatever its policies
-/// allow, so that no reference is left dangling.
+/// allow, so that no typed reference is left dangling.
 ///
-/// SACM 2.3 says nothing about editing, so the policies follow the
-/// assurance-forge C++ library (ADR 0031). Each defaults to refusing, so a
-/// delete never cascades unless asked to (D-POLICY):
+/// - **Three policies, each refusing by default,** so a delete never cascades unless
+///   asked to (D-POLICY). SACM 2.3 says nothing about editing, so they follow the
+///   assurance-forge C++ library (ADR 0031).
+/// - **Ask first.** [`edit::preview`](super::preview) shows what it would do;
+///   [`edit::apply_preview`](super::apply_preview) applies that preview.
+/// - **Refusals.** [`apply`](super::apply#deletes) lists the checks, in order.
 ///
-/// - [`with_reference_policy`](Self::with_reference_policy): what happens to
-///   a reference to a deleted element held outside the element's subtree
-///   ([`ReferenceDeletePolicy`]): refused (SACM-CMD-002), handled by deleting
-///   each asserted relationship whose `source`, `target` or `reasoning`, and
-///   each `ArtifactAssetRelationship` whose `source` or `target`, names a
-///   deleted element, or scrubbed out of its end.
-/// - [`with_package_policy`](Self::with_package_policy): whether an element
-///   that contains other elements is refused (SACM-CMD-006) or deleted with
-///   them ([`PackageDeletePolicy`]). Descriptions, implementation
-///   constraints, notes and tagged values go with their owner and do not
-///   count.
-/// - [`with_cross_package_policy`](Self::with_cross_package_policy):
-///   whether a dangling reference held in another package than the element
-///   it names is refused (SACM-CMD-007) or handled by the reference policy
-///   ([`CrossPackageReferencePolicy`]).
+/// | Policy | Decides | Refusal (default) |
+/// |---|---|---|
+/// | [`with_reference_policy`](Self::with_reference_policy), a [`ReferenceDeletePolicy`] | what happens to a reference to a deleted element, held outside the element's subtree | SACM-CMD-002 |
+/// | [`with_package_policy`](Self::with_package_policy), a [`PackageDeletePolicy`] | whether an element that contains other elements is deleted with them; `UtilityElement`s go with their owner and do not count | SACM-CMD-006 |
+/// | [`with_cross_package_policy`](Self::with_cross_package_policy), a [`CrossPackageReferencePolicy`] | whether a dangling reference held in another package than the element it names goes to the reference policy | SACM-CMD-007 |
 ///
-/// **Preserved content** (ADR 0033) goes with the element that holds it, and
-/// its ids are freed. A reference to one of them, held outside the deleted
-/// subtree, is a dangling reference like one to a deleted element, handled
-/// by the policies; its package is that of the element that held it.
+/// # What `deleted_ids()` lists
 ///
-/// **What is deleted** is the element and everything it contains, plus each
-/// relationship the reference policy deletes, an asserted relationship or an
-/// `ArtifactAssetRelationship`, and each interface or binding it leaves
-/// below the bound of its `implements` or `participantPackage`, with its
-/// contents, to a fixpoint: a relationship can be the source or target of
-/// another, and a binding can bind an interface the delete removes
-/// (LIB-EDIT-019). Every surviving end loses the deleted ids and keeps the
-/// rest, in order; a relationship is deleted rather than left without a
-/// `source` or `target` (§11.13, §12.14), and an `ArgumentGroup` or
-/// `ArtifactGroup` that loses its members stays. A reference that named no
-/// element before the delete is not touched.
+/// [`Mutation::deleted_ids`](super::Mutation::deleted_ids) lists every deleted
+/// element once, in the document's pre-order before the delete:
 ///
-/// **The checks**, in order: the element is in the document
-/// ([`EditError::ElementNotFound`]); it contains nothing but
-/// `UtilityElement`s, and no element of its subtree holds a preserved child
-/// element, unless [`PackageDeletePolicy::DeleteRecursively`]
-/// ([`EditError::NotEmpty`]); then each dangling reference, in the order of
-/// [`Preview::dangling_references`](super::Preview::dangling_references):
-/// the first a policy refuses is the answer, as
-/// [`EditError::CrossPackageReference`] if it crosses a package boundary and
-/// the cross-package policy refuses it, and otherwise as
-/// [`EditError::Referenced`]; last, unless
-/// [`PackageDeletePolicy::DeleteRecursively`], the first interface or
-/// binding in pre-order that the delete removes for its bound and that
-/// contains more than `UtilityElement`s ([`EditError::NotEmpty`] naming it;
-/// LIB-EDIT-019).
+/// | Policy | Lists |
+/// |---|---|
+/// | any | the element, and everything it contains at any depth |
+/// | [`RejectIfNonEmpty`](PackageDeletePolicy::RejectIfNonEmpty) | of what the element contains, only `UtilityElement`s: with anything else the delete is refused, as is one that would remove a non-empty interface or binding for its bound |
+/// | [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively) | nothing more: it only allows the element to contain other elements |
+/// | [`RejectIfReferenced`](ReferenceDeletePolicy::RejectIfReferenced) | nothing more: a reference to a listed element, held outside the element's subtree, refuses the delete |
+/// | [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships) | also each asserted relationship whose `source`, `target` or `reasoning`, and each `ArtifactAssetRelationship` whose `source` or `target`, names a listed element |
+/// | [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences) | also each relationship of either class that loses the id of a listed element and is left with no `source` or no `target` |
+/// | either of those two | also each interface that loses such an id and is left with no `implements`, and each binding left with fewer than two distinct participants (LIB-EDIT-019) |
+/// | a [`CrossPackageReferencePolicy`] | nothing of its own: it only decides whether a crossing reference refuses the delete |
 ///
-/// The [`Mutation`](super::Mutation) lists every deleted element, and no
-/// preserved id, in pre-order before the delete, and, in pre-order after,
-/// each surviving element that lost ids and each whose preserved child moved
-/// to a lower index among its children because a child before it was
-/// deleted (ADR 0033). Nothing is created, and the parent is not changed
-/// otherwise.
+/// - **With its contents, to a fixpoint.** Each relationship, interface or binding listed
+///   for a reference is listed with everything it contains, and counts as a listed
+///   element in turn: a relationship can be the source or target of another.
+/// - **Not listed: an element that only loses a reference.** It survives, and is in
+///   [`changed_ids`](super::Mutation::changed_ids), with each element whose preserved
+///   child moved to a lower index because a child before it was deleted (ADR 0033).
+/// - **Not listed: the ids of preserved content,** which identify no element.
+/// - **Nothing is created,** and the parent is not changed otherwise.
 ///
-/// A delete does not rewind the per-kind counter, so generation stays
-/// deterministic: the next generated id is still the smallest unused number
-/// above the counter. A freed id may be used again: a caller may give it
-/// with `with_id`, and a freed id the caller gave may be generated later. An
-/// application that needs ids unique across its history gives its own.
+/// # What happens to references
 ///
-/// Apply it with [`edit::apply`](super::apply), or see what it would do
-/// first with [`edit::preview`](super::preview) and apply that preview with
-/// [`edit::apply_preview`](super::apply_preview).
+/// - **A surviving end** loses the deleted ids and keeps the rest, in order.
+/// - **A relationship** is deleted rather than left without a `source` or `target`
+///   (§11.13, §12.14). An `ArgumentGroup` or `ArtifactGroup` that loses its members stays.
+/// - **A reference that named no element** before the delete is not touched.
+/// - **Preserved content** (ADR 0033) goes with the element that holds it, and its ids
+///   are freed. A reference to one of them, held outside the deleted subtree, is a
+///   dangling reference like one to a deleted element.
+/// - **Its package,** for the cross-package policy, is that of the element that held it.
+///
+/// # Ids afterwards
+///
+/// - **The counter is not rewound.** The next generated id is still the smallest unused
+///   number above the per-kind counter, so generation stays deterministic.
+/// - **A freed id may be used again.** A caller may give it with `with_id`, and a freed
+///   id the caller gave may be generated later. An application that needs ids unique
+///   across its history gives its own.
 ///
 /// # Examples
 ///
@@ -120,6 +108,57 @@ use crate::model::{
 /// assert!(!doc.contains("i"));
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
+///
+/// What `deleted_ids()` and `changed_ids()` list under each policy:
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+/// use sacm::edit::{CreateDescription, DeleteElement, EditError, Mutation};
+/// use sacm::edit::{PackageDeletePolicy, ReferenceDeletePolicy};
+/// use sacm::model::{Document, ElementId, LangString};
+///
+/// let mut doc = Document::new();
+/// let name = LangString::new;
+/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("Top")).with_id("top"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("Sub")).with_id("sub"))?;
+/// edit::apply(&mut doc, CreateDescription::new("sub", name("About Sub")).with_id("d"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("Other")).with_id("other"))?;
+/// // `one` has `sub` as its only source; `two` has another source too.
+/// edit::apply(&mut doc, CreateAssertedInference::new("p", name("1"), ["sub"], "top").with_id("one"))?;
+/// let two = CreateAssertedInference::new("p", name("2"), ["sub", "other"], "top").with_id("two");
+/// edit::apply(&mut doc, two)?;
+///
+/// // What a delete would do, without changing the document.
+/// let would = |delete: DeleteElement| -> Result<Mutation, EditError> {
+///     Ok(edit::preview(&doc, &delete.into())?.mutation().clone())
+/// };
+/// let ids = |ids: &[ElementId]| ids.iter().map(ElementId::as_str).collect::<Vec<_>>().join(" ");
+///
+/// // RejectIfReferenced, the default: `one` and `two` name `sub`, so it refuses.
+/// assert!(matches!(would(DeleteElement::new("sub")), Err(EditError::Referenced { .. })));
+///
+/// // DeleteReferencingRelationships: `sub`, its description, and both inferences.
+/// let delete = DeleteElement::new("sub")
+///     .with_reference_policy(ReferenceDeletePolicy::DeleteReferencingRelationships);
+/// let mutation = would(delete)?;
+/// assert_eq!(ids(mutation.deleted_ids()), "sub d one two");
+/// assert_eq!(ids(mutation.changed_ids()), "");
+///
+/// // ScrubReferences: `one` is left with no source, so it goes; `two` only loses `sub`.
+/// let delete = DeleteElement::new("sub").with_reference_policy(ReferenceDeletePolicy::ScrubReferences);
+/// let mutation = would(delete)?;
+/// assert_eq!(ids(mutation.deleted_ids()), "sub d one");
+/// assert_eq!(ids(mutation.changed_ids()), "two");
+///
+/// // RejectIfNonEmpty, the default: `p` contains claims, so it refuses.
+/// assert!(matches!(would(DeleteElement::new("p")), Err(EditError::NotEmpty { .. })));
+///
+/// // DeleteRecursively: `p` and everything it contains, in pre-order.
+/// let delete = DeleteElement::new("p").with_package_policy(PackageDeletePolicy::DeleteRecursively);
+/// assert_eq!(ids(would(delete)?.deleted_ids()), "p top sub d other one two");
+/// # Ok::<(), EditError>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
@@ -154,35 +193,45 @@ pub enum ReferenceDeletePolicy {
     /// ([`EditError::Referenced`], SACM-CMD-002). The default.
     #[default]
     RejectIfReferenced,
-    /// Delete each asserted relationship whose `source`, `target` or
-    /// `reasoning` names a deleted element, and each
-    /// `ArtifactAssetRelationship` whose `source` or `target` does, with its
-    /// contents, to a fixpoint; remove every other such id from its end
-    /// (`citedElement`, `abstractForm`, `metaClaim`, `structure`,
-    /// `referencedArtifactElement`, a group's `argumentElement` or
-    /// `artifactElement` and a package's `interface`, none of which has a
-    /// lower bound). An interface left with no `implements`, or a binding
-    /// left with fewer than two distinct `participantPackage` ids, is deleted
-    /// with its contents, as under `ScrubReferences` (LIB-EDIT-019).
+    /// Delete each relationship that names a deleted element, and remove the id from
+    /// every other end.
+    ///
+    /// - **Relationships deleted:** each asserted relationship whose `source`, `target`
+    ///   or `reasoning` names a deleted element, and each `ArtifactAssetRelationship`
+    ///   whose `source` or `target` does, with its contents, to a fixpoint.
+    /// - **Ids removed** from every other end: `citedElement`, `abstractForm`,
+    ///   `metaClaim`, `structure`, `referencedArtifactElement`, a group's
+    ///   `argumentElement` or `artifactElement` and a package's `interface`. None of
+    ///   them has a lower bound.
+    /// - **Interfaces and bindings.** An interface left with no `implements`, or a
+    ///   binding left with fewer than two distinct `participantPackage` ids, is deleted
+    ///   with its contents, as under `ScrubReferences` (LIB-EDIT-019).
     DeleteReferencingRelationships,
-    /// Remove every such id from its end. An element left below an end's
-    /// lower bound is deleted, with its contents: a relationship left with no
-    /// `source` or no `target` (§11.13, §12.14), an interface left with no
-    /// `implements` (§9.3, §10.5, §11.6, §12.5), or a binding left with
-    /// fewer than two distinct participants (§9.4, §10.6, §11.5, §12.4). Under `RejectIfNonEmpty`, such an
-    /// interface or binding that contains elements refuses the delete as
-    /// `NotEmpty`. One that loses no id stays, even below its bound.
+    /// Remove every such id from its end, and delete an element left below an end's
+    /// lower bound, with its contents.
+    ///
+    /// | Deleted when left with | SACM |
+    /// |---|---|
+    /// | a relationship: no `source` or no `target` | §11.13, §12.14 |
+    /// | an interface: no `implements` | §9.3, §10.5, §11.6, §12.5 |
+    /// | a binding: fewer than two distinct participants | §9.4, §10.6, §11.5, §12.4 |
+    ///
+    /// - **Under `RejectIfNonEmpty`,** such an interface or binding that contains
+    ///   elements refuses the delete as `NotEmpty`.
+    /// - **One that loses no id stays,** even below its bound.
     ScrubReferences,
 }
 
 /// Whether a delete may remove an element that contains other elements
 /// (ADR 0031).
 ///
-/// An element is non-empty when it contains, at any depth, an element that
-/// is not a `UtilityElement`, or when it or an element it contains holds a
-/// preserved child element (ADR 0033; preserved attributes and text do not
-/// count). Descriptions, implementation constraints, notes and tagged values
-/// go with their owner under either policy.
+/// - **Non-empty** is an element that contains, at any depth, an element that is not a
+///   `UtilityElement`, or that holds, itself or in an element it contains, a preserved
+///   child element (ADR 0033; preserved attributes and text do not count).
+/// - **A proxy counts too:** a child held in another document
+///   ([`Proxy`](crate::model::Proxy); ADR 0040 amendment 1).
+/// - **`UtilityElement`s go with their owner** under either policy: descriptions,
+///   implementation constraints, notes and tagged values.
 ///
 /// # Examples
 ///
@@ -206,11 +255,11 @@ pub enum PackageDeletePolicy {
 /// What a delete does with a dangling reference that crosses a package
 /// boundary (ADR 0031).
 ///
-/// A reference crosses one when the holder's nearest package is not the
-/// nearest package of the element it names. An element's nearest package is
-/// the element itself, if it is a package, an interface or a binding, and
-/// otherwise its closest ancestor that is one. So a nested package is
-/// another package than its parent.
+/// - **Crossing.** A reference crosses one when the holder's nearest package is not the
+///   nearest package of the element it names.
+/// - **Nearest package.** The element itself, if it is a package, an interface or a
+///   binding, and otherwise its closest ancestor that is one. So a nested package is
+///   another package than its parent.
 ///
 /// # Examples
 ///
@@ -226,9 +275,8 @@ pub enum PackageDeletePolicy {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum CrossPackageReferencePolicy {
-    /// Refuse the delete if a dangling reference crosses a package boundary
-    /// ([`EditError::CrossPackageReference`], SACM-CMD-007), whatever the
-    /// reference policy. The default.
+    /// Refuse the delete if a dangling reference crosses a package boundary, whatever the
+    /// reference policy ([`EditError::CrossPackageReference`], SACM-CMD-007). The default.
     #[default]
     RejectIfExternalReferencesExist,
     /// Treat a crossing reference as any other: the reference policy decides.
@@ -236,9 +284,8 @@ pub enum CrossPackageReferencePolicy {
 }
 
 impl DeleteElement {
-    /// Deletes the element `element`, with every policy at its default:
-    /// refusing a referenced element, a non-empty one and a crossing
-    /// reference.
+    /// Deletes the element `element`, with every policy at its default: refusing a
+    /// referenced element, a non-empty one and a crossing reference.
     #[must_use]
     pub fn new(element: impl Into<ElementId>) -> Self {
         Self {
@@ -409,9 +456,10 @@ const fn is_bound_end(end: ReferenceEnd) -> bool {
 struct Tree<'d> {
     /// Every element, in pre-order.
     elements: Vec<SacmElement<'d>>,
-    /// The position of each element, by id, and of the element whose
-    /// preserved content holds each preserved id (ADR 0033), which goes
-    /// with it. Only looked up.
+    /// The position of each element, by id. Only looked up.
+    ///
+    /// A preserved id (ADR 0033) has the position of the element whose preserved content
+    /// holds it, which goes with it.
     positions: HashMap<&'d ElementId, usize>,
     /// The position after the last element of each element's subtree: a
     /// subtree is a range of the pre-order.

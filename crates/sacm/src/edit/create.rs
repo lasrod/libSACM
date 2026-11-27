@@ -7,13 +7,11 @@ use crate::model::{
     Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement, admits, is_ncname,
 };
 
-/// Creates an `AssuranceCasePackage` (SACM 2.3 §9.2): a root, or a child of
-/// an element whose class can hold one, such as another
-/// `AssuranceCasePackage`.
+/// Creates an `AssuranceCasePackage` (SACM 2.3 §9.2): a root, or a child of an element
+/// whose class can hold one, such as another `AssuranceCasePackage`.
 ///
-/// Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated:
-/// `assurance_case_package_<n>`.
+/// Apply it with [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the
+/// id is generated: `assurance_case_package_<n>`.
 ///
 /// # Examples
 ///
@@ -69,11 +67,11 @@ impl CreateAssuranceCasePackage {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -114,19 +112,24 @@ impl CreateAssuranceCasePackage {
 }
 
 interface_operation! {
-    /// Creates an `AssuranceCasePackageInterface` (SACM 2.3 §9.3) declaring
-    /// the AssuranceCasePackage `implements` names: a root, or a child of an
-    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
-    /// and bindings). The package's `interface` end is not changed (ADR 0039).
+    /// Creates an `AssuranceCasePackageInterface` (SACM 2.3 §9.3) declaring the
+    /// AssuranceCasePackage that `implements` names.
     ///
-    /// `implements` is required (`implements:AssuranceCasePackage[1]`). After
-    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
-    /// XML white space is [`EditError::InvalidReference`], one that names no
-    /// element is [`EditError::ReferenceNotFound`], and one that names an
-    /// element of no AssuranceCasePackage kind is
-    /// [`EditError::WrongReferenceType`] (SACM-REF-002). Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `assurance_case_package_interface_<n>`.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage or an ArtifactPackage
+    ///   (or one of their interfaces and bindings).
+    /// - **`implements` is required** (`implements:AssuranceCasePackage[1]`). The
+    ///   package's `interface` end is not changed (ADR 0039).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `assurance_case_package_interface_<n>`.
+    ///
+    /// After [ADR 0019]'s four checks and the name's expression, the `implements` id is
+    /// checked in this order:
+    ///
+    /// | The id | Refusal |
+    /// |---|---|
+    /// | holds XML white space | [`EditError::InvalidReference`] |
+    /// | names no element | [`EditError::ReferenceNotFound`] |
+    /// | names an element of no AssuranceCasePackage kind | [`EditError::WrongReferenceType`] (SACM-REF-002) |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
     ///
@@ -152,33 +155,54 @@ interface_operation! {
 }
 
 binding_operation! {
-    /// Creates an `AssuranceCasePackageBinding` (SACM 2.3 §9.4) binding the
-    /// packages `participant_packages` names, each of an
-    /// `AssuranceCasePackage` kind: a root, or a child of an
-    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
-    /// and bindings).
+    /// Creates an `AssuranceCasePackageBinding` (SACM 2.3 §9.4) binding the packages
+    /// that `participant_packages` names, each of an `AssuranceCasePackage` kind.
     ///
-    /// `participantPackage:AssuranceCasePackage[2..*]`: after [ADR 0019]'s
-    /// four checks, fewer than two distinct ids is
-    /// [`EditError::TooFewReferences`] (ADR 0039 D3); then the name's
-    /// expression; then an id that holds XML white space is
-    /// [`EditError::InvalidReference`], one that names no element
-    /// [`EditError::ReferenceNotFound`], and one that names an element of no
-    /// AssuranceCasePackage kind [`EditError::WrongReferenceType`], each over
-    /// the ids in order. Without [`with_id`](Self::with_id), the id is
-    /// generated: `assurance_case_package_binding_<n>`. See
-    /// [`CreateAssuranceCasePackageInterface`] for an example.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage or an ArtifactPackage
+    ///   (or one of their interfaces and bindings).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `assurance_case_package_binding_<n>`.
+    /// - **With interfaces.** [`CreateAssuranceCasePackageInterface`] shows a binding of
+    ///   two interfaces.
+    ///
+    /// After [ADR 0019]'s four checks, the participants
+    /// (`participantPackage:AssuranceCasePackage[2..*]`) are checked in this order, each
+    /// check over the ids in order:
+    ///
+    /// | Check | Refusal |
+    /// |---|---|
+    /// | fewer than two distinct ids | [`EditError::TooFewReferences`] (ADR 0039 D3) |
+    /// | then the name's expression | as [`apply`](super::apply#creates) lists |
+    /// | an id holds XML white space | [`EditError::InvalidReference`] |
+    /// | an id names no element | [`EditError::ReferenceNotFound`] |
+    /// | an id names an element of no AssuranceCasePackage kind | [`EditError::WrongReferenceType`] |
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateAssuranceCasePackage, CreateAssuranceCasePackageBinding};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::root("Vehicle").with_id("system"))?;
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::new("system", "Braking").with_id("braking"))?;
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::new("system", "Steering").with_id("steering"))?;
+    ///
+    /// let binding = CreateAssuranceCasePackageBinding::new("system", "Bound", ["braking", "steering"]);
+    /// edit::apply(&mut doc, binding.with_id("binding"))?;
+    /// assert_eq!(doc.get("binding").map(|b| b.participant_packages().len()), Some(2));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
     CreateAssuranceCasePackageBinding, AssuranceCasePackageBinding, "AssuranceCasePackage"
 }
 
-/// Creates an `ArgumentPackage` (SACM 2.3 §11.4): a root, or a child of an
-/// element whose class can hold one, such as an `AssuranceCasePackage` or
-/// another `ArgumentPackage`.
+/// Creates an `ArgumentPackage` (SACM 2.3 §11.4): a root, or a child of an element whose
+/// class can hold one, such as an `AssuranceCasePackage` or another `ArgumentPackage`.
 ///
-/// Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `argument_package_<n>`.
+/// Apply it with [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the
+/// id is generated: `argument_package_<n>`.
 ///
 /// # Examples
 ///
@@ -232,11 +256,11 @@ impl CreateArgumentPackage {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -279,12 +303,11 @@ impl CreateArgumentPackage {
 /// Creates a `Claim` (SACM 2.3 §11.11) as a child of an element whose class
 /// can hold one, such as an `ArgumentPackage`. A Claim is never a root.
 ///
-/// Its `assertionDeclaration` is
-/// [`Asserted`](crate::model::AssertionDeclaration::Asserted), the SACM
-/// default (§11.10); [`SetAssertionDeclaration`](super::SetAssertionDeclaration)
-/// changes it. Apply it with
-/// [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the id
-/// is generated: `claim_<n>`.
+/// - **Declaration.** Its `assertionDeclaration` is
+///   [`Asserted`](crate::model::AssertionDeclaration::Asserted), the SACM default
+///   (§11.10); [`SetAssertionDeclaration`](super::SetAssertionDeclaration) changes it.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `claim_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -324,11 +347,11 @@ impl CreateClaim {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {

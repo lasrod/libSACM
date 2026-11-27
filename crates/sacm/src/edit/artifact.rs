@@ -22,16 +22,16 @@ use crate::model::{
     Document, ElementId, ElementKind, LangString, MultiLangString, ReferenceEnd, StringAttribute,
 };
 
-/// Creates an `ArtifactPackage` (SACM 2.3 §12.2): a root, or a child of an
-/// element whose class can hold one, an `AssuranceCasePackage` (its
-/// `artifactPackage` role) or another `ArtifactPackage` (its
-/// `artifactElement` role).
+/// Creates an `ArtifactPackage` (SACM 2.3 §12.2): a root, or a child of an element whose
+/// class can hold one.
 ///
-/// An `ArtifactPackage` holds the artifacts of an assurance case and what
-/// describes them: `Technique`s, `Participant`s, `Property`s, `ArtifactGroup`s
-/// and nested `ArtifactPackage`s. Apply it with [`edit::apply`](super::apply).
-/// Without [`with_id`](Self::with_id), the id is generated:
-/// `artifact_package_<n>`.
+/// - **Parents.** An `AssuranceCasePackage` (its `artifactPackage` role) or another
+///   `ArtifactPackage` (its `artifactElement` role).
+/// - **What it holds.** The artifacts of an assurance case and what describes them:
+///   `Technique`s, `Participant`s, `Property`s, `ArtifactGroup`s and nested
+///   `ArtifactPackage`s.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `artifact_package_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -90,11 +90,11 @@ impl CreateArtifactPackage {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -136,15 +136,17 @@ impl CreateArtifactPackage {
 
 interface_operation! {
     /// Creates an `ArtifactPackageInterface` (SACM 2.3 §12.5) declaring the
-    /// ArtifactPackage `implements` names: a root, or a child of an
-    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
-    /// and bindings). The package's `interface` end is not changed (ADR 0039).
+    /// ArtifactPackage that `implements` names.
     ///
-    /// `implements` is required (`implements:ArtifactPackage[1]`); its id is
-    /// checked as [`CreateArgumentPackageInterface`](super::CreateArgumentPackageInterface)'s
-    /// is, against the ArtifactPackage kinds. Without
-    /// [`with_id`](Self::with_id), the id is generated:
-    /// `artifact_package_interface_<n>`.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage or an ArtifactPackage
+    ///   (or one of their interfaces and bindings).
+    /// - **`implements` is required** (`implements:ArtifactPackage[1]`). The package's
+    ///   `interface` end is not changed (ADR 0039).
+    /// - **Checks.** Its id is checked as
+    ///   [`CreateArgumentPackageInterface`](super::CreateArgumentPackageInterface)'s is,
+    ///   against the ArtifactPackage kinds.
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `artifact_package_interface_<n>`.
     ///
     /// # Examples
     ///
@@ -164,17 +166,35 @@ interface_operation! {
 }
 
 binding_operation! {
-    /// Creates an `ArtifactPackageBinding` (SACM 2.3 §12.4) binding the
-    /// packages `participant_packages` names, each of an `ArtifactPackage`
-    /// kind: a root, or a child of
-    /// an AssuranceCasePackage or an ArtifactPackage (or one of their
-    /// interfaces and bindings).
+    /// Creates an `ArtifactPackageBinding` (SACM 2.3 §12.4) binding the packages that
+    /// `participant_packages` names, each of an `ArtifactPackage` kind.
     ///
-    /// `participantPackage:ArtifactPackage[2..*]`: its ids are checked as
-    /// [`CreateArgumentPackageBinding`](super::CreateArgumentPackageBinding)'s
-    /// are, against the ArtifactPackage kinds, after two distinct ids
-    /// (ADR 0039 D3). Without [`with_id`](Self::with_id), the id is
-    /// generated: `artifact_package_binding_<n>`.
+    /// - **Where.** A root, or a child of an AssuranceCasePackage or an ArtifactPackage
+    ///   (or one of their interfaces and bindings).
+    /// - **Participants** (`participantPackage:ArtifactPackage[2..*]`). Its ids are
+    ///   checked as
+    ///   [`CreateArgumentPackageBinding`](super::CreateArgumentPackageBinding)'s are,
+    ///   against the ArtifactPackage kinds, after two distinct ids (ADR 0039 D3).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+    ///   `artifact_package_binding_<n>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifactPackage, CreateArtifactPackageBinding};
+    /// use sacm::model::Document;
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArtifactPackage::root("Brake tests").with_id("tests"))?;
+    /// edit::apply(&mut doc, CreateArtifactPackage::root("Brake reviews").with_id("reviews"))?;
+    ///
+    /// let binding = CreateArtifactPackageBinding::root("Brake evidence", ["tests", "reviews"]);
+    /// let created = edit::apply(&mut doc, binding)?;
+    /// assert_eq!(created.created_ids()[0].as_str(), "artifact_package_binding_1");
+    /// let bound = doc.get("artifact_package_binding_1").map(|b| b.participant_packages().len());
+    /// assert_eq!(bound, Some(2));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
     CreateArtifactPackageBinding, ArtifactPackageBinding, "ArtifactPackage"
 }
 
@@ -214,8 +234,9 @@ macro_rules! named_create {
             }
 
             /// Gives the new element the id `id` instead of a generated one.
-            /// It must be an XML `NCName` and not already in the document.
-            /// Otherwise [`apply`](super::apply) refuses with
+            ///
+            /// It must be an XML `NCName` and not already in the document. Otherwise
+            /// [`apply`](super::apply) refuses with
             /// [`EditError::InvalidId`](super::EditError::InvalidId) or
             /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
             #[must_use]
@@ -270,20 +291,21 @@ macro_rules! named_create {
 }
 
 named_create! {
-    /// Creates a `Property` (SACM 2.3 §12.8) as the last child of an element
-    /// whose class can hold one: an `ArtifactAsset`, such as a `Technique`, a
-    /// `Participant` or another `Property` (its `property` role, §12.6), or
-    /// an `ArtifactPackage` (its `artifactElement` role). A Property is never
-    /// a root.
+    /// Creates a `Property` (SACM 2.3 §12.8) as the last child of an element whose
+    /// class can hold one. A Property is never a root.
     ///
-    /// A Property "enables the specification of the characteristics of an
-    /// Artifact" (§12.8), such as a test result or a judgement of a report's
-    /// quality; every `ArtifactAsset` can hold some (§12.6). One held by an
-    /// asset is among the asset's
-    /// [`properties`](crate::model::SacmElement::properties); one held
-    /// directly by an `ArtifactPackage` is a child of the package, not a
-    /// property of it. Apply it with [`edit::apply`](super::apply). Without
-    /// [`with_id`](Self::with_id), the id is generated: `property_<n>`.
+    /// - **Parents.** An `ArtifactAsset`, such as a `Technique`, a `Participant` or
+    ///   another `Property` (its `property` role, §12.6), or an `ArtifactPackage` (its
+    ///   `artifactElement` role).
+    /// - **What it is.** A Property "enables the specification of the characteristics of
+    ///   an Artifact" (§12.8), such as a test result or a judgement of a report's
+    ///   quality. Every `ArtifactAsset` can hold some (§12.6).
+    /// - **Held by an asset,** it is among the asset's
+    ///   [`properties`](crate::model::SacmElement::properties).
+    /// - **Held directly by an `ArtifactPackage`,** it is a child of the package, not a
+    ///   property of it.
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated: `property_<n>`.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -304,17 +326,16 @@ named_create! {
 }
 
 named_create! {
-    /// Creates a `Technique` (SACM 2.3 §12.12) as the last child of an
-    /// element whose class can hold one: an `ArtifactPackage`. A Technique
-    /// is never a root.
+    /// Creates a `Technique` (SACM 2.3 §12.12) as the last child of an element whose
+    /// class can hold one: an `ArtifactPackage`. A Technique is never a root.
     ///
-    /// A Technique is an `ArtifactAsset` that "represents techniques
-    /// associated with Artifacts (e.g., associated with the creation,
-    /// inspection, review or analysis of an Artifact)" (§12.12), such as a
-    /// fault tree analysis. It has no attributes of its own; its characteristics are its
-    /// [`properties`](crate::model::SacmElement::properties). Apply it with
-    /// [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the
-    /// id is generated: `technique_<n>`.
+    /// - **What it is.** An `ArtifactAsset` that "represents techniques associated with
+    ///   Artifacts (e.g., associated with the creation, inspection, review or analysis
+    ///   of an Artifact)" (§12.12), such as a fault tree analysis.
+    /// - **No attributes of its own.** Its characteristics are its
+    ///   [`properties`](crate::model::SacmElement::properties).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated: `technique_<n>`.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -335,16 +356,16 @@ named_create! {
 }
 
 named_create! {
-    /// Creates a `Participant` (SACM 2.3 §12.13) as the last child of an
-    /// element whose class can hold one: an `ArtifactPackage`. A Participant
-    /// is never a root.
+    /// Creates a `Participant` (SACM 2.3 §12.13) as the last child of an element whose
+    /// class can hold one: an `ArtifactPackage`. A Participant is never a root.
     ///
-    /// A Participant is an `ArtifactAsset` that "enables the specification of
-    /// the parties involved in the management of `ArtifactAssets`" (§12.13),
-    /// such as a person, an organization or a tool. It has no attributes of its own; its characteristics are
-    /// its [`properties`](crate::model::SacmElement::properties). Apply it
-    /// with [`edit::apply`](super::apply). Without [`with_id`](Self::with_id),
-    /// the id is generated: `participant_<n>`.
+    /// - **What it is.** An `ArtifactAsset` that "enables the specification of the
+    ///   parties involved in the management of `ArtifactAssets`" (§12.13), such as a
+    ///   person, an organization or a tool.
+    /// - **No attributes of its own.** Its characteristics are its
+    ///   [`properties`](crate::model::SacmElement::properties).
+    /// - **Id.** Without [`with_id`](Self::with_id), it is generated: `participant_<n>`.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -363,29 +384,30 @@ named_create! {
     CreateParticipant, Participant
 }
 
-/// Creates an `ArtifactGroup` (SACM 2.3 §12.3) as the last child of an
-/// element whose class can hold one: an `ArtifactPackage`. An `ArtifactGroup`
-/// is never a root.
+/// Creates an `ArtifactGroup` (SACM 2.3 §12.3) as the last child of an element whose
+/// class can hold one: an `ArtifactPackage`. An `ArtifactGroup` is never a root.
 ///
-/// An `ArtifactGroup` associates "a number of `ArtifactElements` to a common
-/// group" (§12.3), its
-/// [`group_members`](crate::model::SacmElement::group_members)
-/// (`artifactElement:ArtifactElement[0..*]`). The members are references,
-/// not children: a member stays where it is contained, and `ArtifactGroups`
-/// "serve no structural purpose" (§12.3). In XMI the end is named
-/// `artifactElement`, like the composite role of an `ArtifactPackage`; it is
-/// [`ReferenceEnd::ArtifactGroupMember`](crate::model::ReferenceEnd::ArtifactGroupMember).
+/// - **What it is.** It associates "a number of `ArtifactElements` to a common group"
+///   (§12.3), its [`group_members`](crate::model::SacmElement::group_members)
+///   (`artifactElement:ArtifactElement[0..*]`).
+/// - **Members are references, not children.** A member stays where it is contained, and
+///   `ArtifactGroups` "serve no structural purpose" (§12.3).
+/// - **The end's name.** In XMI it is `artifactElement`, like the composite role of an
+///   `ArtifactPackage`; it is
+///   [`ReferenceEnd::ArtifactGroupMember`](crate::model::ReferenceEnd::ArtifactGroupMember).
+/// - **Its members.** With [`with_group_members`](Self::with_group_members) it names
+///   them. None is required, and the ids are kept in the order given, repeats included.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `artifact_group_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
-/// With [`with_group_members`](Self::with_group_members) it names its
-/// members: none is required, and the ids are kept in the order given,
-/// repeats included. Apply it with [`edit::apply`](super::apply). After
-/// [ADR 0019]'s four checks, an id that holds XML white space is
-/// [`EditError::InvalidReference`], then one that names no element is
-/// [`EditError::ReferenceNotFound`], then one that names a `UtilityElement`,
-/// which is no `ArtifactElement`, is [`EditError::WrongReferenceType`]
-/// (SACM-REF-002, ADR 0028); each check runs over every member in order
-/// before the next. Without [`with_id`](Self::with_id), the id is generated:
-/// `artifact_group_<n>`.
+/// After [ADR 0019]'s four checks, the ids are checked in this order, each check over
+/// every member in order before the next:
+///
+/// | An id | Refusal |
+/// |---|---|
+/// | holds XML white space | [`EditError::InvalidReference`] |
+/// | names no element | [`EditError::ReferenceNotFound`] |
+/// | names a `UtilityElement`, which is no `ArtifactElement` | [`EditError::WrongReferenceType`] (SACM-REF-002, ADR 0028) |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -440,11 +462,11 @@ impl CreateArtifactGroup {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -453,12 +475,12 @@ impl CreateArtifactGroup {
         }
     }
 
-    /// Gives the new group the members `ids`, its `artifactElement` ids, in
-    /// the order given, repeats included, replacing any given before. Each
-    /// must name an `ArtifactElement` of the document (any element but a
+    /// Gives the new group the members `ids`, its `artifactElement` ids, in the order
+    /// given, repeats included, replacing any given before.
+    ///
+    /// Each must name an `ArtifactElement` of the document (any element but a
     /// `UtilityElement`); otherwise [`apply`](super::apply) refuses with
-    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound)
-    /// or
+    /// [`EditError::ReferenceNotFound`](super::EditError::ReferenceNotFound) or
     /// [`EditError::WrongReferenceType`](super::EditError::WrongReferenceType).
     #[doc(alias = "artifactElement")]
     #[must_use]
@@ -510,21 +532,23 @@ impl CreateArtifactGroup {
     }
 }
 
-/// Creates an `Artifact` (SACM 2.3 §12.7) as the last child of an element
-/// whose class can hold one: an `ArtifactPackage`. An Artifact is never a
-/// root.
+/// Creates an `Artifact` (SACM 2.3 §12.7) as the last child of an element whose class
+/// can hold one: an `ArtifactPackage`. An Artifact is never a root.
 ///
-/// An Artifact "represents the distinguishable units of data used in a
-/// structured assurance case" (§12.7), such as a test report, a model or a
-/// review record. It is an `ArtifactAsset`, so it can hold
-/// [`properties`](crate::model::SacmElement::properties), and it has a
-/// `version` (`version: String[0..1]`) and a `date` (`date: date[0..1]`,
-/// "the date on which the artifact was created"), given with
-/// [`with_version`](Self::with_version) and [`with_date`](Self::with_date)
-/// and held exactly as given (D-DATE). Apply it with
-/// [`edit::apply`](super::apply); it runs [ADR 0019]'s four checks and
-/// nothing else. Without [`with_id`](Self::with_id), the id is generated:
-/// `artifact_<n>`.
+/// - **What it is.** An Artifact "represents the distinguishable units of data used in a
+///   structured assurance case" (§12.7), such as a test report, a model or a review
+///   record.
+/// - **An `ArtifactAsset`,** so it can hold
+///   [`properties`](crate::model::SacmElement::properties).
+/// - **`version` and `date`** (`version: String[0..1]`; `date: date[0..1]`, "the date on
+///   which the artifact was created") are given with
+///   [`with_version`](Self::with_version) and [`with_date`](Self::with_date), and held
+///   exactly as given (D-DATE).
+/// - **Checks.** It has no reference end of its own, so only the checks every create
+///   runs apply: [ADR 0019]'s four, the name's expression and the text
+///   ([`apply`](super::apply#creates)).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `artifact_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -582,11 +606,11 @@ impl CreateArtifact {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -670,14 +694,14 @@ impl CreateArtifact {
 /// Creates an `Event` (SACM 2.3 §12.9) as the last child of an element whose
 /// class can hold one: an `ArtifactPackage`. An Event is never a root.
 ///
-/// An Event "enables the specification of the events in the lifecycle of an
-/// Artifact" (§12.9), such as a release or a review. It is an
-/// `ArtifactAsset`, so it can hold
-/// [`properties`](crate::model::SacmElement::properties), and it has a
-/// `date` (`date: date[0..1]`, "the date on which the Event occurred"),
-/// given with [`with_date`](Self::with_date) and held exactly as given
-/// (D-DATE). Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `event_<n>`.
+/// - **What it is.** An Event "enables the specification of the events in the lifecycle
+///   of an Artifact" (§12.9), such as a release or a review.
+/// - **An `ArtifactAsset`,** so it can hold
+///   [`properties`](crate::model::SacmElement::properties).
+/// - **`date`** (`date: date[0..1]`, "the date on which the Event occurred") is given
+///   with [`with_date`](Self::with_date) and held exactly as given (D-DATE).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `event_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -724,11 +748,11 @@ impl CreateEvent {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -788,19 +812,18 @@ impl CreateEvent {
     }
 }
 
-/// Creates a `Resource` (SACM 2.3 §12.10) as the last child of an element
-/// whose class can hold one: an `ArtifactPackage`. A Resource is never a
-/// root.
+/// Creates a `Resource` (SACM 2.3 §12.10) as the last child of an element whose class
+/// can hold one: an `ArtifactPackage`. A Resource is never a root.
 ///
-/// A Resource "corresponds to the tangible objects representing an
-/// Artifact" (§12.10), such as a file or a printed copy. It is an
-/// `ArtifactAsset`, so it can hold
-/// [`properties`](crate::model::SacmElement::properties), and it has a
-/// `location` (`location:Base::MultiLangString`, "the path or URL
-/// specifying the location of the Resource, can be in multiple languages"),
-/// given with [`with_location`](Self::with_location) and held exactly as
-/// given. Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `resource_<n>`.
+/// - **What it is.** A Resource "corresponds to the tangible objects representing an
+///   Artifact" (§12.10), such as a file or a printed copy.
+/// - **An `ArtifactAsset`,** so it can hold
+///   [`properties`](crate::model::SacmElement::properties).
+/// - **`location`** (`location:Base::MultiLangString`, "the path or URL specifying the
+///   location of the Resource, can be in multiple languages") is given with
+///   [`with_location`](Self::with_location) and held exactly as given.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `resource_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -849,11 +872,11 @@ impl CreateResource {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -862,11 +885,13 @@ impl CreateResource {
         }
     }
 
-    /// Gives the new Resource the `location` `location`, held exactly,
-    /// replacing any given before. A [`LangString`] converts into a location
-    /// of one value. An empty one, or one with a repeated language, is
-    /// accepted, and [`validation::validate`](crate::validation::validate)
-    /// reports it (SACM23-VAL-010).
+    /// Gives the new Resource the `location` `location`, held exactly, replacing any
+    /// given before.
+    ///
+    /// - **One value.** A [`LangString`] converts into a location of one value.
+    /// - **Content is not refused.** An empty one, or one with a repeated language, is
+    ///   accepted, and [`validation::validate`](crate::validation::validate) reports it
+    ///   (SACM23-VAL-010).
     #[must_use]
     pub fn with_location(self, location: impl Into<MultiLangString>) -> Self {
         Self {
@@ -917,21 +942,19 @@ impl CreateResource {
     }
 }
 
-/// Creates an `Activity` (SACM 2.3 §12.11) as the last child of an element
-/// whose class can hold one: an `ArtifactPackage`. An Activity is never a
-/// root.
+/// Creates an `Activity` (SACM 2.3 §12.11) as the last child of an element whose class
+/// can hold one: an `ArtifactPackage`. An Activity is never a root.
 ///
-/// An Activity "represents units of work related to the management of
-/// `ArtifactAssets`" (§12.11), such as a test campaign or a review. It is an
-/// `ArtifactAsset`, so it can hold
-/// [`properties`](crate::model::SacmElement::properties), and it has a
-/// `startTime` and an `endTime` (`date[0..1]`, "time when the activity
-/// started" and "ended"), given with
-/// [`with_start_time`](Self::with_start_time) and
-/// [`with_end_time`](Self::with_end_time) and held exactly as given
-/// (D-DATE); SACM 2.3 states no order between them, so none is checked.
-/// Apply it with [`edit::apply`](super::apply). Without
-/// [`with_id`](Self::with_id), the id is generated: `activity_<n>`.
+/// - **What it is.** An Activity "represents units of work related to the management of
+///   `ArtifactAssets`" (§12.11), such as a test campaign or a review.
+/// - **An `ArtifactAsset`,** so it can hold
+///   [`properties`](crate::model::SacmElement::properties).
+/// - **`startTime` and `endTime`** (`date[0..1]`, "time when the activity started" and
+///   "ended") are given with [`with_start_time`](Self::with_start_time) and
+///   [`with_end_time`](Self::with_end_time), and held exactly as given (D-DATE).
+/// - **No order is checked** between them: SACM 2.3 states none.
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated: `activity_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -984,11 +1007,11 @@ impl CreateActivity {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -1073,33 +1096,35 @@ impl CreateActivity {
     }
 }
 
-/// Creates an `ArtifactAssetRelationship` (SACM 2.3 §12.14) as the last
-/// child of an element whose class can hold one: an `ArtifactPackage`. An
-/// `ArtifactAssetRelationship` is never a root.
+/// Creates an `ArtifactAssetRelationship` (SACM 2.3 §12.14) as the last child of an
+/// `ArtifactPackage`. It is never a root.
 ///
-/// An `ArtifactAssetRelationship` "enables the `ArtifactAssets` of a structured
-/// assurance case to be linked together" (§12.14): its `source` and `target`
-/// (`source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`) name the
-/// linked assets, such as a test report and the activity that produced it.
-/// It is an `ArtifactAsset` itself, so it can hold
-/// [`properties`](crate::model::SacmElement::properties) and be the source
-/// or target of another. The ends are
-/// [`ReferenceEnd::ArtifactSource`](crate::model::ReferenceEnd::ArtifactSource)
-/// and
-/// [`ReferenceEnd::ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget),
-/// read with [`sources`](crate::model::SacmElement::sources) and
-/// [`targets`](crate::model::SacmElement::targets).
+/// - **What it is.** It "enables the `ArtifactAssets` of a structured assurance case to
+///   be linked together" (§12.14).
+/// - **`source` and `target`** (`source:ArtifactAsset[1..*]`,
+///   `target:ArtifactAsset[1..*]`) name the linked assets, such as a test report and the
+///   activity that produced it. They are kept in the order given, repeats included.
+/// - **An `ArtifactAsset` itself,** so it can hold
+///   [`properties`](crate::model::SacmElement::properties) and be the source or target
+///   of another.
+/// - **The ends** are
+///   [`ReferenceEnd::ArtifactSource`](crate::model::ReferenceEnd::ArtifactSource) and
+///   [`ReferenceEnd::ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget).
+/// - **Read them** with [`sources`](crate::model::SacmElement::sources) and
+///   [`targets`](crate::model::SacmElement::targets).
+/// - **Id.** Without [`with_id`](Self::with_id), it is generated:
+///   `artifact_asset_relationship_<n>`.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
-/// The sources and the targets are kept in the order given, repeats
-/// included. Apply it with [`edit::apply`](super::apply). After [ADR 0019]'s
-/// four checks, an empty `source`, then an empty `target`, is
-/// [`EditError::TooFewReferences`]; then an id that holds XML white space is
-/// [`EditError::InvalidReference`], then one that names no element is
-/// [`EditError::ReferenceNotFound`], then one that names no `ArtifactAsset`
-/// is [`EditError::WrongReferenceType`] (SACM-REF-002); each check runs over
-/// the sources, then the targets, in order, before the next. Without
-/// [`with_id`](Self::with_id), the id is generated:
-/// `artifact_asset_relationship_<n>`.
+/// After [ADR 0019]'s four checks, it checks in this order, each check over the sources,
+/// then the targets, in order, before the next:
+///
+/// | Check | Refusal |
+/// |---|---|
+/// | `source` is not empty, then `target` is not empty | [`EditError::TooFewReferences`] |
+/// | no id holds XML white space | [`EditError::InvalidReference`] |
+/// | every id names an element | [`EditError::ReferenceNotFound`] |
+/// | every id names an `ArtifactAsset` | [`EditError::WrongReferenceType`] (SACM-REF-002) |
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
 ///
@@ -1139,12 +1164,13 @@ pub struct CreateArtifactAssetRelationship {
 }
 
 impl CreateArtifactAssetRelationship {
-    /// Creates an `ArtifactAssetRelationship` named `name` as the last child
-    /// of `parent`, from the `ArtifactAsset`s `sources` to the
-    /// `ArtifactAsset`s `targets`, each in the order given, repeats
-    /// included. Each end needs at least one id
-    /// (§12.14 `[1..*]`); otherwise [`apply`](super::apply) refuses with
-    /// [`EditError::TooFewReferences`](super::EditError::TooFewReferences).
+    /// Creates an `ArtifactAssetRelationship` named `name` as the last child of `parent`,
+    /// from the `ArtifactAsset`s `sources` to the `ArtifactAsset`s `targets`.
+    ///
+    /// - **Order.** Each end is kept in the order given, repeats included.
+    /// - **At least one id each** (§12.14 `[1..*]`); otherwise [`apply`](super::apply)
+    ///   refuses with
+    ///   [`EditError::TooFewReferences`](super::EditError::TooFewReferences).
     #[must_use]
     pub fn new(
         parent: impl Into<ElementId>,
@@ -1161,11 +1187,11 @@ impl CreateArtifactAssetRelationship {
         }
     }
 
-    /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document. Otherwise
-    /// [`apply`](super::apply) refuses with
-    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
-    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    /// Gives the new element the id `id` instead of a generated one.
+    ///
+    /// It must be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with [`EditError::InvalidId`](super::EditError::InvalidId)
+    /// or [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {

@@ -582,9 +582,10 @@ impl Serialize for EditError {
     }
 }
 
-/// Deserializes the form it serializes to. An unknown `"type"`, key, end,
-/// feature or class name, and a `"code"` that is not the variant's, are
-/// refused (ADR 0030 R4, R5, R7).
+/// Deserializes the form it serializes to.
+///
+/// An unknown `"type"`, key, end, feature or class name, and a `"code"` that is not the
+/// variant's, are refused (ADR 0030 R4, R5, R7).
 //
 // Written by hand: a derive would borrow the `&'static str` fields, and so
 // read only `'static` input.

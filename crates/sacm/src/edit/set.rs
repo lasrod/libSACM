@@ -31,22 +31,24 @@ pub(super) const TAGGED_VALUE: &str = "taggedValue";
 /// Sets the `name` (SACM 2.3 §8.6 `name:LangString[1]`) of a `ModelElement`,
 /// replacing the name it has, or giving one to an element read without one.
 ///
-/// The name is held exactly as given, `LangString::default()` included, and
-/// keeps the `xmi:id` of the name it replaces
-/// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)). A name
-/// holding a character XML 1.0 cannot represent is refused, last
-/// ([`EditError::UnrepresentableCharacter`]). Apply it with
-/// [`edit::apply`](super::apply). It refuses an unknown element as
-/// [`EditError::ElementNotFound`], then a `UtilityElement`, which has no
-/// name, as [`EditError::FeatureNotApplicable`]. A name that is an
-/// `ExpressionLangString` (§8.4) must have an `expression`
-/// ([`EditError::TooFewReferences`]), and an `expression` the element does
-/// not already hold must name a `Term` or an `Expression` of the document
-/// ([`EditError::InvalidReference`], [`EditError::ReferenceNotFound`],
-/// [`EditError::WrongReferenceType`], end `expression`; SACM23-BASE-009);
-/// [`SetContent`], [`SetKey`] and [`SetLocation`] check their values the
-/// same way. The element is in
-/// [`changed_ids`](super::Mutation::changed_ids) when its name changes.
+/// - **Held exactly as given,** `LangString::default()` included. It keeps the `xmi:id`
+///   of the name it replaces
+///   ([`SacmElement::name_id`](crate::model::SacmElement::name_id)).
+/// - **The element** is in [`changed_ids`](super::Mutation::changed_ids) when its name
+///   changes.
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// It refuses, in this order:
+///
+/// | Refused | Refusal |
+/// |---|---|
+/// | an unknown element | [`EditError::ElementNotFound`] |
+/// | a `UtilityElement`, which has no name | [`EditError::FeatureNotApplicable`] |
+/// | a name that is an `ExpressionLangString` (§8.4) with no `expression` | [`EditError::TooFewReferences`] |
+/// | an `expression` the element does not already hold that names no `Term` or `Expression` of the document | [`EditError::InvalidReference`], [`EditError::ReferenceNotFound`], [`EditError::WrongReferenceType`], end `expression` (SACM23-BASE-009) |
+/// | last, a name holding a character XML 1.0 cannot represent | [`EditError::UnrepresentableCharacter`] |
+///
+/// [`SetContent`], [`SetKey`] and [`SetLocation`] check their values the same way.
 ///
 /// # Examples
 ///
@@ -118,14 +120,15 @@ impl SetName {
 /// Sets or removes the `gid` (SACM 2.3 §8.2 `gid:String[0..1]`) of any
 /// element.
 ///
-/// [`new`](Self::new) sets it, exactly as given: `""` is a value, not a
-/// removal. [`remove`](Self::remove) removes it. A gid is not an `xmi:id`,
-/// so no value is refused for its content, a gid another element holds
-/// included; [`validation::validate`](crate::validation::validate) reports a
-/// duplicate (SACM-ID-003). Apply it with [`edit::apply`](super::apply); it
-/// refuses an unknown element, as [`EditError::ElementNotFound`], and then a
-/// gid holding a character XML 1.0 cannot represent
-/// ([`EditError::UnrepresentableCharacter`]).
+/// - **[`new`](Self::new)** sets it, exactly as given: `""` is a value, not a removal.
+///   [`remove`](Self::remove) removes it.
+/// - **Not an `xmi:id`.** No value is refused for its content, a gid another element
+///   holds included; [`validation::validate`](crate::validation::validate) reports a
+///   duplicate (SACM-ID-003).
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a gid
+///   holding a character XML 1.0 cannot represent is
+///   [`EditError::UnrepresentableCharacter`].
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -198,17 +201,21 @@ impl SetGid {
     }
 }
 
-/// Sets a Boolean flag of an element: `isCitation` or `isAbstract` of any
-/// element (SACM 2.3 §8.2), or `isCounter` of an asserted relationship
-/// (§11.13).
+/// Sets a Boolean flag of an element: `isCitation` or `isAbstract` of any element
+/// (SACM 2.3 §8.2), or `isCounter` of an asserted relationship (§11.13).
 ///
-/// A flag is set independently of the reference it goes with:
-/// `isCitation` of the `citedElement`, `isAbstract` of the `abstractForm`
-/// (ADR 0029). [`validation::validate`](crate::validation::validate)
-/// reports a combination §8.2 rules out (SACM-CITE-001, SACM-ABS-001).
-/// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-/// element as [`EditError::ElementNotFound`], then `isCounter` on a kind
-/// that is no `AssertedRelationship` as [`EditError::FeatureNotApplicable`].
+/// - **Independent of its reference.** A flag is set independently of the reference it
+///   goes with: `isCitation` of the `citedElement`, `isAbstract` of the `abstractForm`
+///   (ADR 0029).
+/// - **Content is for `validate`.** [`validation::validate`](crate::validation::validate)
+///   reports a combination §8.2 rules out (SACM-CITE-001, SACM-ABS-001).
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then
+///   `isCounter` on a kind that is no `AssertedRelationship` is
+///   [`EditError::FeatureNotApplicable`].
+/// - **A preserved attribute of the flag's name** (one whose value was no literal,
+///   ADR 0035) is replaced by the set. The element then changes even when the flag is
+///   set to the value it holds.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -289,12 +296,14 @@ impl SetFlag {
 /// Sets the `assertionDeclaration` (SACM 2.3 §11.10) of an Assertion: a
 /// Claim or an asserted relationship.
 ///
-/// Any of the six literals is accepted, `asCited` on an element that is no
-/// citation included: that is content, for
-/// [`validation::validate`](crate::validation::validate) (D-VAL-LAYER).
-/// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-/// element as [`EditError::ElementNotFound`], then a kind that is no
-/// Assertion as [`EditError::FeatureNotApplicable`].
+/// - **Any of the six literals is accepted,** `asCited` on an element that is no
+///   citation included: that is content, for
+///   [`validation::validate`](crate::validation::validate) (D-VAL-LAYER).
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
+///   is no Assertion is [`EditError::FeatureNotApplicable`].
+/// - **A preserved `assertionDeclaration` attribute** (one whose value was no literal,
+///   ADR 0035) is replaced by the set, as for [`SetFlag`].
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -358,31 +367,31 @@ impl SetAssertionDeclaration {
     }
 }
 
-/// Sets or removes the `content` (SACM 2.3 §8.7
-/// `content:MultiLangString[0..1]`) of a `UtilityElement`: a Description,
-/// `ImplementationConstraint`, Note or `TaggedValue`.
+/// Sets or removes the `content` (SACM 2.3 §8.7 `content:MultiLangString[0..1]`) of a
+/// `UtilityElement`: a Description, `ImplementationConstraint`, Note or `TaggedValue`.
 ///
-/// [`new`](Self::new) replaces the whole content with any
-/// `MultiLangString` it does not refuse below, held exactly: an empty one,
-/// or one with a repeated
-/// language, is accepted, and
-/// [`validation::validate`](crate::validation::validate) reports it
-/// (SACM23-VAL-010). [`remove`](Self::remove) removes it. A replaced content
-/// keeps the `xmi:id` of its `content` element, and each value keeps the id
-/// of the value at its position; the ids of values beyond the new length
-/// are freed, as are all of them on a removal (ADR 0029). A content holding
-/// a character XML 1.0 cannot represent is refused, last
-/// ([`EditError::UnrepresentableCharacter`]). Apply it with
-/// [`edit::apply`](super::apply). It refuses an unknown element as
-/// [`EditError::ElementNotFound`], then a kind that is no `UtilityElement`
-/// as [`EditError::FeatureNotApplicable`]. Then it refuses an
-/// `ExpressionLangString` value with no `expression` as
-/// [`EditError::TooFewReferences`], and an `expression` the element does not
-/// already hold that holds white space, names no element, or names an
-/// element that is no `Term` or `Expression` ([`EditError::InvalidReference`],
-/// [`EditError::ReferenceNotFound`], [`EditError::WrongReferenceType`], end
-/// `expression`; SACM23-BASE-009). The `UtilityElement`, not its
-/// owner, is in [`changed_ids`](super::Mutation::changed_ids).
+/// - **[`new`](Self::new)** replaces the whole content with any `MultiLangString` it
+///   does not refuse below, held exactly. [`remove`](Self::remove) removes it.
+/// - **Content is not refused.** An empty one, or one with a repeated language, is
+///   accepted, and [`validation::validate`](crate::validation::validate) reports it
+///   (SACM23-VAL-010).
+/// - **Ids are kept by position.** A replaced content keeps the `xmi:id` of its
+///   `content` element, and each value keeps the id of the value at its position.
+/// - **Freed ids.** The ids of values beyond the new length are freed, as are all of
+///   them on a removal (ADR 0029).
+/// - **The `UtilityElement`,** not its owner, is in
+///   [`changed_ids`](super::Mutation::changed_ids).
+/// - **Apply it** with [`edit::apply`](super::apply).
+///
+/// It refuses, in this order:
+///
+/// | Refused | Refusal |
+/// |---|---|
+/// | an unknown element | [`EditError::ElementNotFound`] |
+/// | a kind that is no `UtilityElement` | [`EditError::FeatureNotApplicable`] |
+/// | an `ExpressionLangString` value with no `expression` | [`EditError::TooFewReferences`] |
+/// | an `expression` the element does not already hold that holds white space, names no element, or names an element that is no `Term` or `Expression` | [`EditError::InvalidReference`], [`EditError::ReferenceNotFound`], [`EditError::WrongReferenceType`], end `expression` (SACM23-BASE-009) |
+/// | last, a content holding a character XML 1.0 cannot represent | [`EditError::UnrepresentableCharacter`] |
 ///
 /// # Examples
 ///
@@ -467,14 +476,15 @@ impl SetContent {
 /// Sets the `key` (SACM 2.3 §8.12 `key:MultiLangString[1]`) of a
 /// `TaggedValue`.
 ///
-/// It replaces the whole key with a `MultiLangString`, held exactly, under
-/// the rules of [`SetContent::new`]: an empty key is accepted and reported
-/// by [`validation::validate`](crate::validation::validate), and ids are
-/// kept by position. A key is required, so there is no form that removes
-/// it. Apply it with [`edit::apply`](super::apply). It refuses an unknown
-/// element as [`EditError::ElementNotFound`], then a kind that is no
-/// `TaggedValue` as [`EditError::FeatureNotApplicable`]. Then it checks its
-/// `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).
+/// - **Replaces the whole key** with a `MultiLangString`, held exactly, under the rules
+///   of [`SetContent::new`]: an empty key is accepted and reported by
+///   [`validation::validate`](crate::validation::validate), and ids are kept by position.
+/// - **No remove.** A key is required, so there is no form that removes it.
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
+///   is no `TaggedValue` is [`EditError::FeatureNotApplicable`]. Then it checks its
+///   `ExpressionLangString` values, and last its text, as [`SetContent`] does
+///   (SACM23-BASE-009).
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -533,27 +543,29 @@ impl SetKey {
 /// Sets the `content` of the element's `TaggedValue` with a plain key
 /// (SACM 2.3 §8.12), creating the `TaggedValue` when it has none.
 ///
-/// The tagged value it sets is the one
-/// [`SacmElement::tagged_value`](crate::model::SacmElement::tagged_value)
-/// finds: the first whose key has a value with the content `key`, byte for
-/// byte. Then:
-/// - **None has the key**: it creates a `TaggedValue` as the element's last
-///   child, with the key `MultiLangString::from(key)`, the content, and a
-///   generated id, `tagged_value_<n>`, as
-///   [`CreateTaggedValue`](super::CreateTaggedValue) would. The element is
-///   not changed: the tagged value is in
+/// - **The key rule.** The tagged value it sets is the one
+///   [`SacmElement::tagged_value`](crate::model::SacmElement::tagged_value) finds: the
+///   first whose key has a value with the content `key`, byte for byte.
+/// - **None has the key:** it creates a `TaggedValue` as the element's last child, with
+///   the key `MultiLangString::from(key)`, the content, and a generated id,
+///   `tagged_value_<n>`, as [`CreateTaggedValue`](super::CreateTaggedValue) would.
+/// - **What a create lists.** The element is not changed: the tagged value is in
 ///   [`created_ids`](super::Mutation::created_ids).
-/// - **One has it**: it replaces that tagged value's whole content, keeping
-///   ids by position as [`SetContent`] does. The tagged value is in
-///   [`changed_ids`](super::Mutation::changed_ids), unless the content is
-///   the one held, which changes nothing.
+/// - **One has it:** it replaces that tagged value's whole content, keeping ids by
+///   position as [`SetContent`] does.
+/// - **What a set lists.** The tagged value is in
+///   [`changed_ids`](super::Mutation::changed_ids), unless the content is the one held,
+///   which changes nothing.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
-/// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-/// element as [`EditError::ElementNotFound`], then a kind that holds no
-/// tagged value (§8.6: a `UtilityElement`) as
-/// [`EditError::FeatureNotApplicable`], naming `taggedValue`. Then it checks
-/// the content's `ExpressionLangString`s as [`SetContent`] does; on the set
-/// path, an `expression` the tagged value already holds is kept.
+/// It refuses, in this order:
+///
+/// | Refused | Refusal |
+/// |---|---|
+/// | an unknown element | [`EditError::ElementNotFound`] |
+/// | a kind that holds no tagged value (§8.6: a `UtilityElement`) | [`EditError::FeatureNotApplicable`], naming `taggedValue` |
+/// | the content's `ExpressionLangString`s, as [`SetContent`] checks them; on the set path, an `expression` the tagged value already holds is kept | as [`SetContent`] |
+/// | last, a key or content holding a character XML 1.0 cannot represent | [`EditError::UnrepresentableCharacter`], naming the tagged value |
 ///
 /// # Examples
 ///
@@ -590,9 +602,10 @@ pub struct SetTaggedValue {
 }
 
 impl SetTaggedValue {
-    /// Sets the content of the tagged value of `element` with the key `key`
-    /// to `content`, creating the tagged value if there is none. A `&str`,
-    /// a `String` or a [`LangString`] converts into a content of one value.
+    /// Sets the content of the tagged value of `element` with the key `key` to
+    /// `content`, creating the tagged value if there is none.
+    ///
+    /// A `&str`, a `String` or a [`LangString`] converts into a content of one value.
     #[must_use]
     pub fn new(
         element: impl Into<ElementId>,
@@ -744,15 +757,15 @@ string_set! {
     /// Sets or removes the `version` (SACM 2.3 §12.7 `version: String[0..1]`,
     /// "the version of the artifact") of an `Artifact`.
     ///
-    /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
-    /// removal, and nothing is trimmed. [`remove`](Self::remove) removes it.
-    /// A version holding a character XML 1.0 cannot represent is refused,
-    /// last ([`EditError::UnrepresentableCharacter`]).
-    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-    /// element as [`EditError::ElementNotFound`], then a kind that is no
-    /// `Artifact` as [`EditError::FeatureNotApplicable`], naming `version`.
-    /// The element is in [`changed_ids`](super::Mutation::changed_ids) when
-    /// its version changes.
+    /// - **[`new`](Self::new)** sets it exactly as given: `""` is a value, not a removal,
+    ///   and nothing is trimmed. [`remove`](Self::remove) removes it.
+    /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind
+    ///   that is no `Artifact` is [`EditError::FeatureNotApplicable`], naming `version`.
+    /// - **Last,** a version holding a character XML 1.0 cannot represent is
+    ///   [`EditError::UnrepresentableCharacter`].
+    /// - **The element** is in [`changed_ids`](super::Mutation::changed_ids) when its
+    ///   version changes.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -775,20 +788,21 @@ string_set! {
 }
 
 string_set! {
-    /// Sets or removes the `date` of an `Artifact` (SACM 2.3 §12.7, "the
-    /// date on which the artifact was created") or an `Event` (§12.9, "the
-    /// date on which the Event occurred").
+    /// Sets or removes the `date` of an `Artifact` or an `Event` (SACM 2.3 §12.7,
+    /// §12.9).
     ///
-    /// SACM 2.3 gives `date` no lexical form, and its XML Schema types it
-    /// `xsd:string`, so [`new`](Self::new) holds any string exactly as given,
-    /// `2024-03-01`, `spring 2024` and `""` alike, and nothing ever reports
-    /// one (D-DATE). [`remove`](Self::remove) removes it. A date holding a
-    /// character XML 1.0 cannot represent is refused, last
-    /// ([`EditError::UnrepresentableCharacter`]). Apply it
-    /// with [`edit::apply`](super::apply). It refuses an unknown element as
-    /// [`EditError::ElementNotFound`], then a kind that is neither an
-    /// `Artifact` nor an `Event` as [`EditError::FeatureNotApplicable`],
-    /// naming `date`.
+    /// - **The date** is "the date on which the artifact was created" (§12.7), or "the
+    ///   date on which the Event occurred" (§12.9).
+    /// - **Any string.** SACM 2.3 gives `date` no lexical form, and its XML Schema types
+    ///   it `xsd:string`. So [`new`](Self::new) holds any string exactly as given,
+    ///   `2024-03-01`, `spring 2024` and `""` alike, and nothing ever reports one (D-DATE).
+    /// - **[`remove`](Self::remove)** removes it.
+    /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind
+    ///   that is neither an `Artifact` nor an `Event` is
+    ///   [`EditError::FeatureNotApplicable`], naming `date`.
+    /// - **Last,** a date holding a character XML 1.0 cannot represent is
+    ///   [`EditError::UnrepresentableCharacter`].
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -815,14 +829,15 @@ string_set! {
     /// Sets or removes the `startTime` (SACM 2.3 §12.11, "time when the
     /// activity started") of an `Activity`.
     ///
-    /// The value is held exactly as given, as [`SetDate`]'s is (D-DATE), and
-    /// nothing checks it against the `endTime`: SACM 2.3 states no order.
-    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-    /// element as [`EditError::ElementNotFound`], then a kind that is no
-    /// `Activity` as [`EditError::FeatureNotApplicable`], naming `startTime`;
-    /// [`xmi::write`](crate::xmi::write) refuses a character XML cannot
-    /// represent
-    /// ([`WriteAttribute::StartTime`](crate::xmi::WriteAttribute::StartTime)).
+    /// - **Held exactly as given,** as [`SetDate`]'s value is (D-DATE).
+    /// - **No order is checked** against the `endTime`: SACM 2.3 states none.
+    /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind
+    ///   that is no `Activity` is [`EditError::FeatureNotApplicable`], naming `startTime`.
+    /// - **Last,** a value holding a character XML 1.0 cannot represent is
+    ///   [`EditError::UnrepresentableCharacter`], naming
+    ///   [`WriteAttribute::StartTime`](crate::xmi::WriteAttribute::StartTime), as
+    ///   [`xmi::write`](crate::xmi::write) would.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -845,14 +860,15 @@ string_set! {
     /// Sets or removes the `endTime` (SACM 2.3 §12.11, "time when the
     /// activity ended") of an `Activity`.
     ///
-    /// The value is held exactly as given, as [`SetDate`]'s is (D-DATE), and
-    /// nothing checks it against the `startTime`: SACM 2.3 states no order.
-    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-    /// element as [`EditError::ElementNotFound`], then a kind that is no
-    /// `Activity` as [`EditError::FeatureNotApplicable`], naming `endTime`;
-    /// [`xmi::write`](crate::xmi::write) refuses a character XML cannot
-    /// represent
-    /// ([`WriteAttribute::EndTime`](crate::xmi::WriteAttribute::EndTime)).
+    /// - **Held exactly as given,** as [`SetDate`]'s value is (D-DATE).
+    /// - **No order is checked** against the `startTime`: SACM 2.3 states none.
+    /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind
+    ///   that is no `Activity` is [`EditError::FeatureNotApplicable`], naming `endTime`.
+    /// - **Last,** a value holding a character XML 1.0 cannot represent is
+    ///   [`EditError::UnrepresentableCharacter`], naming
+    ///   [`WriteAttribute::EndTime`](crate::xmi::WriteAttribute::EndTime), as
+    ///   [`xmi::write`](crate::xmi::write) would.
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -875,17 +891,17 @@ string_set! {
 /// Sets the `value` (SACM 2.3 §10.9 `value:String[1]`, "the value of the
 /// expression") of a `Term` or an `Expression`.
 ///
-/// It sets it exactly as given: `""` is a value, and nothing is trimmed. A
-/// value is required, so there is no form that removes it, as for
-/// [`SetKey`]; a file without one still reads, and
-/// [`validation::validate`](crate::validation::validate) reports it. A value
-/// holding a character XML 1.0 cannot represent is refused, last
-/// ([`EditError::UnrepresentableCharacter`]). Apply it
-/// with [`edit::apply`](super::apply). It refuses an unknown element as
-/// [`EditError::ElementNotFound`], then a kind that is no `ExpressionElement`
-/// as [`EditError::FeatureNotApplicable`], naming `value`. The element is in
-/// [`changed_ids`](super::Mutation::changed_ids) exactly when its value
-/// changes.
+/// - **Exactly as given:** `""` is a value, and nothing is trimmed.
+/// - **No remove.** A value is required, so there is no form that removes it, as for
+///   [`SetKey`]. A file without one still reads, and
+///   [`validation::validate`](crate::validation::validate) reports it.
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
+///   is no `ExpressionElement` is [`EditError::FeatureNotApplicable`], naming `value`.
+/// - **Last,** a value holding a character XML 1.0 cannot represent is
+///   [`EditError::UnrepresentableCharacter`].
+/// - **The element** is in [`changed_ids`](super::Mutation::changed_ids) exactly when
+///   its value changes.
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///
@@ -953,17 +969,18 @@ impl From<SetValue> for super::Operation {
 
 string_set! {
     /// Sets or removes the `externalReference` (SACM 2.3 §10.11
-    /// `externalReference:String[0..1]`, "an external reference (e.g., URI)
-    /// to the object referred to by the Term") of a `Term`.
+    /// `externalReference:String[0..1]`) of a `Term`.
     ///
-    /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
-    /// removal, and nothing is trimmed or checked as a URI.
-    /// [`remove`](Self::remove) removes it. One holding a character XML 1.0
-    /// cannot represent is refused, last ([`EditError::UnrepresentableCharacter`]).
-    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
-    /// element as [`EditError::ElementNotFound`], then a kind that is no
-    /// `Term` as [`EditError::FeatureNotApplicable`], naming
-    /// `externalReference`.
+    /// - **What it is.** "An external reference (e.g., URI) to the object referred to by
+    ///   the Term" (§10.11).
+    /// - **[`new`](Self::new)** sets it exactly as given: `""` is a value, not a removal,
+    ///   and nothing is trimmed or checked as a URI. [`remove`](Self::remove) removes it.
+    /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind
+    ///   that is no `Term` is [`EditError::FeatureNotApplicable`], naming
+    ///   `externalReference`.
+    /// - **Last,** one holding a character XML 1.0 cannot represent is
+    ///   [`EditError::UnrepresentableCharacter`].
+    /// - **Apply it** with [`edit::apply`](super::apply).
     ///
     /// # Examples
     ///
@@ -985,24 +1002,26 @@ string_set! {
     SetExternalReference, external_reference, ExternalReference, "externalReference"
 }
 
-/// Sets or removes the `location` (SACM 2.3 §12.10
-/// `location:Base::MultiLangString`, "the path or URL specifying the location
-/// of the Resource, can be in multiple languages") of a `Resource`.
+/// Sets or removes the `location` (SACM 2.3 §12.10 `location:Base::MultiLangString`) of
+/// a `Resource`.
 ///
-/// It follows the rules of [`SetContent`]: [`new`](Self::new) replaces the
-/// whole location with a `MultiLangString`, held exactly, an empty one or
-/// one with a repeated language included, which
-/// [`validation::validate`](crate::validation::validate) reports
-/// (SACM23-VAL-010); [`remove`](Self::remove) removes it. A replaced
-/// location keeps the `xmi:id` of its `location` element, and each value
-/// keeps the id of the value at its position; the ids of values beyond the
-/// new length are freed, as are all of them on a removal. A location
-/// holding a character XML 1.0 cannot represent is refused, last
-/// ([`EditError::UnrepresentableCharacter`]). Apply it with
-/// [`edit::apply`](super::apply). It refuses an unknown element as
-/// [`EditError::ElementNotFound`], then a kind that is no `Resource` as
-/// [`EditError::FeatureNotApplicable`], naming `location`. Then it checks
-/// its `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).
+/// - **What it is.** "The path or URL specifying the location of the Resource, can be in
+///   multiple languages" (§12.10).
+/// - **Rules.** Those of [`SetContent`].
+/// - **[`new`](Self::new)** replaces the whole location with a `MultiLangString`, held
+///   exactly. An empty one, or one with a repeated language, is accepted, and
+///   [`validation::validate`](crate::validation::validate) reports it (SACM23-VAL-010).
+/// - **[`remove`](Self::remove)** removes it.
+/// - **Ids are kept by position.** A replaced location keeps the `xmi:id` of its
+///   `location` element, and each value keeps the id of the value at its position.
+/// - **Freed ids.** The ids of values beyond the new length are freed, as are all of
+///   them on a removal.
+/// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
+///   is no `Resource` is [`EditError::FeatureNotApplicable`], naming `location`. Then it
+///   checks its `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).
+/// - **Last,** a location holding a character XML 1.0 cannot represent is
+///   [`EditError::UnrepresentableCharacter`].
+/// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
 ///

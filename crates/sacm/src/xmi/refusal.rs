@@ -57,9 +57,10 @@ pub(super) enum Refusal {
     )]
     Interim(&'static str),
     /// Input strict mode never reads, which a tolerant read reads under the
-    /// row (ADR 0041 D6), such as a root in an older SACM revision's
-    /// namespace (D-NS-PIN) or a name in the XMI namespace EMF writes (ADR
-    /// 0044 D1). It need not be defective.
+    /// row (ADR 0041 D6). It need not be defective.
+    ///
+    /// Such as a root in an older SACM revision's namespace (D-NS-PIN) or a
+    /// name in the XMI namespace EMF writes (ADR 0044 D1).
     Tolerated(&'static str),
     /// A limit of this version.
     Limit,
@@ -115,9 +116,8 @@ pub(super) enum Unread {
     /// A root in the SACM 2.4 namespace, which LIB-COMPAT-018 is to decide
     /// on.
     Sacm24,
-    /// A name in the XMI namespace EMF writes, `http://www.omg.org/XMI`:
-    /// the `XMI` element, or any other element or attribute name (ADR 0044
-    /// D1).
+    /// A name in the XMI namespace EMF writes, `http://www.omg.org/XMI`: the
+    /// `XMI` element, or any other element or attribute name (ADR 0044 D1).
     EmfXmiNamespace,
     /// An `XMI` element in neither XMI namespace, or in none.
     OtherXmiNamespace,
@@ -129,13 +129,15 @@ pub(super) enum Unread {
     /// An element the document could not hold, which checked input never
     /// gives.
     Unheld,
-    /// An attribute, text, or an XMI-namespace element XMI 2.5.1 does not
-    /// define, on or under the `xmi:XMI` element, which has no element to
-    /// keep it (ADR 0042 D4).
+    /// Content on or under the `xmi:XMI` element, which has no element to keep
+    /// it (ADR 0042 D4).
+    ///
+    /// An attribute, text, or an XMI-namespace element XMI 2.5.1 does not define.
     WrapperContent,
-    /// A preserved attribute whose prefix `sacm` or `xmi` is bound to
-    /// another namespace, which the written start tag binds to SACM 2.3 or
-    /// XMI 2.5.1.
+    /// A preserved attribute whose prefix `sacm` or `xmi` is bound to another
+    /// namespace.
+    ///
+    /// The written start tag binds those prefixes to SACM 2.3 and XMI 2.5.1.
     UnwritablePrefix,
 }
 

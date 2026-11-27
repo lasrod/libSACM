@@ -4,21 +4,23 @@ use super::EditError;
 use super::plan::Plan;
 use crate::model::{Document, ElementId, Preserved, SacmElement, admits};
 
-/// Moves an element, with everything it contains and its preserved content,
-/// under another parent ([`new`](Self::new)) or to the roots
-/// ([`root`](Self::root)): after the last child or root, or at a position
-/// ([`with_position`](Self::with_position)), its index among the new
-/// parent's children (or the roots) after the move.
+/// Moves an element, with everything it contains and its preserved content, under
+/// another parent ([`new`](Self::new)) or to the roots ([`root`](Self::root)).
 ///
-/// Apply it with [`edit::apply`](super::apply). Ids, references and the
-/// element's features do not change, and neither do the ids generated next;
-/// its parent, its role and the order do, and
-/// [`xmi::write`](crate::xmi::write) writes the role of the new parent's
-/// class (an `argumentElement` of an ArgumentPackage, say, or an
-/// `artifactElement` of an ArtifactPackage). A preserved child of either
-/// parent keeps its place after the typed child it followed. The refusals
-/// and what the [`Mutation`](super::Mutation) reports are in the
-/// [module docs](super#moving-and-copying-elements).
+/// - **Where.** After the last child or root, or at a position
+///   ([`with_position`](Self::with_position)).
+/// - **Kept.** Ids, references and the element's features, and the ids generated next.
+/// - **Changed.** Its parent, its role and the order. [`xmi::write`](crate::xmi::write)
+///   writes the role of the new parent's class: an `argumentElement` of an
+///   ArgumentPackage, say, or an `artifactElement` of an ArtifactPackage.
+/// - **Preserved children.** One of either parent keeps its place after the typed child
+///   it followed.
+/// - **The [`Mutation`](super::Mutation)** lists the element when its parent changes, and
+///   each parent whose child order or preserved placement changes
+///   ([module docs](super#moving-and-copying-elements)).
+/// - **A root moved among the roots** lists no id: the order of the roots belongs to no
+///   element ([`Mutation::is_empty`](super::Mutation::is_empty)).
+/// - **Refusals.** [`apply`](super::apply#moves) lists the checks, in order.
 ///
 /// # Examples
 ///
@@ -84,10 +86,12 @@ impl MoveElement {
         }
     }
 
-    /// Puts the element at `position` instead of last: its index among the
-    /// new parent's children (or the roots) after the move, from 0 to the
-    /// number of the others. Past that, [`apply`](super::apply) refuses with
-    /// [`EditError::PositionOutOfRange`].
+    /// Puts the element at `position` instead of last.
+    ///
+    /// - **The position** is its index among the new parent's children (or the roots)
+    ///   after the move, from 0 to the number of the others.
+    /// - **Past that,** [`apply`](super::apply) refuses with
+    ///   [`EditError::PositionOutOfRange`].
     #[must_use]
     pub fn with_position(self, position: usize) -> Self {
         Self {

@@ -13,6 +13,13 @@
 //!   docs/style.md, which exists.
 //! - **The matrix link.** The crate root and the three READMEs link the
 //!   functionality matrix for current status.
+//! - **Item docs.** The `///` docs of public items keep the four-line rule
+//!   and a summary of at most two lines: `model`, `compare`, `diagnostic`
+//!   and `validation` (LIB-DOC-012), `edit` (LIB-DOC-014), `xmi`
+//!   (LIB-DOC-015).
+//! - **Examples.** Every public type and fallible public function written
+//!   out in the library has a runnable example, and clippy pedantic
+//!   enforces `# Errors` and `# Panics` (LIB-DOC-002).
 //!
 //! The paragraph classifier is a function over a document's lines; its rules
 //! are pinned by synthetic snippets. Nothing on disk is changed.
@@ -1035,15 +1042,27 @@ fn doc_blocks(source: &str) -> Vec<DocBlock> {
         blocks.push(DocBlock {
             lines: block,
             item: lines.get(next).map_or("", |line| line.trim()).to_owned(),
-            in_test: tests.iter().any(|(from, to)| start > *from && start < *to),
-            in_trait_impl: impls
-                .iter()
-                .filter(|(from, to, _)| start > *from && start < *to)
-                .max_by_key(|(from, _, _)| *from)
-                .is_some_and(|(_, _, is_trait)| *is_trait),
+            in_test: within(&tests, start),
+            in_trait_impl: in_trait_impl(&impls, start),
         });
     }
     blocks
+}
+
+/// Whether the line at `index` is strictly inside one of `ranges`, the index
+/// ranges [`test_modules`] or [`macro_bodies`] gives.
+fn within(ranges: &[(usize, usize)], index: usize) -> bool {
+    ranges.iter().any(|(from, to)| index > *from && index < *to)
+}
+
+/// Whether the innermost of the `impl` blocks `impls` around the line at
+/// `index` is a trait impl.
+fn in_trait_impl(impls: &[(usize, usize, bool)], index: usize) -> bool {
+    impls
+        .iter()
+        .filter(|(from, to, _)| index > *from && index < *to)
+        .max_by_key(|(from, _, _)| *from)
+        .is_some_and(|(_, _, is_trait)| *is_trait)
 }
 
 /// The lines of every `///` block of a Rust source, public or not.
@@ -1264,16 +1283,17 @@ fn long_summary_problems(rel: &str, source: &str) -> Vec<String> {
         .collect()
 }
 
-/// The files LIB-DOC-012 checks, each with its path from the repository root
-/// and its text, in a stable order.
-fn item_doc_sources() -> Vec<(String, String)> {
+/// The files of the `modules` of `crates/sacm/src` that the row `row`
+/// checks, each `<module>.rs` and every `.rs` file under `<module>/`, each
+/// with its path from the repository root and its text, in a stable order.
+fn item_doc_sources(row: &str, modules: &[&str]) -> Vec<(String, String)> {
     let src = repository_root().join("crates/sacm/src");
     let mut files = Vec::new();
-    for module in ITEM_DOC_MODULES {
+    for module in modules {
         let file = src.join(format!("{module}.rs"));
         assert!(
             file.is_file(),
-            "LIB-DOC-012: {} must exist",
+            "{row}: {} must exist",
             repository_relative(&file)
         );
         files.push(file);
@@ -1390,20 +1410,19 @@ pub fn f() {}
     );
 }
 
-#[test]
-fn lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines() {
-    // Controls: only the docs of public items, outside test modules, count.
-    check_public_item_controls();
-
-    let sources = item_doc_sources();
+/// The four-line rule over the public `///` docs of `modules`, for the row
+/// `row`: more than 100 public blocks are found, and no prose paragraph or
+/// list item in them runs over [`MAX_LINES`].
+fn assert_no_long_item_docs(row: &str, modules: &[&str]) {
+    let sources = item_doc_sources(row, modules);
     let blocks: usize = sources
         .iter()
         .map(|(_, text)| public_doc_blocks(text).len())
         .sum();
     assert!(
         blocks > 100,
-        "LIB-DOC-012: the public item docs must be found in the `///` blocks of the \
-         {ITEM_DOC_MODULES:?} modules; found {blocks} blocks"
+        "{row}: the public item docs must be found in the `///` blocks of the \
+         {modules:?} modules; found {blocks} blocks"
     );
     let problems: Vec<String> = sources
         .iter()
@@ -1411,11 +1430,51 @@ fn lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines()
         .collect();
     assert!(
         problems.is_empty(),
-        "LIB-DOC-012: no prose paragraph or list item in the `///` docs of the \
-         {ITEM_DOC_MODULES:?} modules may run over {MAX_LINES} display lines of \
+        "{row}: no prose paragraph or list item in the `///` docs of the \
+         {modules:?} modules may run over {MAX_LINES} display lines of \
          {DISPLAY_WIDTH} characters (docs/style.md); found {}: {problems:#?}",
         problems.len()
     );
+}
+
+/// The two-line summary rule over the public `///` docs of `modules`, for
+/// the row `row`: more than 100 summaries are found, and none runs over
+/// [`MAX_SUMMARY_LINES`].
+fn assert_no_long_summaries(row: &str, modules: &[&str]) {
+    let sources = item_doc_sources(row, modules);
+    let summaries: usize = sources
+        .iter()
+        .map(|(_, text)| {
+            public_doc_blocks(text)
+                .iter()
+                .filter(|block| summary(block).is_some())
+                .count()
+        })
+        .sum();
+    assert!(
+        summaries > 100,
+        "{row}: the item summaries must be found in the `///` blocks of the \
+         {modules:?} modules; found {summaries}"
+    );
+    let problems: Vec<String> = sources
+        .iter()
+        .flat_map(|(rel, text)| long_summary_problems(rel, text))
+        .collect();
+    assert!(
+        problems.is_empty(),
+        "{row}: no item summary (the first paragraph of an item's `///` docs) in the \
+         {modules:?} modules may run over {MAX_SUMMARY_LINES} display lines of \
+         {DISPLAY_WIDTH} characters (docs/style.md); found {}: {problems:#?}",
+        problems.len()
+    );
+}
+
+#[test]
+fn lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines() {
+    // Controls: only the docs of public items, outside test modules, count.
+    check_public_item_controls();
+
+    assert_no_long_item_docs("LIB-DOC-012", &ITEM_DOC_MODULES);
 }
 
 #[test]
@@ -1473,31 +1532,828 @@ fn lib_doc_012_no_item_summary_runs_over_two_lines() {
     // Controls: an attribute between `///` lines does not split a block.
     check_doc_attribute_controls();
 
-    let sources = item_doc_sources();
-    let summaries: usize = sources
+    assert_no_long_summaries("LIB-DOC-012", &ITEM_DOC_MODULES);
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-014 and LIB-DOC-015: item docs of edit and xmi
+// ---------------------------------------------------------------------------
+
+/// The module whose `///` docs LIB-DOC-014 checks, as LIB-DOC-012 checks its
+/// modules: `edit.rs` and every `.rs` file under `edit/`.
+const EDIT_MODULES: [&str; 1] = ["edit"];
+
+/// The module whose `///` docs LIB-DOC-015 checks, as LIB-DOC-012 checks its
+/// modules: `xmi.rs` and every `.rs` file under `xmi/`.
+const XMI_MODULES: [&str; 1] = ["xmi"];
+
+/// Whether `sources`, as [`item_doc_sources`] gives them, hold the file
+/// `crates/sacm/src/<module>.rs` and a file under `crates/sacm/src/<module>/`.
+fn covers_module_and_directory(sources: &[(String, String)], module: &str) -> bool {
+    let file = format!("crates/sacm/src/{module}.rs");
+    let dir = format!("crates/sacm/src/{module}/");
+    sources.iter().any(|(rel, _)| *rel == file)
+        && sources.iter().any(|(rel, _)| rel.starts_with(&dir))
+}
+
+#[test]
+fn lib_doc_014_no_paragraph_or_list_item_in_the_edit_item_docs_runs_over_four_lines() {
+    // Control: the module list reaches edit.rs and the files under edit/.
+    assert!(
+        covers_module_and_directory(&item_doc_sources("LIB-DOC-014", &EDIT_MODULES), "edit"),
+        "LIB-DOC-014: crates/sacm/src/edit.rs and the files under crates/sacm/src/edit/ must \
+         be checked"
+    );
+    assert_no_long_item_docs("LIB-DOC-014", &EDIT_MODULES);
+}
+
+#[test]
+fn lib_doc_014_no_edit_item_summary_runs_over_two_lines() {
+    assert_no_long_summaries("LIB-DOC-014", &EDIT_MODULES);
+}
+
+#[test]
+fn lib_doc_015_no_paragraph_or_list_item_in_the_xmi_item_docs_runs_over_four_lines() {
+    // Control: the module list reaches xmi.rs and the files under xmi/.
+    assert!(
+        covers_module_and_directory(&item_doc_sources("LIB-DOC-015", &XMI_MODULES), "xmi"),
+        "LIB-DOC-015: crates/sacm/src/xmi.rs and the files under crates/sacm/src/xmi/ must \
+         be checked"
+    );
+    assert_no_long_item_docs("LIB-DOC-015", &XMI_MODULES);
+}
+
+#[test]
+fn lib_doc_015_no_xmi_item_summary_runs_over_two_lines() {
+    assert_no_long_summaries("LIB-DOC-015", &XMI_MODULES);
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-002: a runnable example on every public type and fallible function
+// ---------------------------------------------------------------------------
+
+/// One item of a Rust source, as [`source_items`] reads it.
+struct SourceItem {
+    /// The 1-based number of the item's first line.
+    line: usize,
+    /// The item's lines from its first up to its `{` or `;` (outside
+    /// parentheses and brackets), joined by spaces.
+    signature: String,
+    /// The item's `///` docs, each line with its number and its text.
+    docs: Vec<(usize, String)>,
+    /// Whether one of the item's own attributes gates it on the
+    /// `test-support` feature: `#[cfg(feature = "test-support")]`, or the
+    /// `#[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]` that marks
+    /// an item public only under it.
+    test_support: bool,
+    /// Whether the public filter of LIB-DOC-012, [`counts`], counts the
+    /// item, and it is outside every `macro_rules!` body.
+    public: bool,
+    /// The header of the innermost `impl` block around the item, trimmed and
+    /// without its `{`; empty outside one.
+    owner: String,
+}
+
+/// The `macro_rules!` bodies of `lines`, as index ranges: from the
+/// `macro_rules! … {` line to the `}` at its indentation (the sources are
+/// rustfmt-formatted).
+fn macro_bodies(lines: &[&str]) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !(trimmed.starts_with("macro_rules!") && trimmed.ends_with('{')) {
+            continue;
+        }
+        let close = format!("{}}}", &line[..line.len() - line.trim_start().len()]);
+        let end = lines[i + 1..]
+            .iter()
+            .position(|line| *line == close)
+            .map_or(lines.len(), |k| i + 1 + k);
+        ranges.push((i, end));
+    }
+    ranges
+}
+
+/// The signature of the item that starts at `lines[start]`: its text up to
+/// its first `{` or `;` outside parentheses and brackets, its lines joined by
+/// spaces.
+fn signature(lines: &[&str], start: usize) -> String {
+    let mut text = String::new();
+    let mut depth = 0_i64;
+    for line in &lines[start..] {
+        for c in line.trim().chars() {
+            match c {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                '{' | ';' if depth <= 0 => return text.trim().to_owned(),
+                _ => {}
+            }
+            text.push(c);
+        }
+        text.push(' ');
+    }
+    text.trim().to_owned()
+}
+
+/// The items of a Rust source, each with the `///` docs and the attributes
+/// before it. An item's header is the run of `///` lines, attributes, blank
+/// lines and comments before its first line; the item is the first line after
+/// it that is none of these.
+fn source_items(source: &str) -> Vec<SourceItem> {
+    let lines: Vec<&str> = source.lines().collect();
+    let tests = test_modules(&lines);
+    let impls = impl_blocks(&lines);
+    let macros = macro_bodies(&lines);
+    let mut items = Vec::new();
+    let mut docs = Vec::new();
+    let mut test_support = false;
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+        if let Some(text) = doc_text(line) {
+            docs.push((i + 1, text));
+            i += 1;
+            continue;
+        }
+        if is_attribute(line) {
+            let end = attribute_end(&lines, i);
+            test_support |= lines[i..end]
+                .join(" ")
+                .contains("cfg(feature = \"test-support\")");
+            i = end;
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            i += 1;
+            continue;
+        }
+        let block = DocBlock {
+            lines: std::mem::take(&mut docs),
+            item: trimmed.to_owned(),
+            in_test: within(&tests, i),
+            in_trait_impl: in_trait_impl(&impls, i),
+        };
+        let owner = impls
+            .iter()
+            .filter(|(from, to, _)| i > *from && i < *to)
+            .max_by_key(|(from, _, _)| *from)
+            .map_or(String::new(), |(from, _, _)| {
+                lines[*from].trim().trim_end_matches('{').trim().to_owned()
+            });
+        items.push(SourceItem {
+            line: i + 1,
+            signature: signature(&lines, i),
+            public: counts(&block) && !within(&macros, i),
+            docs: block.lines,
+            test_support: std::mem::take(&mut test_support),
+            owner,
+        });
+        i += 1;
+    }
+    items
+}
+
+/// Whether the info string of a fence, the text after its backticks or
+/// tildes, makes it a doctest rustdoc runs: empty, or only the tokens
+/// `rust`, `should_panic`, `test_harness`, `standalone_crate` and
+/// `edition…`. `ignore`, `no_run`, `compile_fail`, another language and any
+/// unknown token make it not runnable.
+fn is_runnable_info(info: &str) -> bool {
+    info.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|token| !token.is_empty())
+        .all(|token| {
+            matches!(
+                token,
+                "rust" | "should_panic" | "test_harness" | "standalone_crate"
+            ) || token.starts_with("edition")
+        })
+}
+
+/// Whether the docs `docs` hold an `# Examples` heading followed, in its
+/// section (up to the next level-1 heading), by a runnable code fence. A
+/// heading inside a code fence is code.
+fn has_runnable_example(docs: &[(usize, String)]) -> bool {
+    let mut open: Option<(char, usize)> = None;
+    let mut in_examples = false;
+    for (_, text) in docs {
+        let trimmed = text.trim();
+        if let Some(fence_open) = open {
+            if closes(trimmed, fence_open) {
+                open = None;
+            }
+            continue;
+        }
+        if let Some(opened) = fence(trimmed) {
+            open = Some(opened);
+            if in_examples && is_runnable_info(trimmed.trim_start_matches(opened.0)) {
+                return true;
+            }
+            continue;
+        }
+        if is_heading(trimmed) && trimmed.chars().take_while(|c| *c == '#').count() == 1 {
+            in_examples = trimmed == "# Examples";
+        }
+    }
+    false
+}
+
+/// Whether the item line `item` declares a public type: `pub struct`,
+/// `pub enum` or `pub trait`.
+fn is_public_type(item: &str) -> bool {
+    ["pub struct ", "pub enum ", "pub trait "]
+        .iter()
+        .any(|prefix| item.starts_with(prefix))
+}
+
+/// Whether the item line `item` declares a `pub fn` (`pub const fn` too).
+fn is_public_fn(item: &str) -> bool {
+    ["pub fn ", "pub const fn "]
+        .iter()
+        .any(|prefix| item.starts_with(prefix))
+}
+
+/// The return type of the function signature `signature`: the text after
+/// its `->` outside parentheses and angle brackets, up to a `where`; `None`
+/// without one.
+fn return_type(signature: &str) -> Option<&str> {
+    let bytes = signature.as_bytes();
+    let mut parens = 0_i64;
+    let mut angles = 0_i64;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'-' if bytes.get(i + 1) == Some(&b'>') => {
+                if parens == 0 && angles == 0 {
+                    let rest = &signature[i + 2..];
+                    let end = rest.find(" where ").unwrap_or(rest.len());
+                    return Some(rest[..end].trim());
+                }
+                i += 2;
+                continue;
+            }
+            b'(' | b'[' => parens += 1,
+            b')' | b']' => parens -= 1,
+            b'<' => angles += 1,
+            b'>' => angles -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Whether the function signature `signature` returns `Result<…>`, by any
+/// path (`io::Result<…>` too); not an `Option<Result<…>>` or an iterator of
+/// results.
+fn returns_result(signature: &str) -> bool {
+    return_type(signature).is_some_and(|ret| {
+        ret.find('<')
+            .is_some_and(|open| ret[..open].trim().rsplit("::").next() == Some("Result"))
+    })
+}
+
+/// A short name of `item` for a problem: its signature up to its first `(`,
+/// `<` or `{`, with its `impl` block's header if it has one.
+fn item_label(item: &SourceItem) -> String {
+    let head = item
+        .signature
+        .split(['(', '<', '{'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if item.owner.is_empty() {
+        head.to_owned()
+    } else {
+        format!("{head} (in `{}`)", item.owner)
+    }
+}
+
+/// The public types of `source`, the file `rel`, without a runnable
+/// example, as `rel:line label` problems. Test-support items are exempt:
+/// they are outside the stable API (ADR 0045 D7).
+fn type_example_problems(rel: &str, source: &str) -> Vec<String> {
+    source_items(source)
+        .iter()
+        .filter(|item| item.public && !item.test_support && is_public_type(&item.signature))
+        .filter(|item| !has_runnable_example(&item.docs))
+        .map(|item| format!("{rel}:{} {}", item.line, item_label(item)))
+        .collect()
+}
+
+/// The fallible public functions of `source`, the file `rel`, as
+/// [`source_items`] reads them: each `pub fn` the public filter counts,
+/// outside test-support (ADR 0045 D7), whose signature returns `Result<…>`.
+fn fallible_functions(source: &str) -> Vec<SourceItem> {
+    source_items(source)
+        .into_iter()
+        .filter(|item| {
+            item.public
+                && !item.test_support
+                && is_public_fn(&item.signature)
+                && returns_result(&item.signature)
+        })
+        .collect()
+}
+
+/// The fallible public functions of `source`, the file `rel`, without a
+/// runnable example, as `rel:line label` problems.
+fn fallible_example_problems(rel: &str, source: &str) -> Vec<String> {
+    fallible_functions(source)
+        .iter()
+        .filter(|item| !has_runnable_example(&item.docs))
+        .map(|item| format!("{rel}:{} {}", item.line, item_label(item)))
+        .collect()
+}
+
+/// Every `.rs` file of `crates/sacm/src`, with its path from the repository
+/// root and its text, in a stable order.
+fn library_sources() -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    rust_files(&repository_root().join("crates/sacm/src"), &mut files);
+    files
+        .iter()
+        .map(|path| {
+            let text =
+                fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            (repository_relative(path), text)
+        })
+        .collect()
+}
+
+#[test]
+fn lib_doc_002_the_type_example_rule_needs_a_runnable_examples_section() {
+    let runnable = "\
+/// A type.
+///
+/// # Examples
+///
+/// ```
+/// let x = 1;
+/// ```
+pub struct A;
+";
+    assert_eq!(
+        type_example_problems("m.rs", runnable),
+        Vec::<String>::new(),
+        "LIB-DOC-002: a type with an `# Examples` section and a plain fence has a runnable example"
+    );
+    for (what, source) in [
+        ("without docs", "pub struct A;\n"),
+        (
+            "without an `# Examples` section",
+            "/// A type.\npub struct A;\n",
+        ),
+        (
+            "with a `rust,ignore` example",
+            "/// A type.\n///\n/// # Examples\n///\n/// ```rust,ignore\n/// let x = 1;\n/// ```\npub struct A;\n",
+        ),
+        (
+            "with a `no_run` example",
+            "/// A type.\n///\n/// # Examples\n///\n/// ```no_run\n/// let x = 1;\n/// ```\npub struct A;\n",
+        ),
+        (
+            "with a `text` fence as its example",
+            "/// A type.\n///\n/// # Examples\n///\n/// ```text\n/// x\n/// ```\npub struct A;\n",
+        ),
+        (
+            "with its only fence under another heading",
+            "/// A type.\n///\n/// # Examples\n///\n/// See below.\n///\n/// # Notes\n///\n/// ```\n/// let x = 1;\n/// ```\npub struct A;\n",
+        ),
+        (
+            "with `# Examples` only inside a code fence",
+            "/// A type.\n///\n/// ```\n/// # Examples\n/// ```\n///\n/// ```\n/// let x = 1;\n/// ```\npub struct A;\n",
+        ),
+    ] {
+        assert_eq!(
+            type_example_problems("m.rs", source),
+            [format!("m.rs:{} pub struct A", source.lines().count())],
+            "LIB-DOC-002: a type {what} has no runnable example and must be reported"
+        );
+    }
+    for (what, item) in [
+        ("a `pub enum`", "pub enum E {"),
+        ("a `pub trait`", "pub trait T {"),
+    ] {
+        assert_eq!(
+            type_example_problems("m.rs", &format!("/// A type.\n{item}\n}}\n")).len(),
+            1,
+            "LIB-DOC-002: {what} without an example must be reported"
+        );
+    }
+    let deeper = "/// A type.\n///\n/// # Examples\n///\n/// ## Reading\n///\n/// ```should_panic\n/// panic!();\n/// ```\npub struct A;\n";
+    assert_eq!(
+        type_example_problems("m.rs", deeper),
+        Vec::<String>::new(),
+        "LIB-DOC-002: a `should_panic` fence under a deeper heading of `# Examples` runs"
+    );
+}
+
+#[test]
+fn lib_doc_002_the_type_example_rule_skips_test_support_private_test_and_macro_items() {
+    let source = "\
+/// Behind the feature.
+#[cfg(feature = \"test-support\")]
+pub struct Gated;
+// Public only under the feature, marked for docs.rs.
+/// Why a seam refused.
+#[derive(Debug)]
+#[cfg_attr(docsrs, doc(cfg(feature = \"test-support\")))]
+pub enum SeamError {}
+/// Crate-private.
+pub(crate) struct Private;
+#[cfg(test)]
+mod tests {
+    pub struct Helper;
+}
+macro_rules! operation {
+    ($name:ident) => {
+        pub struct $name;
+    };
+}
+/// Not exempt: the feature is negated.
+#[cfg(not(feature = \"test-support\"))]
+pub struct Ungated;
+";
+    assert_eq!(
+        type_example_problems("m.rs", source),
+        ["m.rs:22 pub struct Ungated"],
+        "LIB-DOC-002: test-support types (ADR 0045 D7), crate-private types, types in \
+         `#[cfg(test)]` modules and `macro_rules!` bodies are not checked; a type gated on \
+         `not(feature = \"test-support\")` is"
+    );
+}
+
+#[test]
+fn lib_doc_002_the_fallible_function_rule_finds_result_returning_functions() {
+    let source = "\
+/// Fails.
+pub fn f() -> Result<(), E> {}
+/// Fails, over several lines.
+pub fn apply(
+    document: &mut Document,
+    operation: impl Into<Operation>,
+) -> Result<Mutation, EditError> {
+}
+/// By another path.
+pub fn g(x: [u8; 4]) -> io::Result<()>;
+/// With a closure bound and a where clause.
+pub fn h<F: Fn(u8) -> bool>(f: F) -> Result<u8, E>
+where
+    F: Copy,
+{
+}
+impl<'d> Batch<'d> {
+    /// A method.
+    pub fn apply(&mut self, operation: impl Into<Operation>) -> Result<Mutation, BatchError> {
+    }
+}
+";
+    let found: Vec<usize> = fallible_functions(source)
+        .iter()
+        .map(|item| item.line)
+        .collect();
+    assert_eq!(
+        found,
+        [2, 4, 10, 12, 19],
+        "LIB-DOC-002: `pub fn f() -> Result<(), E>`, a multi-line signature returning `Result`, \
+         `io::Result`, a signature with a `Fn() -> bool` bound and a where clause, and a method \
+         are fallible"
+    );
+    assert_eq!(
+        fallible_example_problems("m.rs", source),
+        [
+            "m.rs:2 pub fn f",
+            "m.rs:4 pub fn apply",
+            "m.rs:10 pub fn g",
+            "m.rs:12 pub fn h",
+            "m.rs:19 pub fn apply (in `impl<'d> Batch<'d>`)",
+        ],
+        "LIB-DOC-002: a fallible function without an example is reported at its first line"
+    );
+
+    let not_fallible = "\
+/// Returns no result.
+pub fn a() -> Option<Result<(), E>> {}
+/// Returns an iterator of results.
+pub fn b() -> impl Iterator<Item = Result<u8, E>> {}
+/// Takes a result.
+pub fn c(r: Result<u8, E>) -> u8 {}
+/// Writes it.
+pub fn d() -> fmt::Result {}
+/// Crate-private.
+pub(crate) fn e() -> Result<(), E> {}
+/// Behind the feature.
+#[cfg(feature = \"test-support\")]
+pub fn s() -> Result<(), E> {}
+impl FromStr for X {
+    fn from_str(s: &str) -> Result<Self, E> {}
+}
+";
+    assert_eq!(
+        fallible_example_problems("m.rs", not_fallible),
+        Vec::<String>::new(),
+        "LIB-DOC-002: an `Option<Result>`, an iterator of results, a `Result` parameter, \
+         `fmt::Result` (no `<`), a crate-private function, a test-support function and a trait \
+         impl's `fn` are not checked"
+    );
+
+    let with_example = "\
+/// Fails.
+///
+/// # Errors
+///
+/// Always.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() {}
+/// ```
+pub fn f() -> Result<(), E> {}
+";
+    assert_eq!(
+        fallible_example_problems("m.rs", with_example),
+        Vec::<String>::new(),
+        "LIB-DOC-002: a fallible function with a runnable example is not reported"
+    );
+}
+
+/// Asserts that more than `min` `what` are found under crates/sacm/src, and
+/// that `problems` is empty.
+fn assert_examples(what: &str, found: usize, min: usize, problems: &[String]) {
+    assert!(
+        found > min,
+        "LIB-DOC-002: the {what} must be found under crates/sacm/src; found {found}"
+    );
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-002: every {what} must have an `# Examples` section with a runnable code \
+         fence (not `ignore` or `no_run`); {} of {found} have none: {problems:#?}",
+        problems.len()
+    );
+}
+
+/// The public structs, enums and traits written out in crates/sacm/src, as
+/// [`source_items`] reads them, must each have a runnable example.
+///
+/// The types the operation macros (`macro_rules!` bodies in `edit/`)
+/// generate are not written out, so a source scan cannot see them: the
+/// verifier checks those in the rendered docs. Test-support types are exempt
+/// (ADR 0045 D7).
+#[test]
+fn lib_doc_002_every_public_type_has_a_runnable_example() {
+    let sources = library_sources();
+    let found: usize = sources
         .iter()
         .map(|(_, text)| {
-            public_doc_blocks(text)
+            source_items(text)
                 .iter()
-                .filter(|block| summary(block).is_some())
+                .filter(|item| item.public && !item.test_support && is_public_type(&item.signature))
                 .count()
         })
         .sum();
-    assert!(
-        summaries > 100,
-        "LIB-DOC-012: the item summaries must be found in the `///` blocks of the \
-         {ITEM_DOC_MODULES:?} modules; found {summaries}"
-    );
     let problems: Vec<String> = sources
         .iter()
-        .flat_map(|(rel, text)| long_summary_problems(rel, text))
+        .flat_map(|(rel, text)| type_example_problems(rel, text))
+        .collect();
+    assert_examples("public type", found, 50, &problems);
+}
+
+/// Every `pub fn` in crates/sacm/src that returns `Result<…>`, as
+/// [`fallible_functions`] finds them, must have a runnable example.
+/// Test-support functions are exempt (ADR 0045 D7).
+#[test]
+fn lib_doc_002_every_fallible_public_function_has_a_runnable_example() {
+    let sources = library_sources();
+    let found: usize = sources
+        .iter()
+        .map(|(_, text)| fallible_functions(text).len())
+        .sum();
+    let problems: Vec<String> = sources
+        .iter()
+        .flat_map(|(rel, text)| fallible_example_problems(rel, text))
+        .collect();
+    assert_examples("fallible public function", found, 5, &problems);
+}
+
+/// The clippy lints that require the `# Errors` and `# Panics` sections,
+/// and the group that holds them.
+const SECTION_LINTS: [&str; 3] = ["missing_errors_doc", "missing_panics_doc", "pedantic"];
+
+/// Whether the level `value` of a lint in a Cargo.toml, a string or a
+/// `{ level = … }` table, is `warn`, `deny` or `forbid`.
+fn is_enforced(value: Option<&toml::Value>) -> bool {
+    let level = match value {
+        Some(toml::Value::String(level)) => Some(level.as_str()),
+        Some(toml::Value::Table(table)) => table.get("level").and_then(toml::Value::as_str),
+        _ => None,
+    };
+    matches!(level, Some("warn" | "deny" | "forbid"))
+}
+
+/// The problems of the `# Errors` and `# Panics` enforcement: the workspace
+/// manifest `workspace` must set clippy `pedantic` to warn or deny; no crate
+/// manifest of `manifests` may allow it or the two section lints, and each
+/// must inherit the workspace lints; no attribute of `sources` may `allow`
+/// or `expect` them.
+fn section_lint_problems(
+    workspace: &str,
+    manifests: &[(String, String)],
+    sources: &[(String, String)],
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    match workspace.parse::<toml::Table>() {
+        Ok(table) => {
+            let clippy = table
+                .get("workspace")
+                .and_then(|w| w.get("lints"))
+                .and_then(|l| l.get("clippy"));
+            if !is_enforced(clippy.and_then(|c| c.get("pedantic"))) {
+                problems.push(
+                    "Cargo.toml: [workspace.lints.clippy] must set `pedantic` to warn or deny"
+                        .to_owned(),
+                );
+            }
+            for lint in &SECTION_LINTS[..2] {
+                if let Some(value) = clippy.and_then(|c| c.get(*lint)) {
+                    if !is_enforced(Some(value)) {
+                        problems.push(format!("Cargo.toml: [workspace.lints.clippy] sets {lint}"));
+                    }
+                }
+            }
+        }
+        Err(e) => problems.push(format!("Cargo.toml: {e}")),
+    }
+    for (rel, text) in manifests {
+        match text.parse::<toml::Table>() {
+            Ok(table) => {
+                let lints = table.get("lints");
+                if lints
+                    .and_then(|l| l.get("workspace"))
+                    .and_then(toml::Value::as_bool)
+                    != Some(true)
+                {
+                    problems.push(format!("{rel}: [lints] must set `workspace = true`"));
+                }
+                for lint in SECTION_LINTS {
+                    if let Some(value) = lints
+                        .and_then(|l| l.get("clippy"))
+                        .and_then(|c| c.get(lint))
+                    {
+                        if !is_enforced(Some(value)) {
+                            problems.push(format!("{rel}: [lints.clippy] sets {lint}"));
+                        }
+                    }
+                }
+            }
+            Err(e) => problems.push(format!("{rel}: {e}")),
+        }
+    }
+    for (rel, text) in sources {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim_start();
+            if !(trimmed.starts_with("#[") || trimmed.starts_with("#![")) {
+                i += 1;
+                continue;
+            }
+            let end = attribute_end(&lines, i);
+            let attribute = lines[i..end].join(" ");
+            let suppresses = attribute.contains("allow(") || attribute.contains("expect(");
+            for lint in SECTION_LINTS {
+                if suppresses && attribute.contains(&format!("clippy::{lint}")) {
+                    problems.push(format!("{rel}:{} allows clippy::{lint}", i + 1));
+                }
+            }
+            i = end.max(i + 1);
+        }
+    }
+    problems
+}
+
+#[test]
+fn lib_doc_002_the_section_lint_check_finds_an_allow() {
+    let workspace = "[workspace.lints.clippy]\npedantic = { level = \"warn\", priority = -1 }\n";
+    let manifest = || {
+        vec![(
+            "crates/a/Cargo.toml".to_owned(),
+            "[lints]\nworkspace = true\n".to_owned(),
+        )]
+    };
+    assert_eq!(
+        section_lint_problems(workspace, &manifest(), &[]),
+        Vec::<String>::new(),
+        "LIB-DOC-002: pedantic at warn, inherited, with no allow, passes"
+    );
+    assert_eq!(
+        section_lint_problems(
+            "[workspace.lints.clippy]\npedantic = \"deny\"\n",
+            &manifest(),
+            &[]
+        ),
+        Vec::<String>::new(),
+        "LIB-DOC-002: pedantic at deny passes"
+    );
+    for (what, workspace) in [
+        (
+            "without pedantic",
+            "[workspace.lints.clippy]\ntodo = \"warn\"\n",
+        ),
+        (
+            "with pedantic allowed",
+            "[workspace.lints.clippy]\npedantic = \"allow\"\n",
+        ),
+        (
+            "with missing_errors_doc allowed",
+            "[workspace.lints.clippy]\npedantic = \"warn\"\nmissing_errors_doc = \"allow\"\n",
+        ),
+    ] {
+        assert_eq!(
+            section_lint_problems(workspace, &manifest(), &[]).len(),
+            1,
+            "LIB-DOC-002: a workspace manifest {what} must be reported"
+        );
+    }
+    let allowing = vec![(
+        "crates/a/Cargo.toml".to_owned(),
+        "[lints.clippy]\nmissing_panics_doc = \"allow\"\n".to_owned(),
+    )];
+    assert_eq!(
+        section_lint_problems(workspace, &allowing, &[]).len(),
+        2,
+        "LIB-DOC-002: a crate manifest that allows missing_panics_doc, and does not inherit the \
+         workspace lints, must be reported twice"
+    );
+    let sources = vec![(
+        "crates/a/src/lib.rs".to_owned(),
+        "#![allow(clippy::missing_errors_doc)]\n#[expect(\n    clippy::missing_panics_doc,\n    reason = \"x\"\n)]\nfn f() {}\n#[cfg_attr(test, allow(clippy::pedantic))]\nmod m;\n#[warn(clippy::missing_errors_doc)]\nfn g() {}\n"
+            .to_owned(),
+    )];
+    assert_eq!(
+        section_lint_problems(workspace, &manifest(), &sources),
+        [
+            "crates/a/src/lib.rs:1 allows clippy::missing_errors_doc",
+            "crates/a/src/lib.rs:2 allows clippy::missing_panics_doc",
+            "crates/a/src/lib.rs:7 allows clippy::pedantic",
+        ],
+        "LIB-DOC-002: an inner `allow`, a multi-line `expect` and a `cfg_attr` `allow` are \
+         reported; a `warn` is not"
+    );
+}
+
+/// The files with extension `ext` under `dir`, recursively, in a stable order.
+fn files_with_extension(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+        .map(|entry| entry.expect("a directory entry is readable").path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            files_with_extension(&path, ext, out);
+        } else if path.extension().is_some_and(|e| e == ext) {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn lib_doc_002_errors_and_panics_sections_are_enforced_by_clippy() {
+    let crates = repository_root().join("crates");
+    let read_all = |paths: &[PathBuf]| -> Vec<(String, String)> {
+        paths
+            .iter()
+            .map(|path| {
+                let text = fs::read_to_string(path)
+                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+                (repository_relative(path), text)
+            })
+            .collect()
+    };
+    let mut rust = Vec::new();
+    files_with_extension(&crates, "rs", &mut rust);
+    let mut tomls = Vec::new();
+    files_with_extension(&crates, "toml", &mut tomls);
+    let manifests: Vec<(String, String)> = read_all(&tomls)
+        .into_iter()
+        .filter(|(rel, _)| rel.ends_with("/Cargo.toml"))
         .collect();
     assert!(
+        manifests.len() >= 2 && rust.len() > 10,
+        "LIB-DOC-002: the crate manifests and sources under crates/ must be found; found {} \
+         manifests and {} sources",
+        manifests.len(),
+        rust.len()
+    );
+    let problems = section_lint_problems(&read("Cargo.toml"), &manifests, &read_all(&rust));
+    assert!(
         problems.is_empty(),
-        "LIB-DOC-012: no item summary (the first paragraph of an item's `///` docs) in the \
-         {ITEM_DOC_MODULES:?} modules may run over {MAX_SUMMARY_LINES} display lines of \
-         {DISPLAY_WIDTH} characters (docs/style.md); found {}: {problems:#?}",
-        problems.len()
+        "LIB-DOC-002: clippy pedantic must enforce the `# Errors` and `# Panics` sections \
+         (missing_errors_doc, missing_panics_doc): pedantic at warn or deny in \
+         [workspace.lints.clippy], inherited by every crate, and never allowed under crates/; \
+         found {problems:#?}"
     );
 }
 

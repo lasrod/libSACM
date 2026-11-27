@@ -508,10 +508,11 @@ struct Planned<'a> {
     element: SacmElement<'a>,
     /// Its element name.
     tag: Tag,
-    /// The class written as its `xmi:type`, if one is: a child's kind where
-    /// its role does not declare it, and the kind of an element that keeps
-    /// a `type` in EMF's XMI namespace or an `xsi:type`, and none in XMI
-    /// 2.5.1's, root or child (LIB-COMPAT-019).
+    /// The class written as its `xmi:type`, if one is.
+    ///
+    /// - **A child's kind,** where its role does not declare it.
+    /// - **The kind of an element,** root or child, that keeps a `type` in EMF's
+    ///   XMI namespace or an `xsi:type`, and none in XMI 2.5.1's (LIB-COMPAT-019).
     written_type: Option<ElementKind>,
     /// Its `assertionDeclaration`, if it is an Assertion not declared
     /// `asserted`, the default, which is not written (XMI 2.5.1 §9.4.1).

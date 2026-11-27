@@ -168,9 +168,13 @@ const RULES: &[Rule] = &[
 ///   ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) or a text
 ///   ([`SacmElement::content_id`](crate::model::SacmElement::content_id) and
 ///   the like) is checked too; a finding affects the element that owns it.
-/// - **Descriptions.** Two or more are a Warning, and every one is kept
-///   (D-DESC-MULT). Notes, implementation constraints and tagged values are
-///   not counted.
+/// - **Descriptions.** Two or more are SACM-MULT-001, a Warning, and every one
+///   is kept. Notes, implementation constraints and tagged values are not
+///   counted.
+/// - **Why a Warning.** The text of §8.6 allows one description
+///   (`description:Description[0..1]`), the model ptc/22-03-13 any number. The
+///   crate holds them all, so such files round-trip, and reports the text's
+///   bound (D-DESC-MULT).
 /// - **`gid`.** Compared exactly across the whole document, on every kind. An
 ///   absent or empty (`""`) gid is not compared (D-GID-EMPTY). A gid is not
 ///   an `xmi:id`: a gid equal to an id is no finding.

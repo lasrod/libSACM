@@ -109,6 +109,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - The item docs of `model`, `compare`, `diagnostic` and `validation` follow the style guide:
   a short summary, then only what the signature does not say. `validate` now lists what its
   rules count [LIB-DOC-012].
+- The item docs of `edit` and `xmi` follow the style guide; every public type and fallible
+  function has a runnable `# Examples` section; `DeleteElement` lists exactly which ids each
+  delete policy deletes, and the docs say how to tell that an edit changed nothing
+  [LIB-DOC-014, LIB-DOC-015, LIB-DOC-002, LIB-DOC-010].
 - The `validation` module docs no longer say a strict write refuses a relationship with
   no `source` or `target`, or implementation constraints on a concrete element. A strict
   write checks schema validity only; `validate` reports both [LIB-DOC-011].

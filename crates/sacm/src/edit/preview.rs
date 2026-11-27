@@ -4,19 +4,16 @@
 use super::{Mutation, Operation};
 use crate::model::{ElementId, ReferenceEnd, Revision};
 
-/// What [`apply`](super::apply) would do with an operation, without doing
-/// it: the [`Mutation`] it would return, the references to deleted elements,
-/// which the delete removes, and the document's [`Revision`] when the
-/// preview was taken.
+/// What [`apply`](super::apply) would do with an operation, without doing it.
 ///
-/// [`edit::preview`](super::preview) returns one, and
-/// [`edit::apply_preview`](super::apply_preview) applies it while the
-/// document is still at that revision.
-///
-/// A preview is written with serde, as `{"revision", "mutation",
-/// "dangling_references"}` (its operation is the mutation's), but not read
-/// back: a preview read back would prove nothing about the current document
-/// (ADR 0031).
+/// - **Holds** the [`Mutation`] `apply` would return, the references to deleted
+///   elements, which a delete removes, and the document's [`Revision`] when the preview
+///   was taken.
+/// - **From** [`edit::preview`](super::preview). [`edit::apply_preview`](super::apply_preview)
+///   applies it while the document is still at that revision.
+/// - **Written with serde, not read back.** It is written as `{"revision", "mutation",
+///   "dangling_references"}`; its operation is the mutation's. A preview read back would
+///   prove nothing about the current document (ADR 0031).
 ///
 /// # Examples
 ///
@@ -114,19 +111,20 @@ impl Preview {
         &self.mutation
     }
 
-    /// The references to deleted elements, which the delete removes: for a
-    /// [`DeleteElement`](super::DeleteElement), each reference held by an
-    /// element outside the deleted element's subtree that names a deleted
-    /// element (see [`DanglingReference`]). Empty for every other operation.
+    /// The references to deleted elements, which a delete removes. Empty for every other
+    /// operation.
     ///
-    /// They are ordered by holder in document pre-order, then by end in the
-    /// order of [`ReferenceEnd`]'s variants, then by position, with one entry
-    /// per distinct id and end. A reference held by a relationship the
-    /// delete also removes is listed, since that relationship is outside the
-    /// subtree. A reference that named no element before is not listed.
-    ///
-    /// A holder in `mutation().deleted_ids()` is deleted. Every other holder
-    /// survives and loses the id, and is in `changed_ids()`.
+    /// - **Which.** For a [`DeleteElement`](super::DeleteElement), each reference held by
+    ///   an element outside the deleted element's subtree that names a deleted element
+    ///   (see [`DanglingReference`]).
+    /// - **Order.** By holder in document pre-order, then by end in the order of
+    ///   [`ReferenceEnd`]'s variants, then by position, with one entry per distinct id and
+    ///   end.
+    /// - **A relationship the delete also removes** has its references listed, since it
+    ///   is outside the subtree.
+    /// - **Not listed:** a reference that named no element before.
+    /// - **The holder.** One in `mutation().deleted_ids()` is deleted. Every other holder
+    ///   survives and loses the id, and is in `changed_ids()`.
     #[must_use]
     pub fn dangling_references(&self) -> &[DanglingReference] {
         &self.dangling
@@ -136,14 +134,13 @@ impl Preview {
 /// One dangling reference of a delete: the element holding it, the end and
 /// the id, and whether it crosses a package boundary.
 ///
-/// A dangling reference is a reference that names an element the delete
-/// removes, held by an element outside the deleted subtree. A delete never
-/// leaves one in the document: its policies remove it, by deleting the
-/// holder or scrubbing the id, or the delete is refused.
-///
-/// A reference crosses a package boundary when the holder's nearest package
-/// is not the nearest package of the element the id names; see
-/// [`CrossPackageReferencePolicy`](super::CrossPackageReferencePolicy).
+/// - **Dangling.** The reference names an element the delete removes, and is held by an
+///   element outside the deleted subtree.
+/// - **Never left in the document.** The delete's policies remove it, by deleting the
+///   holder or scrubbing the id, or the delete is refused.
+/// - **Crossing.** It crosses a package boundary when the holder's nearest package is not
+///   that of the element the id names; see
+///   [`CrossPackageReferencePolicy`](super::CrossPackageReferencePolicy).
 ///
 /// # Examples
 ///

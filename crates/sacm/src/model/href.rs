@@ -83,6 +83,8 @@ impl Href {
     /// - **Not changed.** Nothing is trimmed, decoded, normalised or resolved, and no file is
     ///   opened: the element it names need not exist (ADR 0040 D6, D9).
     ///
+    /// # Examples
+    ///
     /// ```
     /// use sacm::model::{ElementKind, Href, HrefError};
     ///
@@ -367,6 +369,8 @@ impl TryFrom<String> for Href {
 /// Why [`Href::new`] refused a value. The variants are in the order of the
 /// checks: a value with two problems gives the earlier one.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::model::{Href, HrefError};
 ///
@@ -427,6 +431,8 @@ impl std::error::Error for HrefError {}
 /// - **No element of this document.** It has no id, it is no child, and no validation rule
 ///   counts it.
 /// - **Order.** Proxies order by role, then by href.
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::xmi::{self, ReadOptions};

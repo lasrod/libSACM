@@ -12,37 +12,40 @@ use crate::model::{
     is_ncname,
 };
 
-/// Copies elements of a source [`Document`], each with everything it
-/// contains, under a parent of the target ([`new`](Self::new)) or as roots
-/// ([`root`](Self::root)), after the last child or root, in the order given:
-/// so that an application can accept a draft built in another document.
+/// Copies elements of a source [`Document`], each with everything it contains, into a
+/// target: so that an application can accept a draft built in another document.
 ///
-/// The source elements are captured when the operation is built, so the
-/// source may change or go afterwards. An element listed twice, or inside
-/// another listed element, is copied once.
+/// - **Where.** Under a parent of the target ([`new`](Self::new)) or as roots
+///   ([`root`](Self::root)), after the last child or root, in the order given.
+/// - **Captured when built.** The source may change or go afterwards. An element listed
+///   twice, or inside another listed element, is copied once.
+/// - **Apply it** with [`edit::apply`](super::apply) to the target, which may be the
+///   source itself. [`apply`](super::apply#copies) lists the checks, in order.
+/// - **The [`Mutation`](super::Mutation)** lists the created ids in
+///   [`source_ids`](Self::source_ids) order, and changes and deletes nothing.
+/// - **Not serialized,** the one operation that is not: with the `serde` feature,
+///   serializing it, or anything that holds one, is an error (ADR 0030 amendment 2). A
+///   JSON client builds a draft with creates instead.
 ///
-/// Apply it with [`edit::apply`](super::apply) to the target, which may be
-/// the source itself. Each copy keeps its source id when that is an XML
-/// `NCName` free in the target (no element, name, `content`, `key`,
-/// `location`, `value` or preserved content holds it, and no reference
-/// names it); otherwise it gets a generated id, such as `claim_3`, that
-/// avoids every id the copy keeps or names. A part (a name, `content`,
-/// `key`, `location` or `value`) keeps its `xmi:id` when it is an `NCName`
-/// free in the target, and is copied without one otherwise. A reference to
-/// a copied element names its copy; every other reference is kept as
-/// written. Everything else is copied exactly, preserved content and the
-/// gid included; a copy within one document therefore repeats each gid,
-/// which [`validate`](crate::validation::validate) reports (SACM-ID-003).
-/// Its texts are not checked: a source document holds only text that
-/// `xmi::read` or an edit accepted (LIB-EDIT-025).
-/// The [`Mutation`](super::Mutation) lists the created ids in
-/// [`source_ids`](Self::source_ids) order, and changes and deletes nothing.
-/// The refusals are in the
-/// [module docs](super#moving-and-copying-elements).
+/// What a copy keeps:
 ///
-/// A `CopyElements` is the one operation that is not serialized: with the
-/// `serde` feature, serializing it, or anything that holds one, is an error
-/// (ADR 0030 amendment 2). A JSON client builds a draft with creates instead.
+/// - **Its id,** when that is an XML `NCName` free in the target: no element, name,
+///   `content`, `key`, `location`, `value`, preserved content or XMI metadata holds
+///   it, and no reference names it.
+/// - **A generated id otherwise,** such as `claim_3`, that avoids every id the copy keeps
+///   or names.
+/// - **A part's `xmi:id`** (a name, `content`, `key`, `location` or `value`), when it is
+///   an `NCName` free in the target. Otherwise the part is copied without one.
+/// - **References.** A reference to a copied element names its copy; every other
+///   reference is kept as written.
+/// - **Everything else, exactly,** preserved content and the gid included. So a copy
+///   within one document repeats each gid, which
+///   [`validate`](crate::validation::validate) reports (SACM-ID-003).
+/// - **Texts are not checked.** A source document holds only text that `xmi::read` or an
+///   edit accepted (LIB-EDIT-025).
+/// - **A strict write refuses what it copies** where it would refuse the source:
+///   preserved content, or XMI metadata whose `xmi:id` is no `NCName`
+///   ([`xmi::write`](crate::xmi::write#round-trip)).
 ///
 /// # Examples
 ///
@@ -92,9 +95,33 @@ impl CopyElements {
     ///
     /// # Errors
     ///
-    /// [`EditError::ElementNotFound`] for the first id, in order, that names
-    /// no element of `source`. The id of a name, `content`, `key`,
-    /// `location` or `value` names no element.
+    /// [`EditError::ElementNotFound`] for the first id, in order, that names no element of
+    /// `source`. The id of a name, `content`, `key`, `location` or `value` names no
+    /// element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CopyElements, CreateArgumentPackage, CreateClaim, EditError};
+    /// use sacm::model::Document;
+    ///
+    /// let mut draft = Document::new();
+    /// edit::apply(&mut draft, CreateArgumentPackage::root("Draft").with_id("d"))?;
+    /// edit::apply(&mut draft, CreateClaim::new("d", "The brake is safe").with_id("c1"))?;
+    /// let mut target = Document::new();
+    /// edit::apply(&mut target, CreateArgumentPackage::root("Arguments").with_id("p"))?;
+    ///
+    /// // The draft has no `c2`: refused when the copy is built.
+    /// let error = CopyElements::new(&draft, ["c1", "c2"], "p").unwrap_err();
+    /// assert_eq!(error.to_string(), "the document has no element \"c2\" to edit");
+    ///
+    /// let copy = CopyElements::new(&draft, ["c1"], "p")?;
+    /// let mutation = edit::apply(&mut target, copy)?;
+    /// assert_eq!(mutation.created_ids()[0].as_str(), "c1");
+    /// let parent = target.get("c1").and_then(|claim| claim.parent());
+    /// assert_eq!(parent.map(|parent| parent.id().as_str()), Some("p"));
+    /// # Ok::<(), EditError>(())
+    /// ```
     pub fn new(
         source: &Document,
         elements: impl IntoIterator<Item = impl Into<ElementId>>,
@@ -108,8 +135,33 @@ impl CopyElements {
     ///
     /// # Errors
     ///
-    /// [`EditError::ElementNotFound`] for the first id, in order, that names
-    /// no element of `source`.
+    /// [`EditError::ElementNotFound`] for the first id, in order, that names no element of
+    /// `source`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CopyElements, CreateArgumentPackage, CreateClaim, EditError};
+    /// use sacm::model::Document;
+    ///
+    /// let mut draft = Document::new();
+    /// edit::apply(&mut draft, CreateArgumentPackage::root("Draft").with_id("d"))?;
+    /// edit::apply(&mut draft, CreateClaim::new("d", "The brake is safe").with_id("c1"))?;
+    ///
+    /// // The package comes with the claim it contains.
+    /// let mut target = Document::new();
+    /// let copy = CopyElements::root(&draft, ["d"])?;
+    /// let mutation = edit::apply(&mut target, copy)?;
+    /// let created: Vec<&str> = mutation.created_ids().iter().map(|id| id.as_str()).collect();
+    /// assert_eq!(created, ["d", "c1"]);
+    /// assert_eq!(target.roots().count(), 1);
+    ///
+    /// // A claim is no package, so it cannot be a root: refused when applied.
+    /// let claim = CopyElements::root(&draft, ["c1"])?;
+    /// let error = edit::apply(&mut target, claim).unwrap_err();
+    /// assert!(matches!(error, EditError::InvalidRoot { .. }));
+    /// # Ok::<(), EditError>(())
+    /// ```
     pub fn root(
         source: &Document,
         elements: impl IntoIterator<Item = impl Into<ElementId>>,
@@ -139,10 +191,12 @@ impl CopyElements {
         self.parent.as_ref()
     }
 
-    /// The ids of the elements copied, in the source: the elements listed
-    /// in the order given, each once and none inside another, each followed
-    /// by everything it contains, in pre-order. The i-th created id of the
-    /// [`Mutation`](super::Mutation) is the copy of the i-th.
+    /// The ids of the elements copied, as they are in the source.
+    ///
+    /// - **Order.** The elements listed, in the order given, each once and none inside
+    ///   another, each followed by everything it contains, in pre-order.
+    /// - **Pairs with the result.** The i-th created id of the
+    ///   [`Mutation`](super::Mutation) is the copy of the i-th.
     #[must_use]
     pub fn source_ids(&self) -> &[ElementId] {
         self.copied.ids()

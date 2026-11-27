@@ -1044,29 +1044,34 @@ struct Findings<'t, 'a> {
     text: &'t str,
     mode: Mode,
     /// The value of every `xmi:id` read so far, of elements and names, in
-    /// every root's tree (SACM23-VAL-001, SACM23-XMI-022), preserved content
-    /// included (ADR 0033).
+    /// every root's tree, preserved content included.
+    ///
+    /// SACM23-VAL-001, SACM23-XMI-022, ADR 0033.
     ids: BTreeSet<&'a str>,
-    /// The values of `ids`, in the order they were added, so that a part
-    /// that is preserved after all can give back the ids read inside it
-    /// ([`Findings::rollback`]).
+    /// The values of `ids`, in the order they were added.
+    ///
+    /// So a part that is preserved after all can give back the ids read inside
+    /// it ([`Findings::rollback`]).
     id_log: Vec<&'a str>,
     /// The ids a generated one must avoid, collected by [`reserved_ids`]
-    /// before anything is read, so that none is generated, even one that
-    /// comes later: the value of every `xmi:id` in the input (SACM23-XMI-020),
-    /// and every id a reference may name, that is each token of a reference
-    /// attribute, each `xmi:idref` value and each `href` fragment, so that a
-    /// dangling reference never resolves to a generated element
-    /// (SACM23-XMI-005, ADR 0026).
+    /// before anything is read.
+    ///
+    /// - **Every `xmi:id` in the input** (SACM23-XMI-020), so that none is
+    ///   generated, even one that comes later.
+    /// - **Every id a reference may name:** each token of a reference attribute,
+    ///   each `xmi:idref` value and each `href` fragment. So a dangling reference
+    ///   never resolves to a generated element (SACM23-XMI-005, ADR 0026).
     reserved: BTreeSet<&'a str>,
-    /// The value of every `xmi:id` in the input that begins with `/`: a
-    /// reference token equal to one is that id, never an EMF fragment path
+    /// The value of every `xmi:id` in the input that begins with `/`.
+    ///
+    /// A reference token equal to one is that id, never an EMF fragment path
     /// (LIB-COMPAT-002, R4).
     slash_ids: BTreeSet<&'a str>,
     /// The byte offset of the start tag of each element kept as preserved
-    /// content of an element or of the document, its XMI metadata aside:
-    /// an EMF fragment path names an element inside one only by its
-    /// `xmi:id` (LIB-COMPAT-002, R4 (c)).
+    /// content of an element or of the document, its XMI metadata aside.
+    ///
+    /// An EMF fragment path names an element inside one only by its `xmi:id`
+    /// (LIB-COMPAT-002, R4 (c)).
     preserved_at: BTreeSet<usize>,
     /// The ids generated for elements without an `xmi:id`.
     generator: IdGenerator,
@@ -1076,9 +1081,10 @@ struct Findings<'t, 'a> {
     /// The diagnostics found so far, in reading order, each with its byte
     /// offset in `text`.
     diagnostics: Vec<(usize, Diagnostic)>,
-    /// In strict mode, the first C++ shape read, by offset: its byte
-    /// offset, the element it belongs to and what it is, which [`read`]
-    /// refuses once the input has read whole (LIB-COMPAT-008).
+    /// In strict mode, the first C++ shape read, by offset: its byte offset,
+    /// the element it belongs to and what it is.
+    ///
+    /// [`read`] refuses it once the input has read whole (LIB-COMPAT-008).
     legacy: Option<(usize, ElementId, Details)>,
     /// The namespaces of the root being read that count as SACM for types
     /// (ADR 0041 D5).
@@ -1089,9 +1095,10 @@ struct Findings<'t, 'a> {
     /// The SACM revision of the root being read, if it is an older one's
     /// (LIB-COMPAT-004).
     revision: Option<&'static str>,
-    /// What the read keeps besides the parsed tree, counted against the
-    /// size limit: the namespace text of preserved content and the text of
-    /// each diagnostic (LIB-SEC-003; ADR 0041 D2, amendment 1).
+    /// What the read keeps besides the parsed tree, counted against the size
+    /// limit (LIB-SEC-003; ADR 0041 D2, amendment 1).
+    ///
+    /// The namespace text of preserved content and the text of each diagnostic.
     budget: Budget<'t>,
     /// The subclasses the application declared, by namespace URI and class
     /// name, which only a tolerant read reads (LIB-COMPAT-017, ADR 0044 D3).
@@ -2070,17 +2077,17 @@ struct Pending {
     /// The `content` of a `UtilityElement` read from its `content` element,
     /// with its ids.
     content: Option<Text>,
-    /// The `content` of a `UtilityElement` given on the element itself, in
-    /// the C++ shape (LIB-COMPAT-008); [`finish`](Self::finish) makes it
-    /// the content.
+    /// The `content` of a `UtilityElement` given on the element itself, in the
+    /// C++ shape (LIB-COMPAT-008). [`finish`](Self::finish) makes it the content.
     shorthand: Shorthand,
     /// The `key` of a `TaggedValue`, with its ids.
     key: Option<Text>,
     /// The `location` of a `Resource`, with its ids.
     location: Option<Text>,
     /// Each string-valued attribute given, as the attribute or as a value
-    /// element, with its value exactly as read, or `None` for a nil value
-    /// element, which counts as given (SACM23-XMI-026; D-DATE).
+    /// element, with its value exactly as read (D-DATE).
+    ///
+    /// `None` for a nil value element, which counts as given (SACM23-XMI-026).
     strings: Vec<(StringAttribute, Option<String>)>,
     /// The `assertionDeclaration` read, if it is written, as the attribute
     /// or as a value element.
@@ -2096,9 +2103,10 @@ struct Pending {
     hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
     /// Its cross-file proxies, in document order (SACM23-XMI-029).
     proxies: Vec<HeldProxy>,
-    /// The `name`, `content` and `key` a tolerant read kept as preserved
-    /// content for a value in it that is no literal: each counts as given
-    /// (ADR 0035, SACM23-VAL-006).
+    /// The `name`, `content` and `key` a tolerant read kept as preserved content
+    /// for a value in it that is no literal (ADR 0035, SACM23-VAL-006).
+    ///
+    /// Each counts as given.
     given: Vec<&'static str>,
     /// The element's name as written in its start tag.
     written: String,
@@ -2113,9 +2121,10 @@ struct Pending {
     name_metadata: Option<Preserved>,
     /// The place in document order of its parent; `None` for a root.
     parent_order: Option<usize>,
-    /// Its place among its parent's children, or among the roots, in
-    /// document order: its `order`, or for a root a proxy moves, the
-    /// proxy's (SACM23-XMI-030).
+    /// Its place among its parent's children, or among the roots, in document
+    /// order.
+    ///
+    /// Its `order`, or for a root a proxy moves, the proxy's (SACM23-XMI-030).
     place: usize,
     /// Which of its typed slots survive, if a proxy it holds is kept: the
     /// proxy's slot does not (SACM23-XMI-030).
@@ -2139,9 +2148,8 @@ struct Kept<H> {
     /// The bindings their prefixes need, and the prefixes their type
     /// values name (LIB-COMPAT-019).
     namespaces: Vec<(String, String)>,
-    /// The prefix `nsN` given to each namespace whose attributes were
-    /// written with the prefix `sacm` or `xmi` bound to it, by URI (ADR
-    /// 0035).
+    /// The prefix `nsN` given to each namespace whose attributes were written
+    /// with the prefix `sacm` or `xmi` bound to it, by URI (ADR 0035).
     renamed: Vec<(String, String)>,
     /// The children, in input order.
     children: Vec<Placed>,
@@ -2152,9 +2160,10 @@ struct Kept<H> {
     /// The byte offset of each preserved attribute's name and child's start
     /// tag: no occurrence of a property (`RepeatedValue`).
     offsets: BTreeSet<usize>,
-    /// The class outside SACM 2.3 that the holder is read as an instance
-    /// of, a declared subclass of its kind, with the prefix it is written
-    /// with (LIB-COMPAT-017).
+    /// The class outside SACM 2.3 that the holder is read as an instance of,
+    /// with the prefix it is written with (LIB-COMPAT-017).
+    ///
+    /// It is a declared subclass of the holder's kind.
     subclass: Option<QName>,
 }
 
@@ -3364,9 +3373,9 @@ struct StartTag {
 enum Given {
     /// A flag or a reference end of the element, read.
     Read,
-    /// A reference end of the element that holds no id, which does not
-    /// conform: the caller preserves it (ADR 0033), never reading it as no
-    /// reference.
+    /// A reference end of the element that holds no id, which does not conform.
+    ///
+    /// The caller preserves it (ADR 0033), never reading it as no reference.
     NoId,
     /// Neither a flag nor a reference end of the element.
     Other,
@@ -3573,9 +3582,10 @@ impl Shorthand {
 struct Roots {
     read: Vec<Pending>,
     /// Each resolved same-file proxy, by the byte offset of its start tag,
-    /// with the id of the root that took its place (SACM23-XMI-030): an EMF
-    /// fragment path that names the proxy names that root (LIB-COMPAT-002,
-    /// R4 (b)).
+    /// with the id of the root that took its place (SACM23-XMI-030).
+    ///
+    /// An EMF fragment path that names the proxy names that root
+    /// (LIB-COMPAT-002, R4 (b)).
     linked: Vec<(usize, ElementId)>,
     orders: Vec<usize>,
     nodes: Vec<roxmltree::NodeId>,
@@ -5348,11 +5358,12 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
 
 /// What [`child_kind`] makes of a child element.
 enum ChildKind {
-    /// It is read, as an element of `kind`, and `spelled` is the spelling a
-    /// tolerant read read in its role or type, which its SACM-XMI-013
-    /// Warning names (SACM23-XMI-009), and `subclass` the class its type
-    /// names, if a tolerant read reads it as a declared subclass of `kind`
-    /// (LIB-COMPAT-017).
+    /// It is read, as an element of `kind`.
+    ///
+    /// - **`spelled`** is the spelling a tolerant read read in its role or type,
+    ///   which its SACM-XMI-013 Warning names (SACM23-XMI-009).
+    /// - **`subclass`** is the class its type names, if a tolerant read reads it
+    ///   as a declared subclass of `kind` (LIB-COMPAT-017).
     Read {
         kind: ElementKind,
         spelled: Option<Spelled>,
@@ -5842,9 +5853,11 @@ fn push_value<T>(ends: &mut Vec<(ReferenceEnd, Vec<T>)>, end: ReferenceEnd, valu
 enum HrefForm<'v> {
     /// `#id`: the id of an element of this document.
     Id(&'v str),
-    /// `document#fragment`: an element of another document by its id, or,
-    /// with `(` or `)` in the fragment, an `XPointer`, whose document part
-    /// may be empty (SACM23-XMI-029).
+    /// `document#fragment`: an element of another document by its id
+    /// (SACM23-XMI-029).
+    ///
+    /// With `(` or `)` in the fragment, an `XPointer`, whose document part may
+    /// be empty.
     Other,
     /// No `#`, an empty fragment, a `#` in the fragment, or XML white space
     /// anywhere: it names no element.

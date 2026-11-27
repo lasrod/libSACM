@@ -7496,8 +7496,28 @@ title = "Examples on every major type"
 requirement = "Every public type and every fallible public function has a runnable example; `# Errors` and `# Panics` sections are present where applicable."
 source = "Project goal (well documented)"
 kind = "docs"
-status = "planned"
-depends_on = ["LIB-DOC-001"]
+status = "verified"
+depends_on = ["LIB-DOC-001", "LIB-DOC-014", "LIB-DOC-015"]
+acceptance = [
+  "Every public struct, enum and trait of `sacm` has an `# Examples` section with a runnable doctest; a test checks the ones written out in the source, and the verifier checks those the operation macros generate in the rendered docs.",
+  "Every fallible public function has a runnable example, and `# Errors` and `# Panics` where they apply (clippy pedantic enforces the sections).",
+]
+code = [
+  "crates/sacm/src/xmi.rs",
+  "crates/sacm/src/diagnostic.rs",
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/model/href.rs",
+]
+tests = [
+  "xtask/tests/docs_style.rs::lib_doc_002_the_type_example_rule_needs_a_runnable_examples_section",
+  "xtask/tests/docs_style.rs::lib_doc_002_the_type_example_rule_skips_test_support_private_test_and_macro_items",
+  "xtask/tests/docs_style.rs::lib_doc_002_the_fallible_function_rule_finds_result_returning_functions",
+  "xtask/tests/docs_style.rs::lib_doc_002_every_public_type_has_a_runnable_example",
+  "xtask/tests/docs_style.rs::lib_doc_002_every_fallible_public_function_has_a_runnable_example",
+  "xtask/tests/docs_style.rs::lib_doc_002_the_section_lint_check_finds_an_allow",
+  "xtask/tests/docs_style.rs::lib_doc_002_errors_and_panics_sections_are_enforced_by_clippy",
+]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-DOC-003"
@@ -9364,8 +9384,24 @@ title = "Edit item docs follow the style guide"
 requirement = "The item docs of the `edit` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-DOC-012"]
+acceptance = [
+  "In the `///` docs of crates/sacm/src/edit.rs and edit/, a test finds no prose paragraph or list item over four display lines, and no summary over two, for public items (as LIB-DOC-012 counts them, trait-impl items included).",
+  "Each item opens with what it is for; the rest says only what a caller needs that the signature does not, as short bullets; no fact a caller needs is lost.",
+  "Every doctest still passes, every intra-doc link resolves, and nothing is claimed that the matrix does not show as verified.",
+]
+code = [
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/edit/delete.rs",
+  "crates/sacm/src/edit/batch.rs",
+  "crates/sacm/src/edit/copy.rs",
+]
+tests = [
+  "xtask/tests/docs_style.rs::lib_doc_014_no_paragraph_or_list_item_in_the_edit_item_docs_runs_over_four_lines",
+  "xtask/tests/docs_style.rs::lib_doc_014_no_edit_item_summary_runs_over_two_lines",
+]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-DOC-015"
@@ -9375,8 +9411,25 @@ title = "XMI item docs follow the style guide"
 requirement = "The item docs of the `xmi` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules. The facts the `xmi` module docs link to (the role table and per-feature sections of `read`, what `write` writes) are kept."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-DOC-012"]
+acceptance = [
+  "In the `///` docs of crates/sacm/src/xmi.rs and xmi/, a test finds no prose paragraph or list item over four display lines, and no summary over two, for public items (as LIB-DOC-012 counts them, trait-impl items included).",
+  "Each item opens with what it is for; the rest says only what a caller needs that the signature does not, as short bullets; no fact a caller needs is lost.",
+  "Every doctest still passes, every intra-doc link resolves, and nothing is claimed that the matrix does not show as verified.",
+  "The facts the `xmi` module docs link to are kept: `read`'s role table and per-feature sections, and what `write` writes.",
+  "`xmi::write` states the round-trip guarantee: a document from a strict read that a strict write accepts, after any edits `edit::apply` accepted, writes strictly and reads back equal, with the exceptions that remain true (no root; an id freed while XMI metadata or a reference still names it, which LIB-EDIT-026 removes; what a copy brings from its source: preserved content and XMI metadata ids that are no NCName).",
+]
+code = [
+  "crates/sacm/src/xmi.rs",
+  "crates/sacm/src/xmi/roots.rs",
+  "crates/sacm/src/xmi/refusal.rs",
+]
+tests = [
+  "xtask/tests/docs_style.rs::lib_doc_015_no_paragraph_or_list_item_in_the_xmi_item_docs_runs_over_four_lines",
+  "xtask/tests/docs_style.rs::lib_doc_015_no_xmi_item_summary_runs_over_two_lines",
+]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-TOOL-024"
@@ -9457,6 +9510,17 @@ tests = [
 verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
+id = "LIB-EDIT-026"
+area = "EDIT"
+milestone = "M7"
+title = "Edits never remove an id that is still named"
+requirement = "No edit removes an `xmi:id` that, after it, a reference end of an element or an `xsd:IDREF`/`xsd:IDREFS` token of XMI metadata (as a strict save checks it, SACM23-XMI-019) still names, and no copy brings in XMI metadata naming an id the target lacks. `DeleteElement` (under every policy), `SetContent`, `SetKey`, `SetLocation` and `SetTaggedValue` refuse to remove the `xmi:id` of a name, `content`, `key`, `location` or `value`, or one in its XMI metadata, that a reference end names, as `EditError::PartReference`; they refuse to leave a metadata token naming a removed id, and `CopyElements` one naming no id of the target, as `EditError::MetadataReference`; both SACM-REF-001. A reference to a deleted element stays the delete policies'. The checks come after every other check and before LIB-EDIT-025's text check; `check`, `preview` and `apply` agree; a refusal changes nothing. So a document that a strict read and a strict write accept writes strictly after any accepted edits, while it has a root; what a copy brings from a source a strict write refuses stays a documented limit."
+source = "XML Schema Part 1 §3.3.4 Validation Root Valid (ID/IDREF) clause 1 \"There must be no ID/IDREF binding in the item's [ID/IDREF table] whose [binding] is the empty set.\"; XMI 2.5.1 §7.6.2 (pp. 14-15) \"This attribute allows an XML element to refer to another XML element within the same document using the XML IDREF mechanism.\"; SACM 2.3 §2.2 (p. 4) \"import and export XMI documents that conform with the SACM XML Schema\"; D-VAL-LAYER; D-ATOMIC; ADR 0042 D3, D5, D6; ADR 0019 amendment 5; ADR 0030 amendment 10; the maintainer's direction of 2026-11-27 (an edit never leaves an app unable to save); found by slice 0089's probes"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-005", "LIB-EDIT-012", "LIB-EDIT-013", "LIB-EDIT-014", "LIB-EDIT-018", "LIB-EDIT-023", "LIB-EDIT-025", "SACM23-ART-005", "SACM23-XMI-019", "SACM23-XMI-031", "LIB-COMPAT-007", "LIB-API-006"]
+
+[[row]]
 id = "LIB-DOC-010"
 area = "DOC"
 milestone = "M7"
@@ -9464,8 +9528,27 @@ title = "The docs answer what Assurance Forge had to work out"
 requirement = "The item docs state these, each with an example where it helps: `referrers()` indexes every `ReferenceEnd`, `reasoning` included; `ElementId` implements `Borrow<str>`, so an id set can be queried with `&str`; exactly which ids `deleted_ids()` lists under each delete policy; how to tell that an edit changed nothing; and why a Claim with two descriptions gives SACM-MULT-001 (D-DESC-MULT)."
 source = "lasrod/libSACM#113 D1-D4 and Files and modes"
 kind = "docs"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-DOC-014"]
+acceptance = [
+  "`Document::referrers` says it indexes every `ReferenceEnd`, `reasoning` included; `ElementId`'s docs say it borrows as `str`, so an id set can be queried with `&str`.",
+  "`DeleteElement` states exactly which ids `deleted_ids()` lists under each delete and reference policy, with an example.",
+  "The docs say how to tell that an edit changed nothing (`Mutation::is_empty`, `BatchMutation::is_empty`, and why a root reorder lists no id).",
+  "The docs say why a Claim with two descriptions gives SACM-MULT-001, citing D-DESC-MULT.",
+]
+code = [
+  "crates/sacm/src/edit/delete.rs",
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/model/document.rs",
+  "crates/sacm/src/model/id.rs",
+  "crates/sacm/src/diagnostic.rs",
+  "crates/sacm/src/validation.rs",
+]
+tests = [
+  "doctest:crates/sacm/src/edit/delete.rs",
+  "doctest:crates/sacm/src/edit.rs",
+]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "SACM23-XMI-032"

@@ -35,8 +35,9 @@ use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 
 /// Bounds on what [`read`](super::read) accepts, so that a hostile or broken
-/// file is refused with [`ReadError::LimitExceeded`] (SACM-SEC-003) instead
-/// of exhausting memory (LIB-SEC-003). Both modes apply them.
+/// file is refused instead of exhausting memory (LIB-SEC-003).
+///
+/// A breach is [`ReadError::LimitExceeded`] (SACM-SEC-003). Both modes apply them.
 ///
 /// | Limit | Default | Checked |
 /// |---|---|---|
@@ -46,28 +47,27 @@ use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 /// | [`max_namespace_bindings`](Self::max_namespace_bindings) | 256 | by the scan, at each start tag: one per prefix in scope, the default namespace counted, `xml` not |
 /// | [`max_attributes`](Self::max_attributes) | 256 | by the scan, at each start tag, after the bindings and copies: every attribute but the first namespace declaration of each prefix |
 ///
-/// The size, depth, binding and node limits bound what a read allocates. The
-/// attribute limit bounds its time: the parser checks each attribute of an
-/// element against the earlier ones, so at the default it makes at most 255
-/// comparisons per attribute (LIB-SEC-007). The bindings in scope that the
-/// parser copies count against the node limit. Everything else the read
-/// keeps besides the parsed tree counts against the
-/// size limit, in one budget separate from the input's own size (ADR 0041 D2,
-/// amendment 1):
-///
-/// - the namespace text that preserved content keeps: the bytes of each
-///   namespace URI a kept name holds, and `prefix + URI + 10` for each
-///   binding it keeps, counted as each element or attribute is kept
-///   (`SACM-SEC-003/kept-namespaces`);
-/// - the text of each diagnostic the read emits: the bytes of its text
-///   arguments and of its affected ids, counted where it is emitted
-///   (`SACM-SEC-003/kept-text`). Its rendered message, which repeats those
-///   arguments (escaped, up to six times their size), is not counted on its
-///   own. A few templates render an argument twice.
-///
-/// The read is refused, in both modes, at the element, attribute or
-/// diagnostic where the budget passes the limit. So neither grows with
-/// elements times bindings, or with ids times diagnostics, unchecked.
+/// - **Memory.** The size, depth, binding and node limits bound what a read
+///   allocates. The bindings in scope that the parser copies count against the
+///   node limit.
+/// - **Time.** The attribute limit bounds it: the parser checks each attribute of
+///   an element against the earlier ones, so at the default it makes at most 255
+///   comparisons per attribute (LIB-SEC-007).
+/// - **One budget** holds everything else the read keeps besides the parsed
+///   tree. It counts against the size limit, apart from the input's own size
+///   (ADR 0041 D2, amendment 1).
+/// - **Kept namespace text** (`SACM-SEC-003/kept-namespaces`): the bytes of each
+///   namespace URI a kept name holds, and `prefix + URI + 10` for each binding
+///   preserved content keeps, counted as each element or attribute is kept.
+/// - **Kept diagnostic text** (`SACM-SEC-003/kept-text`): the bytes of each
+///   emitted diagnostic's text arguments and of its affected ids, counted where
+///   it is emitted.
+/// - **Not counted on its own:** a diagnostic's rendered message, which repeats
+///   those arguments, escaped, up to six times their size. A few templates
+///   render an argument twice.
+/// - **Refused where the budget passes the limit,** in both modes: at the
+///   element, attribute or diagnostic. So neither grows with elements times
+///   bindings, or with ids times diagnostics, unchecked.
 ///
 /// # Memory
 ///
@@ -115,9 +115,11 @@ pub struct Limits {
 }
 
 impl Default for Limits {
-    /// 33,554,432 bytes (32 MiB), depth 256, 1,000,000 nodes, 256 bindings
-    /// (M6 decision Q9; the size and node limits as the maintainer lowered
-    /// them on 2026-11-19) and 256 attributes (ADR 0041 amendment 2).
+    /// 33,554,432 bytes (32 MiB), depth 256, 1,000,000 nodes, 256 bindings and
+    /// 256 attributes.
+    ///
+    /// M6 decision Q9, with the size and node limits as the maintainer lowered
+    /// them on 2026-11-19; the attributes by ADR 0041 amendment 2.
     fn default() -> Self {
         Self {
             max_input_bytes: 33_554_432,
@@ -130,10 +132,11 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// These limits, refusing input of more than `bytes` bytes; what the read
-    /// keeps besides the parsed tree, the namespace text of preserved content
-    /// and the text of its diagnostics, is counted against the same limit, in
-    /// one budget.
+    /// These limits, refusing input of more than `bytes` bytes.
+    ///
+    /// What the read keeps besides the parsed tree, the namespace text of
+    /// preserved content and the text of its diagnostics, is counted against
+    /// the same limit, in one budget.
     #[must_use]
     pub fn with_max_input_bytes(mut self, bytes: u64) -> Self {
         self.max_input_bytes = bytes;
@@ -148,10 +151,13 @@ impl Limits {
         self
     }
 
-    /// These limits, refusing input of more than `nodes` XML nodes (the
-    /// document node, elements, text, comments and processing instructions),
-    /// and namespace copies beyond it. At 4,294,967,295 or more, the parser's
-    /// own capacity applies (SACM-SEC-002).
+    /// These limits, refusing input of more than `nodes` XML nodes, and
+    /// namespace copies beyond it.
+    ///
+    /// - **A node** is the document node, an element, a text, a comment or a
+    ///   processing instruction.
+    /// - **At 4,294,967,295 or more,** the parser's own capacity applies
+    ///   (SACM-SEC-002).
     #[must_use]
     pub fn with_max_nodes(mut self, nodes: u64) -> Self {
         self.max_nodes = nodes;
@@ -159,22 +165,24 @@ impl Limits {
     }
 
     /// These limits, refusing an element with more than `bindings` namespace
-    /// bindings in scope: one per prefix, the default namespace counted,
-    /// `xml` not.
+    /// bindings in scope.
+    ///
+    /// One per prefix: the default namespace is counted, `xml` is not.
     #[must_use]
     pub fn with_max_namespace_bindings(mut self, bindings: u64) -> Self {
         self.max_namespace_bindings = bindings;
         self
     }
 
-    /// These limits, refusing an element with more than `attributes`
-    /// attributes in its start tag; the first declaration of each prefix
-    /// (`xmlns` or `xmlns:p`) is not counted, because the bindings limit
-    /// bounds it; a declaration that repeats one earlier in the same start
-    /// tag is counted.
-    /// The parser compares each attribute of an element with the earlier
-    /// ones, so an element's read time grows with the square of its
-    /// attributes: raise this only for trusted input.
+    /// These limits, refusing an element with more than `attributes` attributes
+    /// in its start tag.
+    ///
+    /// - **Not counted:** the first declaration of each prefix (`xmlns` or
+    ///   `xmlns:p`), because the bindings limit bounds it. A declaration that
+    ///   repeats one earlier in the same start tag is counted.
+    /// - **Raise it only for trusted input.** The parser compares each attribute
+    ///   of an element with the earlier ones, so an element's read time grows
+    ///   with the square of its attributes.
     ///
     /// # Examples
     ///
@@ -199,9 +207,10 @@ impl Limits {
         self
     }
 
-    /// The most bytes of input, and of what a read keeps besides the parsed
-    /// tree: the namespace text of preserved content and the text of its
-    /// diagnostics.
+    /// The most bytes of input, and of what a read keeps besides the parsed tree.
+    ///
+    /// What it keeps is the namespace text of preserved content and the text of
+    /// its diagnostics.
     #[must_use]
     pub fn max_input_bytes(&self) -> u64 {
         self.max_input_bytes
@@ -248,6 +257,17 @@ impl Limits {
 
 /// Which of the [`Limits`] an input went over, as [`ReadError::LimitExceeded`]
 /// reports it.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::xmi::{self, Limit, Limits, ReadError, ReadOptions};
+///
+/// let options = ReadOptions::default().with_limits(Limits::default().with_max_input_bytes(8));
+/// let error = xmi::read(b"<a><b/></a>", &options).unwrap_err();
+/// assert!(matches!(error, ReadError::LimitExceeded { limit: Limit::InputBytes, max: 8, .. }));
+/// assert_eq!(Limit::InputBytes.to_string(), "input bytes");
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -257,8 +277,7 @@ impl Limits {
 #[non_exhaustive]
 pub enum Limit {
     /// [`Limits::max_input_bytes`]: the input's size, and what the read keeps
-    /// besides the parsed tree, the namespace text of preserved content and
-    /// the text of its diagnostics.
+    /// besides the parsed tree.
     InputBytes,
     /// [`Limits::max_depth`].
     Depth,
