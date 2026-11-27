@@ -87,6 +87,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   [LIB-API-013].
 - `Diagnostic::requirement_id()` is documented as never empty. Only the crate builds a
   `Diagnostic`; the `test-support` constructors are for tests [LIB-DIAG-005].
+- The crate root, the READMEs and docs/architecture.md are shorter and structured: an
+  overview, a table of entry points, one example and the key rules. The functionality
+  matrix is the inventory. docs/style.md is the style guide [LIB-DOC-009, LIB-DOC-006].
 
 ## [0.4.0] - 2026-11-26
 
