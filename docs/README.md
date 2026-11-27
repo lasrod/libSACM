@@ -6,7 +6,8 @@ every change follows.
 
 | Where | What it holds |
 |---|---|
-| [architecture.md](architecture.md) | The planned shape of the library: modules, data flow, quality gates. |
+| [architecture.md](architecture.md) | The shape of the library: goals, modules, data flow, design rules, quality gates. |
+| [style.md](style.md) | The documentation style guide: the rules, an example, and where they apply. |
 | [loop.md](loop.md) | How work is done: slices, agent roles, verification, checkpoints. |
 | [matrix/](matrix/) | The functionality matrix: every requirement as a row with a status. Edit the `.toml`, then run `cargo xtask matrix render`. The `.md` is generated. |
 | [adr/](adr/) | Architecture decision records: decisions with lasting consequences, and why. |

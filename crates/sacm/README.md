@@ -1,133 +1,37 @@
 # sacm
 
 Read, edit, validate and write assurance cases in the
-[OMG Structured Assurance Case Metamodel (SACM) 2.3](https://www.omg.org/spec/SACM/2.3).
+[OMG Structured Assurance Case Metamodel (SACM) 2.3](https://www.omg.org/spec/SACM/2.3),
+the OMG standard for exchanging assurance cases between tools as XMI files.
 
-It claims the four model compliance points of SACM 2.3 clause 2 (Assurance Case,
-Argumentation, Artifact and Terminology): it reads and writes XMI documents valid against
-the SACM XML Schema, with that package as the top object. The
-[conformance statement](https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md)
-says what that covers and where it stops.
+> **Status: pre-1.0.** The API is not stable yet. The
+> [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md)
+> shows what is verified, requirement by requirement.
 
-> **Status: early development.** The API is not stable yet. What is
-> implemented and how it is tested is tracked requirement by requirement in the
-> [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md).
+## What it does
 
-## What works today
+| To | Start at |
+|---|---|
+| Read an XMI file | `sacm::xmi::read` |
+| Inspect elements | `sacm::model::Document::get`, `sacm::model::SacmElement` |
+| Check the model against the SACM 2.3 rules | `sacm::validation::validate` |
+| Change the model | `sacm::edit::apply` |
+| Compare two documents | `sacm::compare::semantic_compare` |
+| Write an XMI file | `sacm::xmi::write` |
 
-- `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage` and
-  `TerminologyPackage` roots and the packages and Claims in them, with their names, `gid`s and each Assertion's
-  `assertionDeclaration`, and the descriptions, notes, implementation constraints and
-  tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
-  like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,
-  `SacmElement::key`). Every element's `isCitation`, `citedElement`, `isAbstract` and
-  `abstractForm` are read too (`SacmElement::is_citation`, `cited_element` and the like),
-  in the attribute or the element form; a reference is held as the id it names, and one
-  that names no element is kept. In an `ArgumentPackage` it also reads
-  `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup` elements and the five
-  asserted relationships (`AssertedInference`, `AssertedEvidence`, `AssertedContext`,
-  `AssertedArtifactSupport`, `AssertedArtifactContext`), with each relationship's
-  sources, target, reasoning and `isCounter` (`SacmElement::sources`, `target`,
-  `reasoning`, `is_counter`), each Assertion's meta-claims (`SacmElement::meta_claims`),
-  each reasoning's `structure`, each artifact reference's referenced elements
-  (`SacmElement::referenced_artifact_elements`) and each group's members
-  (`SacmElement::group_members`). In an `ArtifactPackage` it reads `Technique`,
-  `Participant`, `Property`, `ArtifactGroup`, `Artifact`, `Event`, `Resource`, `Activity`
-  and `ArtifactAssetRelationship` elements, with each asset's properties
-  (`SacmElement::properties`), each group's members, each relationship's sources and
-  targets (`SacmElement::sources`, `targets`), an Artifact's `version`, the `date` of an Artifact or an Event, an
-  Activity's `startTime` and `endTime`, each held exactly as written, and a Resource's
-  `location` (`SacmElement::version`, `date`, `start_time`, `end_time`, `location`). In a
-  `TerminologyPackage` it reads `Category`, `Term`, `Expression` and `TerminologyGroup`
-  elements, with each Term's or Expression's `value` and categories, a Term's `origin` and
-  `externalReference`, and an Expression's elements (`SacmElement::value`, `categories`,
-  `origin`, `external_reference`, `expression_elements`). The interfaces and bindings of
-  every package are read as roots and as children, with each interface's `implements`,
-  each binding's participants and each package's `interface` (`SacmElement::implements`,
-  `participant_packages`, `interfaces`). A reference element whose `href` names an
-  element of another document, such as `other.sacm.xmi#c1`, is held as a `model::Href`
-  in the end's hrefs (`SacmElement::hrefs`), written back and counted toward the end's
-  bounds, but never resolved; its fragment may be an XPointer, and a type may stand before
-  it (`Href::kind`). `Href::new` makes one, and `SetReferences::with_hrefs`,
-  `AddReference::new_href`, `RemoveReference::new_href` and the interface and binding creates set
-  them. A child held in another file, such as
-  `<argumentPackage href="arguments.sacm.xmi#args"/>`, is held as a `model::Proxy` of its
-  container (`SacmElement::proxies`), written back and never resolved. A `name`, or a value of a
-  `content`, `key` or `location`, may be an `ExpressionLangString` (§8.4) that links an
-  ExpressionElement (`LangString::expression`, `SacmElement::expressions`), or one of
-  another file (`LangString::expression_href`). Content that
-  is not SACM 2.3 where it stands, such as
-  a vendor attribute or element, is kept as written as preserved content, with
-  SACM-XMI-003 (`SacmElement::has_preserved_content`). Reading is strict by default. A tolerant read
-  opens a well-formed file whose roots are all SACM packages (SACM 2.3, or, with a Warning, an older SACM revision's or a SACM-like namespace, but not SACM 2.4) unless it has a DOCTYPE, has an `XMI` element in a namespace other than XMI 2.5.1's or EMF's `http://www.omg.org/XMI`, repeats an `xmi:id`, is in an encoding other than UTF-8, UTF-16 with a byte order mark or ISO-8859-1, or passes the XML parser's capacity or its read limits (by default 32 MiB,
-  depth 256, 1,000,000 XML nodes, 256 namespace bindings in scope and 256 attributes on an
-  element, not counting one namespace declaration per prefix): what a strict read
-  refuses, such as a value that is no literal or an untyped child under an abstract role, it keeps as
-  preserved content with a Warning, never dropped (`Document::has_preserved_content`),
-  and it reads the four names formal/23-05-08 and ptc/22-03-13 spell differently,
-  `ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
-  `TerminologyElement`, as the
-  names `write` writes, with a SACM-XMI-013 Warning; a strict read keeps them as preserved
-  content with an Error.
-  An element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
-  saves; see the Ids section of the `sacm::xmi::read` docs.
-- `sacm::xmi::write` writes a document deterministically, preserved content included.
-  A strict save, the default, refuses output that would not be schema-valid and a
-  document that holds preserved content; it never validates.
-- `sacm::validation::validate` reports each element that has no name, each `content`,
-  `key` or `location` text that is empty or gives one language twice, each tagged value without a key,
-  each id that is not an XML `NCName`, each `gid` two elements share, each element with
-  more than one description, each `ArgumentPackage` that nests one and also holds
-  other argumentation elements, each reference that names no element or an element of the
-  wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
-  `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or
-  a target, each evidence or artifact relationship whose ends are not artifact references
-  (§11.15, §11.17, §11.18), each Term or Expression without a value, each
-  ExpressionLangString without an `expression` or with both an `expression` and a
-  non-empty content, each concrete Expression whose elements are abstract, each id a
-  reference end repeats, each child of a package interface or binding that its clause
-  does not allow (§9.3, §10.5, §10.6, §11.5, §11.6, §12.4, §12.5), each interface with no
-  `implements` and each binding with fewer than two distinct participants, each binding
-  named as a participant, and each interface outside the package it implements, as
-  diagnostics with stable codes.
-- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
-  ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
-  relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
-  Properties, Techniques, Participants, ArtifactGroups, Artifacts, Events, Resources,
-  Activities and ArtifactAssetRelationships (`sacm::edit::CreateArtifactPackage`,
-  `sacm::edit::CreateArtifactAssetRelationship` and the like), TerminologyPackages,
-  Categories, Terms, Expressions and TerminologyGroups (`sacm::edit::CreateTerm` and the
-  like), the interfaces and bindings of every package
-  (`sacm::edit::CreateTerminologyPackageInterface` and the like), and descriptions,
-  implementation constraints, notes and tagged values on them
-  (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
-  edit changes nothing, and an edit refuses a reference that names no element or an
-  element its end's declared type does not admit. The stricter §11.15, §11.17 and §11.18
-  rules, that evidence and artifact relationships link ArtifactReferences, are left to
-  `sacm::validation::validate`. It also changes existing elements of every kind: their
-  names, `gid`s, flags and `assertionDeclaration`s (`sacm::edit::SetName` and the
-  like), the `content` and `key` of descriptions, implementation constraints, notes
-  and tagged values (`sacm::edit::SetContent`, `sacm::edit::SetKey`), an Artifact's
-  `version`, the `date` of an Artifact or an Event, a Resource's `location` and an
-  Activity's `startTime` and `endTime` (`sacm::edit::SetVersion`, `SetDate`,
-  `SetLocation`, `SetStartTime`, `SetEndTime`), a Term's or an Expression's `value` and a
-  Term's `externalReference` (`SetValue`, `SetExternalReference`), every reference
-  end, within its bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
-  order of an element's children or of the roots (`sacm::edit::ReorderElements`).
-  `sacm::edit::MoveElement` moves an element, with everything it contains, under another
-  parent or to the roots, and `sacm::edit::CopyElements` copies elements of another
-  document, such as a draft, with fresh ids where theirs clash.
-- `Document::referrers` lists the typed references that name an id, and
-  `SacmElement::flag` and `SacmElement::references`, with `Flag::ALL` and
-  `ReferenceEnd::ALL`, read an element's flags and ends without naming each one.
-- `sacm::compare::semantic_compare` lists every difference in SACM content between two
-  documents.
+- **All four package kinds.** `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`
+  and `TerminologyPackage`, with their elements, interfaces and bindings.
+- **Four compliance points claimed.** Assurance Case, Argumentation, Artifact and
+  Terminology (SACM 2.3 clause 2). The
+  [conformance statement](https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md)
+  says what that covers and where it stops.
+- **Nothing dropped.** Content that is not SACM 2.3 where it stands is kept as written,
+  with a diagnostic. Comments and processing instructions are not kept.
+- **Atomic edits.** A refused operation changes nothing.
+- **Safe on input.** No `unsafe`, no panics on input, bounded reads.
 
-The [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md)
-tracks every requirement: what is built, what is planned, and the tests behind each.
-
-Planned (M7): property-based round-trip and atomicity tests, fuzzing, coverage, semver
-checks, a public API review, examples on every major type and a user guide.
+Planned for 1.0: a user guide, a SACM primer, runnable examples, property-based tests,
+fuzzing and semver checks.
 
 ## Usage
 
@@ -136,17 +40,16 @@ checks, a public API review, examples on every major type and a user guide.
 sacm = "0.4"
 ```
 
-Load a document, inspect it, edit it, validate it and save it:
+Read a document, inspect it, edit it, validate it and write it:
 
 ```rust
-use sacm::diagnostic;
 use sacm::edit::{self, CreateClaim};
-use sacm::model::{ElementKind, LangString};
-use sacm::validation;
+use sacm::model::ElementKind;
 use sacm::xmi::{self, ReadOptions, WriteOptions};
+use sacm::{diagnostic, validation};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load. The input is the bytes of an XMI file, such as
+    // Read. The input is the bytes of an XMI file, such as
     // `std::fs::read("case.sacm.xmi")?`; here it is inline.
     let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 <sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
@@ -170,44 +73,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("arguments"));
 
     // Edit: add a Claim to the ArgumentPackage. Its id is generated.
-    let name = LangString::new("The brake is tested").with_lang("en");
-    let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
-    assert_eq!(created.created_ids()[0].as_str(), "claim_1");
+    let created = edit::apply(&mut document, CreateClaim::new("arguments", "The brake is tested"))?;
+    assert_eq!(created.created_ids(), ["claim_1"]);
 
-    // Validate. This release checks names, ids, gids, descriptions, the content and key
-    // of descriptions, implementation constraints, notes and tagged values, what an
-    // ArgumentPackage holds, and references, citations and abstract forms.
+    // Validate: no finding is an Error.
     let findings = validation::validate(&document);
     assert!(!diagnostic::has_errors(&findings));
 
-    // Save. The write is strict by default; writing the file is ordinary I/O,
-    // such as std::fs::write("case.sacm.xmi", &text).
+    // Write, in strict mode by default. Saving the text is ordinary I/O, such
+    // as `std::fs::write("case.sacm.xmi", &text)?`.
     let text = xmi::write(&document, &WriteOptions::default())?;
 
-    // The saved text reads back as the same document.
+    // The text reads back as the same document.
     let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
     assert_eq!(back, document);
     Ok(())
 }
 ```
 
-A strict save refuses output that would not be schema-valid, an `xmi:id` that is no
-`NCName` or a reference to no `xmi:id` it writes, as `WriteError::Invalid`, and a document
-that holds preserved content, as `WriteError::PreservedContent`. It never validates: a
-draft with an open model Error, such as an element with no name, saves strictly. Call
-`validation::validate` for model checks.
+## Strict and tolerant modes
 
-Which `xmi::Mode` to use: reads and writes are strict by default. Read in tolerant mode,
-`with_mode(Mode::Tolerant)`, to open files from other tools: it keeps what a strict read refuses, with a Warning. A strict read refuses what it
-does not read, and reports the variations it recognises as Errors instead of Warnings.
-Neither mode validates what it reads. To check that a file conforms, read it in strict
-mode, run `validation::validate`, and test both lists with `diagnostic::has_errors`: a
-tolerant read reports what a strict read refuses as Warnings and keeps it as preserved
-content (`Document::has_preserved_content`), so its diagnostics alone are no conformance
-check. Save in strict mode, the default, for a file you hand on; save in tolerant mode to
-keep what a tolerant read preserved.
+Reading and writing are strict by default.
 
-See the [crate documentation](https://docs.rs/sacm) for the full API.
+- **Open another tool's file:** read with `with_mode(Mode::Tolerant)`. It keeps most of
+  what a strict read refuses, as preserved content with a Warning. It still refuses
+  malformed XML, a DOCTYPE, a SACM 2.4 root, a repeated `xmi:id` and input over the read
+  limits.
+- **Hand a file on:** write in strict mode. It refuses output that would not be
+  schema-valid, and a document that holds preserved content.
+- **Check the model:** call `validation::validate`. A strict write never validates, so a
+  draft with a model Error saves.
+
+The [crate documentation](https://docs.rs/sacm) has the rules in full, the `serde` feature
+and the API.
 
 ## License
 

@@ -87,6 +87,18 @@ map. Generated ids are deterministic for a given sequence of operations.
 - Intra-doc links (`[`Claim`]`) rather than prose references.
 - `cargo doc` builds with `RUSTDOCFLAGS="-D warnings"`.
 
+**Style** (full guide: [docs/style.md](../../../docs/style.md), LIB-DOC-009). A human must be
+able to read it:
+- **Lead with the point.** A bullet opens with its key word or fact, then the detail:
+  "**Atomic.** A refused operation changes nothing." — not "An operation is atomic: …".
+- **Most important first; short.** No restated signatures, nothing obvious. Lists and
+  tables over long sentences; no prose paragraph over four lines.
+- **Link sparingly.** The functionality matrix is the inventory; docs need not list
+  everything.
+- **No diagrams in rustdoc** (they do not render). Mermaid is fine in Markdown GitHub
+  renders.
+- Fable 5.2 writes user-facing docs; the verifier checks them against the guide.
+
 ## Testing conventions
 
 - **Traced names**: every test is named `<row id in snake case>_<what it checks>`,
