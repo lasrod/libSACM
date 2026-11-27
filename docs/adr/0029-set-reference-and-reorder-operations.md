@@ -127,3 +127,21 @@ element's flags and ends:
   (p. 40) "target:ArgumentAsset[1]" and §12.14 (p. 50) "target:ArtifactAsset[1..*]".
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-17, with ADR 0036).*
+
+## Amendment 2 (2026-11-27): SetTaggedValue
+
+LIB-EDIT-023; lasrod/libSACM#113 A2.
+- `SetTaggedValue::new(element, key, content)` sets the `content` of the element's
+  TaggedValue with the plain key `key` (§8.12). With none, it creates one as the element's
+  last child, with key `[key]` and a generated id.
+- **Key rule:** a TaggedValue has key K when any of its key's values has content exactly K
+  (§8.5: the values "bear the same meaning"). `lang` is ignored. Where several match, the
+  first in `tagged_values()` order is used; duplicates are kept. `SacmElement::tagged_value`
+  uses the same rule.
+- **Checks, in order:** the element exists (SACM-CMD-001); its kind holds tagged values
+  (`FeatureNotApplicable`, SACM-CMD-008); then the content's `ExpressionLangString`s, as
+  `SetContent` checks them.
+- **Mutation:** the tagged value is changed, or created. The owner is not changed. Setting
+  the content it holds changes nothing. The ids of a replaced content are kept by position.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-27).*

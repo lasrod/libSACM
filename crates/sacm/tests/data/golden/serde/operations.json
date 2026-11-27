@@ -1009,6 +1009,17 @@
     ]
   },
   {
+    "type": "SetTaggedValue",
+    "element": "c1",
+    "key": "ASIL",
+    "content": [
+      {
+        "lang": null,
+        "content": "D"
+      }
+    ]
+  },
+  {
     "type": "SetVersion",
     "element": "report",
     "version": "1.3"

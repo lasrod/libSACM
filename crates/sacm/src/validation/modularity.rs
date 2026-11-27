@@ -9,7 +9,7 @@ use crate::diagnostic::template::{
     PKG_001_CITED_OUTSIDE, PKG_001_NOT_A_CITATION, PKG_001_NOT_A_CITATION_OR_RELATIONSHIP,
     PKG_001_NOT_AN_INTERFACE, PKG_002_OUTSIDE_IMPLEMENTED_PACKAGE, Template,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{
     AbstractClass, Document, ElementId, ElementKind, Href, ReferenceEnd, SacmElement,
 };
@@ -271,7 +271,7 @@ fn not_a_citation(holder: SacmElement<'_>, child: SacmElement<'_>, rule: &Holder
         None => &PKG_001_NOT_A_CITATION,
     };
     Diagnostic::emit(template, Severity::Error, "SACM23-VAL-013", arguments)
-        .set_clause(rule.clause)
+        .set_clause(Specification::Sacm23, rule.clause)
         .set_affected([holder.id().clone(), child.id().clone()])
 }
 
@@ -283,7 +283,7 @@ fn content_warning<const N: usize>(
     affected: [SacmElement<'_>; N],
 ) -> Diagnostic {
     Diagnostic::emit(template, Severity::Warning, "SACM23-VAL-013", arguments)
-        .set_clause(clause)
+        .set_clause(Specification::Sacm23, clause)
         .set_affected(affected.map(|element| element.id().clone()))
 }
 
@@ -317,7 +317,7 @@ pub(super) fn assurance_case_interface_content(document: &Document, found: &mut 
                         "SACM23-VAL-015",
                         arguments,
                     )
-                    .set_clause("9.3")
+                    .set_clause(Specification::Sacm23, "9.3")
                     .set_affected([interface.id().clone(), child.id().clone()]),
                 );
             }
@@ -373,7 +373,7 @@ pub(super) fn implements_and_participants(document: &Document, found: &mut Vec<D
                         "SACM23-VAL-014",
                         arguments,
                     )
-                    .set_clause(end.clause_on(kind))
+                    .set_clause(Specification::Sacm23, end.clause_on(kind))
                     .set_affected([element.id().clone(), participant.clone()]),
                 );
             }
@@ -425,7 +425,7 @@ fn bound_error(
     arguments: Vec<Argument>,
 ) -> Diagnostic {
     Diagnostic::emit(template, Severity::Error, "SACM23-VAL-014", arguments)
-        .set_clause(end.clause_on(element.kind()))
+        .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
         .set_affected([element.id().clone()])
 }
 
@@ -481,7 +481,7 @@ pub(super) fn interface_placement(document: &Document, found: &mut Vec<Diagnosti
                 "SACM23-VAL-023",
                 arguments,
             )
-            .set_clause(clause)
+            .set_clause(Specification::Sacm23, clause)
             .set_affected([interface.id().clone(), package.id().clone()]),
         );
     }

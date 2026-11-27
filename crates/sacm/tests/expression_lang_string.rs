@@ -1210,7 +1210,7 @@ fn sacm23_base_009_an_expression_attribute_on_a_claim_is_a_preserved_attribute()
         );
         assert_eq!(
             c1.expressions(),
-            [],
+            [] as [ElementId; 0],
             "{BASE_009}: an expression attribute on a Claim is read as an end ({mode:?})"
         );
     }
@@ -2190,7 +2190,7 @@ fn sacm23_base_009_a_set_keeps_a_held_expression_and_changes_only_on_change() {
     );
     assert_eq!(
         again.changed_ids(),
-        [],
+        [] as [ElementId; 0],
         "{BASE_009}: the same name changes nothing"
     );
     let to_t1 = apply(

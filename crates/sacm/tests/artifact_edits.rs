@@ -1663,7 +1663,7 @@ fn sacm23_art_004_set_version_sets_removes_and_refuses_a_kind_without_it() {
     let mutation = applied(ART_004, &mut doc, SetVersion::remove("a1"));
     assert_eq!(
         mutation.changed_ids(),
-        [],
+        [] as [ElementId; 0],
         "{ART_004}: SetVersion::remove of no version"
     );
     // An unknown element, then a kind without a version.
@@ -1977,7 +1977,7 @@ fn sacm23_art_005_set_location_replaces_keeps_ids_by_position_and_removes() {
     let mutation = applied(ART_005, &mut doc, SetLocation::new("r", named("only")));
     assert_eq!(
         mutation.changed_ids(),
-        [],
+        [] as [ElementId; 0],
         "{ART_005}: the same location again"
     );
     // A longer location keeps the ids it has and adds values without one.
@@ -2031,7 +2031,7 @@ fn sacm23_art_005_set_location_replaces_keeps_ids_by_position_and_removes() {
     let mutation = applied(ART_005, &mut doc, SetLocation::remove("r"));
     assert_eq!(
         mutation.changed_ids(),
-        [],
+        [] as [ElementId; 0],
         "{ART_005}: removing no location"
     );
     // An unknown element, then a kind that is no Resource.

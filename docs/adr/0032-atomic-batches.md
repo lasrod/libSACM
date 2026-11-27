@@ -65,3 +65,15 @@ the tests' oracle.
   new id API.
 - **Poisoning the batch on any refusal.** That rule is stricter but harder to explain. The
   refused operation changed nothing anyway.
+
+## Amendment 1 (2026-11-27): batch previews
+
+LIB-EDIT-024; lasrod/libSACM#113 A6. This replaces "No batch check or preview in this
+release".
+- `edit::preview_batch(&Document, closure)` and `edit::preview_all(&Document, list)` return
+  the `BatchMutation` that `batch` or `apply_all` would return, the full delete cascade
+  included. They run on a private copy; the document is unchanged.
+- A preview holds while the document's revision is unchanged. There is no apply from a
+  batch preview: run the batch.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-27).*

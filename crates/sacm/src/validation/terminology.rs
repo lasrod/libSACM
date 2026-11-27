@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::diagnostic::template::{ABS_001_ABSTRACT_ELEMENT, MULT_001_MISSING};
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{AbstractClass, Document, ElementKind};
 
 /// SACM23-TERM-003: each Term or Expression with no `value` is one
@@ -27,7 +27,7 @@ pub(super) fn missing_values(document: &Document, found: &mut Vec<Diagnostic>) {
                     "SACM23-TERM-003",
                     arguments,
                 )
-                .set_clause("10.9")
+                .set_clause(Specification::Sacm23, "10.9")
                 .set_affected([id.clone()]),
             );
         }
@@ -70,7 +70,7 @@ pub(super) fn concrete_expressions(document: &Document, found: &mut Vec<Diagnost
                     "SACM23-VAL-017",
                     arguments,
                 )
-                .set_clause("10.10")
+                .set_clause(Specification::Sacm23, "10.10")
                 .set_affected([expression.id().clone(), id.clone()]),
             );
         }

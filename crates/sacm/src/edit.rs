@@ -7,7 +7,8 @@
 //! nothing**: not the elements, not the written XMI, not the ids generated
 //! next, and not the document's [`revision`](Document::revision). [`check`]
 //! gives the answer `apply` would give, without changing the document, and
-//! [`preview`] also gives the `Mutation` it would return.
+//! [`preview`] also gives the `Mutation` it would return; [`preview_batch`]
+//! and [`preview_all`] give the [`BatchMutation`] of a batch.
 //!
 //! The public mutations are [`apply`], [`apply_preview`], [`batch`] and
 //! [`apply_all`], and each is all or nothing (D-ATOMIC):
@@ -120,6 +121,7 @@
 //! | [`SetAssertionDeclaration`] | the `assertionDeclaration` of an Assertion (§11.10) | [`new`](SetAssertionDeclaration::new) |
 //! | [`SetContent`] | the `content` of a `UtilityElement` (§8.7) | [`new`](SetContent::new), [`remove`](SetContent::remove) |
 //! | [`SetKey`] | the `key` of a `TaggedValue` (§8.12) | [`new`](SetKey::new) |
+//! | [`SetTaggedValue`] | the `content` of the element's `TaggedValue` with a plain key (§8.12), which it creates if there is none | [`new`](SetTaggedValue::new) |
 //! | [`SetVersion`] | the `version` of an `Artifact` (§12.7) | [`new`](SetVersion::new), [`remove`](SetVersion::remove) |
 //! | [`SetDate`] | the `date` of an `Artifact` or an `Event` (§12.7, §12.9) | [`new`](SetDate::new), [`remove`](SetDate::remove) |
 //! | [`SetLocation`] | the `location` of a `Resource` (§12.10) | [`new`](SetLocation::new), [`remove`](SetLocation::remove) |
@@ -394,7 +396,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
+//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, a kind that holds tagged values for `taggedValue`, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
 //!
 //! [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`], [`SetVersion`],
 //! [`SetDate`], [`SetStartTime`] and [`SetEndTime`] check nothing more. Every
@@ -404,6 +406,8 @@
 //! no `expression` is [`EditError::TooFewReferences`] of the end
 //! `expression`, and each `expression` the element does not hold already is
 //! checked as checks 6 to 8 check a new id, for the end `expression`.
+//! [`SetTaggedValue`] checks 1 and 2, then its content's
+//! `ExpressionLangString`s as [`SetContent`] does.
 //!
 //! The reference operations then check, in this order:
 //!
@@ -537,7 +541,7 @@ pub use references::{AddReference, RemoveReference, SetReferences};
 pub use reorder::ReorderElements;
 pub use set::{
     SetAssertionDeclaration, SetContent, SetDate, SetEndTime, SetExternalReference, SetFlag,
-    SetGid, SetKey, SetLocation, SetName, SetStartTime, SetValue, SetVersion,
+    SetGid, SetKey, SetLocation, SetName, SetStartTime, SetTaggedValue, SetValue, SetVersion,
 };
 pub use terminology::{
     CreateCategory, CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
@@ -927,12 +931,105 @@ pub fn apply_all(
     document: &mut Document,
     operations: impl IntoIterator<Item = impl Into<Operation>>,
 ) -> Result<BatchMutation, BatchError> {
-    batch(document, |tx| {
-        for operation in operations {
-            tx.apply(operation)?;
-        }
-        Ok(())
-    })
+    batch(document, |tx| apply_each(tx, operations))
+}
+
+/// Shows what [`batch`] would return for `operations`, without changing
+/// `document`: the closure runs on a copy (LIB-EDIT-024, ADR 0032).
+///
+/// - The result is the [`BatchMutation`] `batch` would return: each
+///   accepted [`Mutation`] with its generated ids, and the net ids, a whole
+///   delete cascade included.
+/// - It equals `batch`'s result while `document` stays at the same
+///   [`revision`](Document::revision); after another edit, the batch may
+///   generate other ids.
+/// - `document` is unchanged: `==` to before, with the same revision and the
+///   same next generated ids, so a [`Preview`] taken before still applies.
+///
+/// # Errors
+///
+/// Returns the closure's error, unchanged.
+///
+/// # Panics
+///
+/// Propagates a panic in the closure. The document is unchanged.
+///
+/// # Examples
+///
+/// Preview a delete with its cascade before asking the user:
+///
+/// ```
+/// use sacm::edit::{self, BatchError, CreateArgumentPackage, CreateClaim, DeleteElement};
+/// use sacm::edit::{PackageDeletePolicy, SetName};
+/// use sacm::model::{Document, ElementId, LangString};
+///
+/// let mut doc = Document::new();
+/// let name = LangString::new;
+/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::new("p", name("Brakes")).with_id("q"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::new("p", name("Steering")).with_id("s"))?;
+/// edit::apply(&mut doc, CreateClaim::new("q", name("The brakes are safe")).with_id("c1"))?;
+///
+/// let plan = edit::preview_batch(&doc, |tx| -> Result<(), BatchError> {
+///     tx.apply(DeleteElement::new("q").with_package_policy(PackageDeletePolicy::DeleteRecursively))?;
+///     tx.apply(SetName::new("p", name("Arguments, steering only")))?;
+///     Ok(())
+/// })?;
+/// assert_eq!(plan.deleted_ids(), [ElementId::from("q"), ElementId::from("c1")]);
+/// assert_eq!(plan.changed_ids(), [ElementId::from("p")]);
+/// assert!(doc.contains("q")); // nothing has changed yet
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn preview_batch<E>(
+    document: &Document,
+    operations: impl FnOnce(&mut Batch<'_>) -> Result<(), E>,
+) -> Result<BatchMutation, E> {
+    batch::preview(document, operations)
+}
+
+/// Shows what [`apply_all`] would return for `operations`, without changing
+/// `document`: [`preview_batch`] over the list, stopping at the first
+/// refusal.
+///
+/// # Errors
+///
+/// A [`BatchError`] naming the first refused operation, by its position in
+/// the list, with its [`EditError`], as `apply_all` gives it.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, Operation, SetName};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// let operations = [
+///     Operation::from(CreateClaim::new("p", LangString::new("C1"))),
+///     Operation::from(SetName::new("nope", LangString::new("C2"))),
+/// ];
+/// let error = edit::preview_all(&doc, operations).unwrap_err();
+/// assert_eq!(error.index(), 1);
+/// assert_eq!(doc.element_count(), 1); // unchanged
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+pub fn preview_all(
+    document: &Document,
+    operations: impl IntoIterator<Item = impl Into<Operation>>,
+) -> Result<BatchMutation, BatchError> {
+    preview_batch(document, |tx| apply_each(tx, operations))
+}
+
+/// Applies `operations` in `tx`, in order, passing the first refusal on:
+/// the body of [`apply_all`] and [`preview_all`].
+fn apply_each(
+    tx: &mut Batch<'_>,
+    operations: impl IntoIterator<Item = impl Into<Operation>>,
+) -> Result<(), BatchError> {
+    for operation in operations {
+        tx.apply(operation)?;
+    }
+    Ok(())
 }
 
 /// Runs every check of `operation` against `document`, and returns what the
@@ -1020,6 +1117,7 @@ fn plan_operation<'o>(
         Operation::SetAssertionDeclaration(set) => set.plan(document),
         Operation::SetContent(set) => set.plan(document),
         Operation::SetKey(set) => set.plan(document),
+        Operation::SetTaggedValue(set) => set.plan(document),
         Operation::SetVersion(set) => set.plan(document),
         Operation::SetDate(set) => set.plan(document),
         Operation::SetLocation(set) => set.plan(document),
@@ -1148,6 +1246,9 @@ pub enum Operation {
     SetContent(SetContent),
     /// Sets the `key` of a `TaggedValue`.
     SetKey(SetKey),
+    /// Sets the content of the `TaggedValue` with a plain key, creating it if
+    /// absent.
+    SetTaggedValue(SetTaggedValue),
     /// Sets or removes the `version` of an `Artifact`.
     SetVersion(SetVersion),
     /// Sets or removes the `date` of an `Artifact` or an `Event`.
@@ -1206,7 +1307,7 @@ impl Operation {
     /// `"CreateTerminologyPackageBinding"`, `"CreateCategory"`, `"CreateTerm"`,
     /// `"CreateExpression"`, `"CreateTerminologyGroup"`, `"SetName"`,
     /// `"SetGid"`, `"SetFlag"`, `"SetAssertionDeclaration"`, `"SetContent"`,
-    /// `"SetKey"`, `"SetVersion"`, `"SetDate"`, `"SetLocation"`,
+    /// `"SetKey"`, `"SetTaggedValue"`, `"SetVersion"`, `"SetDate"`, `"SetLocation"`,
     /// `"SetStartTime"`, `"SetEndTime"`, `"SetValue"`,
     /// `"SetExternalReference"`, `"SetReferences"`, `"AddReference"`,
     /// `"RemoveReference"`, `"ReorderElements"`, `"MoveElement"`,
@@ -1269,6 +1370,7 @@ impl Operation {
             Self::SetAssertionDeclaration(_) => "SetAssertionDeclaration",
             Self::SetContent(_) => "SetContent",
             Self::SetKey(_) => "SetKey",
+            Self::SetTaggedValue(_) => "SetTaggedValue",
             Self::SetVersion(_) => "SetVersion",
             Self::SetDate(_) => "SetDate",
             Self::SetLocation(_) => "SetLocation",
@@ -1308,6 +1410,7 @@ operation_from!(
     SetAssertionDeclaration,
     SetContent,
     SetKey,
+    SetTaggedValue,
     SetLocation,
     SetReferences,
     AddReference,
@@ -1506,6 +1609,36 @@ impl Mutation {
         &self.created
     }
 
+    /// The id of the one element the operation created: `Some` exactly when
+    /// [`created_ids`](Self::created_ids) holds one id.
+    ///
+    /// A create gives its element's id. An operation that creates nothing,
+    /// or a [`CopyElements`] that creates several, gives `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetName};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// let made = edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")))?;
+    /// let claim = made.created_id().expect("a create creates one element").clone();
+    /// assert_eq!(claim.as_str(), "claim_1");
+    ///
+    /// let renamed = edit::apply(&mut doc, SetName::new(&claim, LangString::new("C2")))?;
+    /// assert_eq!(renamed.created_id(), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn created_id(&self) -> Option<&ElementId> {
+        match self.created.as_slice() {
+            [one] => Some(one),
+            _ => None,
+        }
+    }
+
     /// The ids of the existing elements changed, in the document's
     /// [pre-order](crate::model::Document::elements) after the operation.
     ///
@@ -1613,7 +1746,7 @@ pub enum EditError {
     /// [`SacmElement::content_id`](crate::model::SacmElement::content_id))
     /// (SACM-CMD-004). Ids are unique across the whole document, not per
     /// parent. Choose another id, or leave out `with_id` to have one
-    /// generated.
+    /// generated. [`Document::is_id_in_use`] answers this before applying.
     ///
     /// A [`CopyElements`] also refuses with it when the preserved content it
     /// copies holds an `xmi:id` that is not free in the target (in use, or
@@ -1835,7 +1968,8 @@ pub enum EditError {
     /// on a kind that is no `AssertedRelationship` (§11.13), an
     /// `assertionDeclaration` on one that is no Assertion (§11.10), a
     /// `content` on one that is no `UtilityElement` (§8.7), a `key` on one
-    /// that is no `TaggedValue` (§8.12), or a reference end the kind does
+    /// that is no `TaggedValue` (§8.12), a `taggedValue` on a
+    /// `UtilityElement`, which holds none (§8.6), or a reference end the kind does
     /// not own, such as a `source` on a Claim. Every element has a `gid`,
     /// `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, so
     /// those never fail here. Edit an element whose kind has the feature.
@@ -1871,8 +2005,8 @@ pub enum EditError {
         /// The element's kind.
         kind: ElementKind,
         /// The feature, by its XMI name: `name`, `isCounter`,
-        /// `assertionDeclaration`, `content`, `key`, or the name of a
-        /// reference end, such as `source`.
+        /// `assertionDeclaration`, `content`, `key`, `taggedValue`, or the
+        /// name of a reference end, such as `source`.
         feature: &'static str,
     },
     /// A reference edit names a derived end (SACM-CMD-008): `ReferenceEnd::Expression`,

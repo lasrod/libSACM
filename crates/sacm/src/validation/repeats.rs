@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::diagnostic::template::MULT_001_REPEATED_REFERENCE;
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, ReferenceEnd, SacmElement};
 
 /// SACM23-VAL-022: each id that one multi-valued end of one element holds
@@ -59,7 +59,7 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
                         "SACM23-VAL-022",
                         arguments,
                     )
-                    .set_clause(end.clause_on(element.kind()))
+                    .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),
                 );
             }
@@ -103,7 +103,7 @@ fn repeated_hrefs(element: SacmElement<'_>, end: ReferenceEnd, found: &mut Vec<D
                 "SACM23-VAL-022",
                 arguments,
             )
-            .set_clause(end.clause_on(element.kind()))
+            .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
             .set_affected([element.id().clone()]),
         );
     }

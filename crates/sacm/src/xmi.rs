@@ -2916,7 +2916,8 @@ impl std::error::Error for ReadError {}
 ///    first such character; then its gid, its `version`, `date`,
 ///    `startTime` and `endTime`, its name's `lang`, its name's `content`,
 ///    and each value of its `content`, then of its `key` and then of its
-///    `location`, `lang` before `content`, the same way. Preserved content is not
+///    `location`, `lang` before `content`, the same way, naming the value's
+///    position too. Preserved content is not
 ///    checked: [`read`] read it, so it is representable.
 ///
 /// Nothing else a document holds is refused.
@@ -3074,6 +3075,12 @@ pub enum WriteError {
     /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
     /// U+FFFF.
     ///
+    /// For a value of a `content`, `key` or `location`, `position` is the
+    /// value's index and the template is
+    /// `SACM-XML-003/unrepresentable-character-in-value`; otherwise
+    /// `position` is `None` and the template is
+    /// `SACM-XML-003/unrepresentable-character`.
+    ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage};
     /// use sacm::model::{Document, LangString};
@@ -3089,6 +3096,7 @@ pub enum WriteError {
     ///     WriteError::UnrepresentableCharacter {
     ///         attribute: WriteAttribute::NameContent,
     ///         character: '\u{1}',
+    ///         position: None,
     ///         ..
     ///     }
     /// ));
@@ -3108,6 +3116,9 @@ pub enum WriteError {
         character: char,
         /// The attribute that holds it.
         attribute: WriteAttribute,
+        /// The value's index, from 0, among the values of the content, key
+        /// or location, for the six *Value* attributes; `None` otherwise.
+        position: Option<usize>,
         /// The template and arguments of the refusal's message: see
         /// [`template`](Self::template) and [`arguments`](Self::arguments).
         details: Details,
@@ -3259,25 +3270,36 @@ impl WriteError {
     }
 
     /// The `UnrepresentableCharacter` refusal of `character` in `attribute`
-    /// of `element`.
+    /// of `element`, in the value at `position` for a value's attribute: the
+    /// template with the position when there is one, the one without
+    /// otherwise.
     pub(crate) fn unrepresentable_character(
         element: ElementId,
         character: char,
         attribute: WriteAttribute,
+        position: Option<usize>,
     ) -> Self {
-        let details = Details::new(
-            &template::XML_003_UNREPRESENTABLE_CHARACTER,
-            vec![
-                Argument::text("element", element.as_str()),
-                Argument::prose("attribute", attribute.to_string()),
-                Argument::count("code_point", u64::from(u32::from(character))),
-            ],
-        );
+        let mut arguments = vec![
+            Argument::text("element", element.as_str()),
+            Argument::prose("attribute", attribute.to_string()),
+        ];
+        let template = match position {
+            Some(position) => {
+                arguments.push(Argument::count_of("position", position));
+                &template::XML_003_UNREPRESENTABLE_CHARACTER_IN_VALUE
+            }
+            None => &template::XML_003_UNREPRESENTABLE_CHARACTER,
+        };
+        arguments.push(Argument::count(
+            "code_point",
+            u64::from(u32::from(character)),
+        ));
         Self::UnrepresentableCharacter {
             element,
             character,
             attribute,
-            details,
+            position,
+            details: Details::new(template, arguments),
         }
     }
 

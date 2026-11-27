@@ -14,7 +14,8 @@ use std::fmt;
 /// [`xmi::write`](crate::xmi::write) writes it back as its `xsd:ID` value.
 /// Equality, ordering and hashing are those of the
 /// string, and an `ElementId` borrows as a [`str`], so maps and sets keyed by
-/// `ElementId` can be searched with a `&str`.
+/// `ElementId` can be searched with a `&str`. It compares equal to a `str`
+/// with the same value, either way round: `id == "c1"`.
 ///
 /// # Examples
 ///
@@ -105,6 +106,43 @@ impl AsRef<str> for ElementId {
 impl Borrow<str> for ElementId {
     fn borrow(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl PartialEq<str> for ElementId {
+    /// Whether the id's value is `other`, exactly: case and white space
+    /// count.
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for ElementId {
+    /// Whether the id's value is `other`, exactly.
+    ///
+    /// ```
+    /// use sacm::model::ElementId;
+    ///
+    /// let id = ElementId::from("c1");
+    /// assert!(id == "c1" && "c1" == id);
+    /// assert!(id != "C1" && id != " c1");
+    /// ```
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<ElementId> for str {
+    /// Whether `other`'s value is this string, exactly.
+    fn eq(&self, other: &ElementId) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl PartialEq<ElementId> for &str {
+    /// Whether `other`'s value is this string, exactly.
+    fn eq(&self, other: &ElementId) -> bool {
+        *self == other.as_str()
     }
 }
 

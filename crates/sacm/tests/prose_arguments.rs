@@ -284,8 +284,9 @@ mod serde_records {
     use sacm::diagnostic::ArgumentValue;
 
     /// The strict write refusal of a name holding U+0001, as
-    /// `serde_refusals.rs` pins it: its `attribute` argument is prose.
-    const UNREPRESENTABLE: &str = r#"{"type":"UnrepresentableCharacter","code":"SACM-XML-003","template":"SACM-XML-003/unrepresentable-character","arguments":{"element":"arguments","attribute":"name's content","code_point":1},"element":"arguments","character":"\u0001","attribute":"NameContent"}"#;
+    /// `serde_refusals.rs` pins it: its `attribute` argument is prose. Since
+    /// slice 0082 it ends with `"position":null` (LIB-API-013).
+    const UNREPRESENTABLE: &str = r#"{"type":"UnrepresentableCharacter","code":"SACM-XML-003","template":"SACM-XML-003/unrepresentable-character","arguments":{"element":"arguments","attribute":"name's content","code_point":1},"element":"arguments","character":"\u0001","attribute":"NameContent","position":null}"#;
 
     #[test]
     fn lib_diag_004_a_prose_argument_is_a_json_string_and_reads_back_as_prose() {

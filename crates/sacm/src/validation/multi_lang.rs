@@ -6,7 +6,7 @@ use crate::diagnostic::template::{
     self, MULT_001_MISSING, MULT_001_NO_VALUE, MULT_001_REPEATED_ABSENT_LANG,
     MULT_001_REPEATED_LANG,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, ElementId, ElementKind, LangString, SacmElement, TextRole};
 
 /// The requirement these rules enforce.
@@ -91,6 +91,6 @@ fn finding(
     id: &ElementId,
 ) -> Diagnostic {
     Diagnostic::emit(template, Severity::Error, ROW, arguments)
-        .set_clause(clause)
+        .set_clause(Specification::Sacm23, clause)
         .set_affected([id.clone()])
 }

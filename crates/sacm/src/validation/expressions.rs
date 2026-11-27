@@ -5,7 +5,7 @@ use crate::diagnostic::template::{
     EXPR_001_NAME_WITH_CONTENT, EXPR_001_VALUE_WITH_CONTENT, MULT_001_NAME_WITHOUT_EXPRESSION,
     MULT_001_VALUE_WITHOUT_EXPRESSION,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, ElementId, Href, LangString, SacmElement, TextRole};
 
 /// The requirement of a missing `expression` (§8.4 `expression[1]`; spec
@@ -92,7 +92,7 @@ fn check(
     };
     found.push(
         diagnostic
-            .set_clause("8.4")
+            .set_clause(Specification::Sacm23, "8.4")
             .set_affected([element.id().clone()]),
     );
 }

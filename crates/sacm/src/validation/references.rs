@@ -9,7 +9,7 @@ use crate::diagnostic::template::{
     CITE_002_NOT_A_CITATION, REF_001_DANGLING, REF_002_WRONG_TYPE, REF_003_PRESERVED_TARGET,
     Template,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{
     AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, Href, ReferenceEnd,
     SacmElement,
@@ -62,7 +62,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                             "LIB-COMPAT-003",
                             arguments,
                         )
-                        .set_clause(end.clause_on(element.kind()))
+                        .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
                         .set_affected([element.id().clone(), target.clone()]),
                     );
                     continue;
@@ -115,7 +115,7 @@ fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> 
         "SACM23-VAL-003",
         arguments,
     )
-    .set_clause(end.clause_on(element.kind()))
+    .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
     .set_affected([element.id().clone(), target.clone()])
 }
 
@@ -149,7 +149,7 @@ pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diag
                         "SACM23-VAL-004",
                         arguments,
                     )
-                    .set_clause(end.clause_on(element.kind()))
+                    .set_clause(Specification::Sacm23, end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),
                 );
             }
@@ -180,7 +180,7 @@ pub(super) fn citation(document: &Document, found: &mut Vec<Diagnostic>) {
                 "SACM23-VAL-007",
                 arguments,
             )
-            .set_clause("8.2")
+            .set_clause(Specification::Sacm23, "8.2")
             .set_affected([element.id().clone()]),
         );
     }
@@ -244,7 +244,7 @@ fn as_cited_finding(
     affected: impl IntoIterator<Item = ElementId>,
 ) -> Diagnostic {
     Diagnostic::emit(template, Severity::Warning, "SACM23-VAL-019", arguments)
-        .set_clause("11.8")
+        .set_clause(Specification::Sacm23, "11.8")
         .set_affected(affected)
 }
 
@@ -317,7 +317,7 @@ fn finding(
     affected: impl IntoIterator<Item = ElementId>,
 ) -> Diagnostic {
     Diagnostic::emit(template, severity, "SACM23-VAL-008", arguments)
-        .set_clause("8.2")
+        .set_clause(Specification::Sacm23, "8.2")
         .set_affected(affected)
 }
 

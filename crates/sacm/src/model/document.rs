@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 use super::containment::{Role, role};
+use super::lang_string::has_key;
 use super::{
     AbstractClass, AssertionDeclaration, Attr, ElementId, ElementKind, Flag, Href, LangString,
     MultiLangString, Preserved, Proxy, ReferenceEnd, Revision, Subclass,
@@ -1560,11 +1561,36 @@ impl Document {
         }
     }
 
-    /// Whether `id` is in use in the document's id space: by an element, or
-    /// as an id that identifies no element: of a name (ADR 0024), a
-    /// `content`, a `key` or a `value` (ADR 0025). A new element's id, given
-    /// or generated, must not be.
-    pub(crate) fn is_id_in_use(&self, id: &str) -> bool {
+    /// Whether `id` is in the document's id space: an element's id, or the
+    /// `xmi:id` of a name, a `content`, a `key`, a `location`, a value,
+    /// preserved content or XMI metadata.
+    ///
+    /// These are exactly the ids a create's `with_id` refuses as
+    /// [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId). An
+    /// id only a reference names is not in use, and
+    /// [`contains`](Self::contains) is true only for an element's id.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+    ///   <name xmi:id="p_name" content="P"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="ghost">
+    ///     <name content="C1"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// assert!(doc.is_id_in_use("c1") && doc.contains("c1"));
+    /// assert!(doc.is_id_in_use("p_name") && !doc.contains("p_name"));
+    /// assert!(!doc.is_id_in_use("ghost")); // only a reference names it
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn is_id_in_use<Q: AsRef<str> + ?Sized>(&self, id: &Q) -> bool {
+        let id = id.as_ref();
         self.index.contains_key(id)
             || self
                 .other_ids
@@ -2647,6 +2673,32 @@ impl<'a> Iterator for PreOrder<'a> {
         self.pending
             .extend(element.node().children.iter().rev().copied());
         Some(element)
+    }
+}
+
+/// The pre-order walk behind [`SacmElement::descendants`]: a stack of the
+/// handles still to visit with their depths, the next one on top.
+struct Descendants<'a> {
+    document: &'a Document,
+    pending: Vec<(usize, usize)>,
+}
+
+impl<'a> Iterator for Descendants<'a> {
+    type Item = (SacmElement<'a>, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (handle, depth) = self.pending.pop()?;
+        let element = self.document.view(handle);
+        let below = depth.saturating_add(1);
+        self.pending.extend(
+            element
+                .node()
+                .children
+                .iter()
+                .rev()
+                .map(|&child| (child, below)),
+        );
+        Some((element, depth))
     }
 }
 
@@ -4093,6 +4145,112 @@ impl<'a> SacmElement<'a> {
             .children
             .iter()
             .map(move |&child| document.view(child))
+    }
+
+    /// The elements that contain this one, nearest first: its
+    /// [`parent`](Self::parent), the parent's parent, and so on up to the
+    /// root. Not the element itself; a root has none.
+    ///
+    /// It follows the parent links, so it is safe on any depth. It borrows
+    /// the document, not the view.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
+    /// use sacm::model::{Document, ElementKind, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = LangString::new;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("p", name("Brakes")).with_id("q"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("q", name("The brakes are safe")).with_id("c1"))?;
+    ///
+    /// let c1 = doc.get("c1").expect("just created");
+    /// let ids: Vec<&str> = c1.ancestors().map(|a| a.id().as_str()).collect();
+    /// assert_eq!(ids, ["q", "p"]);
+    /// // The nearest package of a kind.
+    /// let package = c1.ancestors().find(|a| a.kind() == ElementKind::ArgumentPackage);
+    /// assert_eq!(package.map(|p| p.id().as_str()), Some("q"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    pub fn ancestors(self) -> impl Iterator<Item = SacmElement<'a>> {
+        std::iter::successors(self.parent(), |element| element.parent())
+    }
+
+    /// Every element this one contains, at any depth, in document
+    /// [pre-order](Document::elements), each with its depth below this one:
+    /// a child is at depth 1, a grandchild at 2. Not the element itself.
+    ///
+    /// `UtilityElement`s are included. The walk keeps its own stack and does
+    /// not recurse, so it is safe on any depth. It borrows the document, not
+    /// the view.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, CreateNote};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = LangString::new;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", name("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateNote::new("c1", name("Reviewed")).with_id("n1"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", name("C2")).with_id("c2"))?;
+    ///
+    /// let p = doc.get("p").expect("just created");
+    /// let below: Vec<(&str, usize)> = p.descendants().map(|(d, depth)| (d.id().as_str(), depth)).collect();
+    /// assert_eq!(below, [("c1", 1), ("n1", 2), ("c2", 1)]);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    pub fn descendants(self) -> impl Iterator<Item = (SacmElement<'a>, usize)> {
+        Descendants {
+            document: self.document,
+            pending: self
+                .node()
+                .children
+                .iter()
+                .rev()
+                .map(|&child| (child, 1))
+                .collect(),
+        }
+    }
+
+    /// The first of [`tagged_values`](Self::tagged_values) whose key has a
+    /// value with the content `key`: SACM 2.3 §8.12 gives a `TaggedValue`
+    /// one `key:MultiLangString[1]`, and this finds it by plain text.
+    ///
+    /// - A tagged value has the key `key` when any value of its key has a
+    ///   [`content`](LangString::content) equal to `key`, byte for byte.
+    /// - The `lang` and an `expression` are ignored; a value with no content
+    ///   never matches, and a tagged value with no key never does.
+    /// - Of several with the key, the first in document order is found.
+    ///
+    /// `None` when none has the key, and for an element with no tagged
+    /// values, such as a `UtilityElement`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, CreateTaggedValue};
+    /// use sacm::model::{Document, LangString, MultiLangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateTaggedValue::new("c1", "ASIL", "D"))?;
+    ///
+    /// let c1 = doc.get("c1").expect("just created");
+    /// let asil = c1.tagged_value("ASIL").and_then(|tag| tag.content());
+    /// assert_eq!(asil, Some(&MultiLangString::from("D")));
+    /// assert!(c1.tagged_value("asil").is_none()); // exact
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn tagged_value(self, key: &str) -> Option<SacmElement<'a>> {
+        self.tagged_values()
+            .find(|tag| tag.key().is_some_and(|held| has_key(held, key)))
     }
 
     /// Whether the element holds preserved content: something it was read

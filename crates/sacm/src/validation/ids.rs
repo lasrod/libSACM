@@ -4,7 +4,7 @@ use crate::diagnostic::template::{
     ID_002_NAME_ID_NOT_AN_NCNAME, ID_002_NOT_AN_NCNAME, ID_002_TEXT_ID_NOT_AN_NCNAME,
     ID_002_VALUE_ID_NOT_AN_NCNAME, Template,
 };
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, ElementId, TextRole, is_ncname};
 
 /// SACM23-VAL-020: each element whose id is not an XML `NCName` is one
@@ -68,6 +68,6 @@ pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
 /// element `id`.
 fn finding(template: &'static Template, arguments: Vec<Argument>, id: &ElementId) -> Diagnostic {
     Diagnostic::emit(template, Severity::Error, "SACM23-VAL-020", arguments)
-        .set_clause("7.6.1")
+        .set_clause(Specification::Xmi251, "7.6.1")
         .set_affected([id.clone()])
 }

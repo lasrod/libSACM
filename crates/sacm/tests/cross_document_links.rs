@@ -1333,7 +1333,7 @@ fn sacm23_xmi_029_an_expression_href_is_held_on_the_lang_string() {
     );
     assert_eq!(
         element(what, &doc, "t1").expressions(),
-        [],
+        [] as [ElementId; 0],
         "{ROW}: {what}: the href is among the expression ids of t1"
     );
     // The href counts as the expression being present: the one finding is

@@ -48,7 +48,7 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::path::Path;
 
-use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
+use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation, Specification};
 use sacm::edit::{
     self, AddReference, BatchError, BatchMutation, CreateArgumentGroup, CreateArgumentPackage,
     CreateArgumentReasoning, CreateArtifactGroup, CreateArtifactPackage, CreateArtifactReference,
@@ -90,6 +90,8 @@ use sacm::model::{
 };
 // The href of slice 0073b (LIB-EDIT-020; ADR 0040 amendment 1).
 use sacm::model::Href;
+// The operation of slice 0082 (LIB-EDIT-023).
+use sacm::edit::SetTaggedValue;
 use sacm::validation;
 use sacm::xmi::{self, ReadOptions};
 use serde::Serialize;
@@ -128,7 +130,8 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 /// and `CreateArtifactPackage` (ADR 0039), and slice 0067 those of the
 /// Assurance Case and Terminology packages after `CreateAssuranceCasePackage`
 /// and `CreateTerminologyGroup`, after each package's existing samples.
-const OPERATION_NAME_COUNT: usize = 57;
+/// Slice 0082 adds `SetTaggedValue` after `SetKey` (LIB-EDIT-023).
+const OPERATION_NAME_COUNT: usize = 58;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     // The creates of slice 0067 (SACM23-AC-002, -003).
@@ -179,6 +182,8 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "SetAssertionDeclaration",
     "SetContent",
     "SetKey",
+    // The operation of slice 0082 (LIB-EDIT-023).
+    "SetTaggedValue",
     "SetVersion",
     "SetDate",
     "SetLocation",
@@ -1031,6 +1036,8 @@ fn edit_samples() -> Vec<Operation> {
         SetContent::new("d1", two_values()).into(),
         SetContent::remove("d1").into(),
         SetKey::new("t1", en("SIL")).into(),
+        // The operation of slice 0082 (LIB-EDIT-023), after SetKey.
+        SetTaggedValue::new("c1", "ASIL", "D").into(),
         // The value edits of slice 0055, each set and removed.
         SetVersion::new("report", "1.3").into(),
         SetVersion::remove("report").into(),
@@ -1455,6 +1462,7 @@ fn diagnostic_samples() -> Vec<Diagnostic> {
             "Claim \"c1\" has the metaClaim \"x\", which names no element of the document",
         )
         .with_clause("11.10")
+        .with_specification(Specification::Sacm23)
         .with_affected([id("c1"), id("x")])
         .with_location(location(4, 20)),
         Diagnostic::new(
@@ -3080,7 +3088,8 @@ fn assert_every_golden_changed(change: Change<'_>) {
 /// The keys of `object` a reader may omit, with the default each reads as
 /// (R3): a create's `id` and builder-set keys, a `DeleteElement`'s three
 /// policies (the reject variants, ADR 0031), a `LangString`'s `lang` and
-/// `content`, and a `Diagnostic`'s `clause`, `affected` and `location`.
+/// `content`, and a `Diagnostic`'s `clause`, `specification` (slice 0082,
+/// LIB-API-013), `affected` and `location`.
 fn optional_keys(
     object: &Object,
     root: bool,
@@ -3136,6 +3145,7 @@ fn optional_keys(
     } else if diagnostics && root {
         vec![
             ("clause", Value::Null),
+            ("specification", Value::Null),
             ("affected", Value::Array(Vec::new())),
             ("location", Value::Null),
         ]

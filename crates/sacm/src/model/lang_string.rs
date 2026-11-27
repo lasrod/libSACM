@@ -599,11 +599,126 @@ impl MultiLangString {
         self.values.push(value);
     }
 
+    /// The values, to change in place: the number of values stays as it is.
+    ///
+    /// A replaced value keeps its place, so an edit that sets the result
+    /// keeps the id of the value at each position (ADR 0029).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let mut text: MultiLangString =
+    ///     [LangString::new("Colour").with_lang("en"), LangString::new("Färg").with_lang("sv")]
+    ///         .into_iter()
+    ///         .collect();
+    /// text.values_mut()[0] = LangString::new("Color").with_lang("en-US");
+    /// assert_eq!(text.values()[0].content(), Some("Color"));
+    /// assert_eq!(text.len(), 2);
+    /// ```
+    pub fn values_mut(&mut self) -> &mut [LangString] {
+        &mut self.values
+    }
+
+    /// The index of the value to show for the language `lang`, such as
+    /// `"en-GB"`: SACM 2.3 §8.5 holds one value per language, each with its
+    /// §8.3 `lang`.
+    ///
+    /// The first step that finds a value decides, and within a step the
+    /// first value in order:
+    /// 1. its `lang` equals `lang`, ignoring ASCII case;
+    /// 2. its primary subtag, up to the first `-`, equals that of `lang`,
+    ///    ignoring ASCII case, and neither is empty;
+    /// 3. its content is present and not empty.
+    ///
+    /// `None` when no step finds one. A value with no `lang` is found only
+    /// by step 3.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let text: MultiLangString = [
+    ///     LangString::new("Färg").with_lang("sv"),
+    ///     LangString::new("Color").with_lang("en-US"),
+    /// ]
+    /// .into_iter()
+    /// .collect();
+    /// assert_eq!(text.index_for_lang("EN-us"), Some(1)); // the same language
+    /// assert_eq!(text.index_for_lang("en-GB"), Some(1)); // the same primary subtag
+    /// assert_eq!(text.index_for_lang("ja"), Some(0)); // the first value with text
+    /// assert_eq!(MultiLangString::default().index_for_lang("en"), None);
+    /// ```
+    #[must_use]
+    pub fn index_for_lang(&self, lang: &str) -> Option<usize> {
+        let wanted = primary_subtag(lang);
+        let same = |value: &LangString| {
+            value
+                .lang()
+                .is_some_and(|held| held.eq_ignore_ascii_case(lang))
+        };
+        // An empty primary subtag matches nothing; equal to `wanted`, the
+        // value's is not empty either.
+        let related = |value: &LangString| {
+            !wanted.is_empty()
+                && value
+                    .lang()
+                    .is_some_and(|held| primary_subtag(held).eq_ignore_ascii_case(wanted))
+        };
+        let has_text = |value: &LangString| value.content().is_some_and(|text| !text.is_empty());
+        self.values
+            .iter()
+            .position(same)
+            .or_else(|| self.values.iter().position(related))
+            .or_else(|| self.values.iter().position(has_text))
+    }
+
     /// Replaces the value at `index`, if there is one, by `map` of it.
     pub(crate) fn map_value(&mut self, index: usize, map: impl FnOnce(&LangString) -> LangString) {
         if let Some(value) = self.values.get_mut(index) {
             *value = map(value);
         }
+    }
+}
+
+/// The primary subtag of the language tag `tag`: the tag up to its first
+/// `-`, or the whole tag.
+fn primary_subtag(tag: &str) -> &str {
+    tag.split_once('-').map_or(tag, |(primary, _)| primary)
+}
+
+/// Whether the key `key` of a `TaggedValue` has the plain key `plain`: one
+/// of its values has the content `plain`, byte for byte; `lang` and an
+/// `expression` are ignored (SACM 2.3 §8.12). The one rule of
+/// [`SacmElement::tagged_value`](crate::model::SacmElement::tagged_value)
+/// and [`SetTaggedValue`](crate::edit::SetTaggedValue).
+pub(crate) fn has_key(key: &MultiLangString, plain: &str) -> bool {
+    key.values
+        .iter()
+        .any(|value| value.content() == Some(plain))
+}
+
+impl From<&str> for MultiLangString {
+    /// A `MultiLangString` of one value with the content `content` and no
+    /// `lang`: [`LangString::new`].
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// assert_eq!(MultiLangString::from("D"), MultiLangString::from(LangString::new("D")));
+    /// ```
+    fn from(content: &str) -> Self {
+        Self::from(LangString::new(content))
+    }
+}
+
+impl From<String> for MultiLangString {
+    /// A `MultiLangString` of one value with the content `content` and no
+    /// `lang`, as `From<&str>` gives.
+    fn from(content: String) -> Self {
+        Self::from(LangString::new(content))
     }
 }
 

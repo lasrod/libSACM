@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::diagnostic::template::ID_003_DUPLICATE_GID;
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{Document, SacmElement};
 
 /// SACM23-VAL-002: each non-empty `gid` that two or more elements hold, of
@@ -40,7 +40,7 @@ pub(super) fn duplicate_gid(document: &Document, found: &mut Vec<Diagnostic>) {
                 "SACM23-VAL-002",
                 arguments,
             )
-            .set_clause("8.2")
+            .set_clause(Specification::Sacm23, "8.2")
             .set_affected(elements.iter().map(|element| element.id().clone())),
         );
     }

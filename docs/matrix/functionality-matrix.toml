@@ -7817,11 +7817,68 @@ id = "LIB-API-013"
 area = "API"
 milestone = "M7"
 title = "API additions from docs reviews"
-requirement = "Additive public API that docs reviews and Assurance Forge (lasrod/libSACM#113 A1, A2, A4, A5, A7-A9) asked for: a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use` that covers the ids of names, contents and keys; `MultiLangString` lookup by language that returns the value's index, with a documented fallback order, and a way to replace one value in place; `From<&str>` for `MultiLangString`; `PartialEq<str>` for `ElementId`; lookup of a tagged value by a plain key, with a documented rule for which of the key's values it matches; `Mutation::created_id() -> Option<&ElementId>`; `BatchMutation::is_empty()`; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. `Operation::parent()` was dropped: no consumer asked for it. Also: whether `ReadError` variants that name an element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) say when its id was generated (SACM23-XMI-020), so their `Display` can word it; an additive field, decided with its test."
-source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051); lasrod/libSACM#113"
+requirement = "Additive public API that docs reviews and Assurance Forge (lasrod/libSACM#113 A1, A2, A4, A5, A7-A9) asked for: a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use` that covers the ids of names, contents and keys; `MultiLangString` lookup by language that returns the value's index, with a documented fallback order, and a way to replace one value in place; `From<&str>` for `MultiLangString`; `PartialEq<str>` and `PartialEq<&str>` for `ElementId`; lookup of a tagged value by a plain key, with a documented rule for which of the key's values it matches; `Mutation::created_id() -> Option<&ElementId>`; `BatchMutation::is_empty()`; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. `Operation::parent()` was dropped: no consumer asked for it. `ReadError` variants that name an id-less element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) name it by the id a tolerant read gives it, which no `xmi:id` of the input has, with its location; no field is added (decided in slice 0082, pinned by its test)."
+source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051); lasrod/libSACM#113 A1, A2, A4, A5, A7-A9; SACM 2.3 §8.3 \"lang:String[0..1]\", §8.5 \"value:LangString[1..*] ... bear the same meaning but in different languages\", §8.12 \"key:MultiLangString[1]\"; ADR 0011 amendment 4; ADR 0030 amendment 7"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-API-012"]
+status = "verified"
+depends_on = ["LIB-API-012", "LIB-API-006", "SACM23-XMI-020"]
+acceptance = [
+  "`Diagnostic::specification()` is `Some(Sacm23)` or `Some(Xmi251)` exactly when `clause()` is `Some`, for every diagnostic the crate makes; XMI clauses (7.3.3, 7.5.3, 7.6.1, 7.8.6, 7.10.1, 7.10.2, 9.5.2) name XMI 2.5.1; it orders last, is not in `Display`, and is JSON `specification` after `clause`, optional on input.",
+  "`Document::is_id_in_use` is true exactly for the ids a create's `with_id` refuses as `DuplicateId`: element ids and the `xmi:id`s of names, contents, keys, locations, values, preserved content and metadata; an id only a reference names is not in use.",
+  "`MultiLangString::index_for_lang` finds the first value whose `lang` equals the argument ignoring ASCII case, else whose primary subtag does, else the first value with non-empty content, else `None`; `values_mut` replaces one value in place; `From<&str>` and `From<String>` give one value.",
+  "`ElementId` compares exactly with `str` and `&str`, both ways.",
+  "`SacmElement::tagged_value(key)` is the first tagged value with a key value whose content is exactly `key`, `lang` ignored; `None` without one.",
+  "`Mutation::created_id()` is `Some` exactly when one id was created; `BatchMutation::is_empty()` is true exactly when the net lists are empty.",
+  "`WriteError::UnrepresentableCharacter::position` is the value's index for the six value attributes, with the template `SACM-XML-003/unrepresentable-character-in-value`; `None` and the 0.4.0 template otherwise; JSON `position` after `attribute`, optional on input.",
+  "A strict read error on an id-less element names the id a tolerant read gives it, which equals no `xmi:id` of the input, with its location.",
+]
+code = [
+  "crates/sacm/src/diagnostic.rs",
+  "crates/sacm/src/diagnostic/template.rs",
+  "crates/sacm/src/model/document.rs",
+  "crates/sacm/src/model/lang_string.rs",
+  "crates/sacm/src/model/id.rs",
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/edit/batch.rs",
+  "crates/sacm/src/xmi.rs",
+  "crates/sacm/src/xmi/output.rs",
+  "crates/sacm/src/xmi/roots.rs",
+  "docs/sacm/diagnostics.md",
+  "docs/adr/0011-errors-and-diagnostics.md",
+  "docs/adr/0030-serde-for-edit-and-diagnostic-values.md",
+]
+tests = [
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_013_each_diagnostic_template_input_names_its_clause_s_specification",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_sacm_clause_names_sacm_2_3",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_an_xmi_clause_names_xmi_2_5_1",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_every_crate_diagnostic_with_a_clause_names_its_specification",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_specification_displays_its_name",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_specification_is_the_last_order_key",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_diagnostic_display_does_not_name_its_specification",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_diagnostic_writes_its_specification_after_its_clause",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_is_id_in_use_covers_the_ids_of_names_contents_keys_and_values",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_is_id_in_use_agrees_with_a_create_given_that_id",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_an_id_only_a_reference_names_is_not_in_use",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_is_id_in_use_takes_str_string_and_element_id",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_index_for_lang_prefers_the_same_language_ignoring_ascii_case",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_index_for_lang_falls_back_to_the_primary_subtag",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_index_for_lang_falls_back_to_the_first_value_with_text",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_index_for_lang_is_none_without_a_match_or_text",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_index_for_lang_takes_the_first_of_equal_matches",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_values_mut_replaces_one_value_in_place",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_str_converts_into_a_multi_lang_string_of_one_value",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_an_element_id_compares_with_str",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_tagged_value_finds_the_first_tagged_value_with_the_key",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_tagged_value_matches_any_value_of_the_key",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_tagged_value_compares_content_exactly",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_tagged_value_is_none_where_there_are_none",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_created_id_is_the_one_element_an_operation_created",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_batch_that_changes_nothing_net_is_empty",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_value_error_names_the_value_s_position",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_write_error_outside_a_value_has_no_position",
+  "crates/sacm/tests/api_additions.rs::lib_api_013_a_read_error_names_an_id_less_element_by_the_id_a_tolerant_read_gives_it",
+]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-API-014"
@@ -8830,8 +8887,24 @@ title = "Ancestors and descendants"
 requirement = "An element's ancestors (nearest first, up to its root) and descendants (depth-first, in document order, each with its depth) can be listed without walking the tree by hand."
 source = "lasrod/libSACM#113 A3"
 kind = "api"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-API-012"]
+acceptance = [
+  "`SacmElement::ancestors()` lists the parent, its parent, ... the root, never the element itself.",
+  "`SacmElement::descendants()` lists the subtree without the element, in `Document::elements()` order, each with its depth (a child is 1), UtilityElements included; it agrees with `ancestors()` on every valid fixture.",
+  "Both walk a 10,000-deep chain without recursion.",
+]
+code = [
+  "crates/sacm/src/model/document.rs",
+]
+tests = [
+  "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_ancestors_are_nearest_first_up_to_the_root",
+  "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_descendants_are_depth_first_in_document_order_with_their_depth",
+  "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_descendants_and_ancestors_agree_with_the_document",
+  "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_a_ten_thousand_deep_chain_is_walked_without_recursion",
+  "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_the_views_outlive_the_element_they_came_from",
+]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-EDIT-023"
@@ -8839,10 +8912,40 @@ area = "EDIT"
 milestone = "M7"
 title = "Set a tagged value by key"
 requirement = "One operation sets the content of an element's tagged value with a given plain key, and creates the tagged value if there is none. It is atomic and has JSON as for the other operations."
-source = "lasrod/libSACM#113 A2"
+source = "lasrod/libSACM#113 A2; SACM 2.3 §8.6 \"taggedValue: TaggedValue [0..*] (composition)\", §8.12 \"key:MultiLangString[1] (composition) - the key of the TaggedValue\", §8.7, §8.5; ADR 0029 amendment 2; ADR 0030 amendment 7"
 kind = "editing"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-API-013"]
+acceptance = [
+  "`SetTaggedValue::new(element, key, content)` sets the content of the first tagged value that `tagged_value(key)` finds (changed), or creates one as the element's last child with key `[key]` (created); setting the content held changes nothing; content ids are kept by position.",
+  "It refuses an unknown element (SACM-CMD-001), an element that holds no tagged values (`FeatureNotApplicable`, SACM-CMD-008), and content expressions as `SetContent` does; `check`, `preview` and `apply` agree, and a refusal changes nothing.",
+  "Its `operation_name()` is `SetTaggedValue`; its JSON is `{type, element, key, content}`, matches the golden sample and refuses unknown or missing keys.",
+  "In a batch a second set sees the first; an edited document writes strictly and reads back equal.",
+]
+code = [
+  "crates/sacm/src/edit/set.rs",
+  "crates/sacm/src/edit/plan.rs",
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/edit/record.rs",
+  "docs/adr/0029-set-reference-and-reorder-operations.md",
+]
+tests = [
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_creates_the_tagged_value_when_none_has_the_key",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_sets_the_content_of_the_tagged_value_with_the_key",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_setting_the_content_held_changes_nothing",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_replaces_the_whole_content_keeping_ids_by_position",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_sets_only_the_first_tagged_value_with_the_key",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_finds_the_tagged_value_that_tagged_value_finds",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_refuses_an_unknown_element",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_refuses_an_element_that_holds_no_tagged_values",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_checks_expression_values_as_set_content_does",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_check_preview_and_apply_agree",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_operation_name_is_set_tagged_value",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_a_set_tagged_value_writes_and_reads_back",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_in_a_batch_a_second_set_sees_the_first",
+  "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_json_matches_the_golden_sample",
+]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-EDIT-024"
@@ -8850,10 +8953,31 @@ area = "EDIT"
 milestone = "M7"
 title = "Preview a batch"
 requirement = "A batch can be previewed: the caller gets the `BatchMutation` it would produce, the full delete cascade included, and the document is unchanged."
-source = "lasrod/libSACM#113 A6"
+source = "lasrod/libSACM#113 A6; D-PREVIEW; ADR 0032 amendment 1"
 kind = "editing"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-EDIT-014", "LIB-EDIT-004"]
+acceptance = [
+  "`edit::preview_batch(&doc, f)` returns what `batch(&mut doc.clone(), f)` returns, the full delete cascade included, and the closure's error unchanged; `edit::preview_all` returns what `apply_all` on a copy returns.",
+  "A preview leaves the document, its revision and its next generated id unchanged.",
+  "A preview holds while the document is unchanged; after an edit the batch may give other ids.",
+]
+code = [
+  "crates/sacm/src/edit/batch.rs",
+  "crates/sacm/src/edit.rs",
+  "docs/adr/0032-atomic-batches.md",
+]
+tests = [
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_is_the_batch_mutation_the_batch_would_give",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_includes_the_whole_delete_cascade",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_changes_nothing",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_returns_the_closure_s_error",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_an_ignored_refusal_is_not_in_the_preview",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_preview_all_is_apply_all_on_a_copy",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_an_empty_preview_is_empty",
+  "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_of_a_changed_document_may_differ",
+]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-RT-005"

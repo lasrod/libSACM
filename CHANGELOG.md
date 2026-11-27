@@ -19,18 +19,46 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `/detected-encoding`, and `attribute` of `SACM-XML-003/unrepresentable-character`. Their
   JSON and every `Display` are unchanged [LIB-DIAG-004].
 - A `Diagnostic` read with serde refuses an empty `requirement_id` [LIB-DIAG-005].
+- `ElementId` now compares with `str` and `&str`, so the element type of an empty array is
+  no longer inferred: `assert_eq!(mutation.created_ids(), [])` needs
+  `[] as [ElementId; 0]`, or `.is_empty()`; `id == x.into()` likewise needs the target
+  type [LIB-API-013].
 
 ### Added
 
 - `ArgumentValue::Prose` and `ArgumentValue::as_prose` [LIB-DIAG-004].
 - The templates `SACM-XMI-011/emf-version-on-root` and `/emf-version-on-xmi-element`, which
   name a `version` in EMF's XMI namespace as the file writes it [SACM23-XMI-032].
+- `Diagnostic::specification()` and `diagnostic::Specification` name the document a
+  clause is in: SACM 2.3 or XMI 2.5.1. A diagnostic's JSON gains `specification` after
+  `clause` [LIB-API-013].
+- `Document::is_id_in_use`: whether a create may use an id [LIB-API-013].
+- `MultiLangString::index_for_lang` (the same language ignoring ASCII case, then the same
+  primary subtag, then the first value with text), `MultiLangString::values_mut`, and
+  `From<&str>` and `From<String>` for `MultiLangString` [LIB-API-013].
+- `ElementId` compares with `str` and `&str` [LIB-API-013].
+- `SacmElement::tagged_value(key)`, `Mutation::created_id()` and `BatchMutation::is_empty()`
+  [LIB-API-013].
+- `WriteError::UnrepresentableCharacter` gains `position`, the index of the value the
+  character is in. Its JSON gains `position` after `attribute` [LIB-API-013].
+- `SacmElement::ancestors()` and `SacmElement::descendants()` [LIB-API-021].
+- `edit::SetTaggedValue` sets the content of the tagged value with a plain key, and creates
+  it if there is none [LIB-EDIT-023].
+- `edit::preview_batch` and `edit::preview_all` return what a batch would do, the delete
+  cascade included, without changing the document [LIB-EDIT-024].
 
 ### Changed
 
 - A tolerant read of a `version` in EMF's XMI namespace gives `SACM-XMI-011/emf-version-on-root`
   or `/emf-version-on-xmi-element`, not `/version-on-root` or `/version-on-xmi-element` as
   in 0.4.0 [SACM23-XMI-032].
+- An unrepresentable character in a value of a `content`, `key` or `location` gives the
+  template `SACM-XML-003/unrepresentable-character-in-value`, whose message names the
+  value's index, not `SACM-XML-003/unrepresentable-character` [LIB-API-013].
+- A `Diagnostic` read from JSON without `specification`, as 0.4.0 wrote it, has
+  `specification() == None`, so it is no longer `==` to the diagnostic the crate now gives;
+  a `WriteError::UnrepresentableCharacter` in a value read without `position` likewise
+  [LIB-API-013].
 - `Diagnostic::requirement_id()` is documented as never empty. Only the crate builds a
   `Diagnostic`; the `test-support` constructors are for tests [LIB-DIAG-005].
 

@@ -16,7 +16,23 @@
     },
     "element": "arguments",
     "character": "\u0001",
-    "attribute": "NameContent"
+    "attribute": "NameContent",
+    "position": null
+  },
+  {
+    "type": "UnrepresentableCharacter",
+    "code": "SACM-XML-003",
+    "template": "SACM-XML-003/unrepresentable-character-in-value",
+    "arguments": {
+      "element": "n1",
+      "attribute": "content value's content",
+      "position": 1,
+      "code_point": 4
+    },
+    "element": "n1",
+    "character": "\u0004",
+    "attribute": "ContentValueContent",
+    "position": 1
   },
   {
     "type": "Invalid",
@@ -32,6 +48,7 @@
         "severity": "error",
         "requirement_id": "SACM23-VAL-003",
         "clause": "8.2",
+        "specification": "SACM 2.3",
         "affected": [
           "c1",
           "nope"

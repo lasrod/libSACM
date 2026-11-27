@@ -1,7 +1,7 @@
 //! Rules about descriptions (formal/23-05-08 §8.6).
 
 use crate::diagnostic::template::MULT_001_TOO_MANY;
-use crate::diagnostic::{Argument, Diagnostic, Severity};
+use crate::diagnostic::{Argument, Diagnostic, Severity, Specification};
 use crate::model::{AbstractClass, Document};
 
 /// SACM23-VAL-011: each `ModelElement` with two or more descriptions is one
@@ -33,7 +33,7 @@ pub(super) fn repeated_description(document: &Document, found: &mut Vec<Diagnost
                 "SACM23-VAL-011",
                 arguments,
             )
-            .set_clause("8.6")
+            .set_clause(Specification::Sacm23, "8.6")
             .set_affected([id.clone()]),
         );
     }

@@ -1404,6 +1404,79 @@ impl fmt::Display for SourceLocation {
     }
 }
 
+/// The specification a diagnostic's [`clause`](Diagnostic::clause) is in:
+/// SACM 2.3 or XMI 2.5.1.
+///
+/// A clause number alone does not say which: XMI §9.5.2 and SACM §9.3 share
+/// chapter 9. [`Diagnostic::specification`] names it.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::diagnostic::Specification;
+///
+/// assert_eq!(Specification::Sacm23.as_str(), "SACM 2.3");
+/// assert_eq!(Specification::Xmi251.to_string(), "XMI 2.5.1");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+pub enum Specification {
+    /// OMG SACM 2.3, formal/23-05-08.
+    #[cfg_attr(feature = "serde", serde(rename = "SACM 2.3"))]
+    Sacm23,
+    /// OMG XMI 2.5.1, formal/15-06-07.
+    #[cfg_attr(feature = "serde", serde(rename = "XMI 2.5.1"))]
+    Xmi251,
+}
+
+impl Specification {
+    /// The specification's name and version: `"SACM 2.3"` or `"XMI 2.5.1"`,
+    /// as `Display` writes it and serde names it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sacm23 => "SACM 2.3",
+            Self::Xmi251 => "XMI 2.5.1",
+        }
+    }
+}
+
+impl fmt::Display for Specification {
+    /// Writes [`as_str`](Self::as_str).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A specification reads from its name, `"SACM 2.3"` or `"XMI 2.5.1"`;
+/// another string or a value of another type is refused as data, which a
+/// derived enum does not do for a number.
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Specification {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NameVisitor;
+
+        impl serde::de::Visitor<'_> for NameVisitor {
+            type Value = Specification;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("\"SACM 2.3\" or \"XMI 2.5.1\"")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, name: &str) -> Result<Specification, E> {
+                const NAMES: &[&str] = &["SACM 2.3", "XMI 2.5.1"];
+                [Specification::Sacm23, Specification::Xmi251]
+                    .into_iter()
+                    .find(|specification| specification.as_str() == name)
+                    .ok_or_else(|| E::unknown_variant(name, NAMES))
+            }
+        }
+
+        deserializer.deserialize_str(NameVisitor)
+    }
+}
+
 /// A finding about the content of a document.
 ///
 /// # Display
@@ -1440,7 +1513,8 @@ impl fmt::Display for SourceLocation {
 /// 7. message;
 /// 8. template id;
 /// 9. arguments, argument by argument (by name, then value; Text, then
-///    Count, then Prose), a shorter list that is a prefix sorting first.
+///    Count, then Prose), a shorter list that is a prefix sorting first;
+/// 10. specification, with none first, then `Sacm23`, then `Xmi251`.
 ///
 /// Text keys (code, requirement id, clause, message, template, and each
 /// affected id) compare as `str`: byte-wise lexicographic, so clause `"10"`
@@ -1455,6 +1529,8 @@ pub struct Diagnostic {
     // the crate's own diagnostics borrow static text.
     requirement_id: Cow<'static, str>,
     clause: Option<Cow<'static, str>>,
+    // `Some` exactly when `clause` is, for every diagnostic the crate makes.
+    specification: Option<Specification>,
     affected: Vec<ElementId>,
     location: Option<SourceLocation>,
     message: String,
@@ -1488,6 +1564,7 @@ impl Diagnostic {
             severity,
             requirement_id: Cow::Borrowed(requirement_id),
             clause: None,
+            specification: None,
             affected: Vec::new(),
             location: None,
             message: message.into(),
@@ -1495,15 +1572,30 @@ impl Diagnostic {
         }
     }
 
-    /// Sets the clause of the specification the diagnostic enforces.
+    /// Sets the clause the diagnostic enforces, leaving its specification
+    /// as it is.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
     /// feature.
     #[cfg(feature = "test-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
     #[must_use]
-    pub fn with_clause(self, clause: &'static str) -> Self {
-        self.set_clause(clause)
+    pub fn with_clause(mut self, clause: &'static str) -> Self {
+        self.clause = Some(Cow::Borrowed(clause));
+        self
+    }
+
+    /// Sets the specification the diagnostic's clause is in, leaving its
+    /// clause as it is.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn with_specification(mut self, specification: Specification) -> Self {
+        self.specification = Some(specification);
+        self
     }
 
     /// Sets the affected element ids, in the given order.
@@ -1543,6 +1635,7 @@ impl Diagnostic {
             severity,
             requirement_id: Cow::Borrowed(requirement_id),
             clause: None,
+            specification: None,
             affected: Vec::new(),
             location: None,
             message: details.render(),
@@ -1550,10 +1643,12 @@ impl Diagnostic {
         }
     }
 
-    /// The crate-internal form of `with_clause`.
+    /// Sets the clause the diagnostic enforces and the specification it is
+    /// in: every crate diagnostic with a clause names both.
     #[must_use]
-    pub(crate) fn set_clause(mut self, clause: &'static str) -> Self {
+    pub(crate) fn set_clause(mut self, specification: Specification, clause: &'static str) -> Self {
         self.clause = Some(Cow::Borrowed(clause));
+        self.specification = Some(specification);
         self
     }
 
@@ -1593,11 +1688,42 @@ impl Diagnostic {
     }
 
     /// The clause the diagnostic enforces: a bare clause number, such as
-    /// `"8.2"`, in the specification named by the matrix row's source. `None`
-    /// if the row cites no clause.
+    /// `"8.2"`; [`specification`](Self::specification) names its document.
+    /// `None` if the row cites no clause.
     #[must_use]
     pub fn clause(&self) -> Option<&str> {
         self.clause.as_deref()
+    }
+
+    /// The specification [`clause`](Self::clause) is in: SACM 2.3 or XMI
+    /// 2.5.1.
+    ///
+    /// - Every diagnostic the crate makes has one exactly when it has a
+    ///   clause.
+    /// - A record read with serde has the one it gives, and `None` when it
+    ///   gives none, as a record of 0.4.0 or earlier does.
+    ///
+    /// `Display` does not show it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::diagnostic::Specification;
+    /// use sacm::{validation, xmi::{self, ReadOptions}};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"><name content="P"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" citedElement="c1"><name content="C"/></argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let found = validation::validate(&document);
+    /// assert_eq!(found[0].clause(), Some("8.2"));
+    /// assert_eq!(found[0].specification(), Some(Specification::Sacm23));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn specification(&self) -> Option<Specification> {
+        self.specification
     }
 
     /// The ids of the affected elements, in the order the crate gave them.
@@ -1661,19 +1787,21 @@ impl Diagnostic {
     }
 }
 
-/// A diagnostic serializes as its nine keys, `template` and `arguments` after
-/// `message`: `template` always a string, and `arguments` always an object,
-/// `{}` when there are none (ADR 0030 amendment 3, R8 and R9).
+/// A diagnostic serializes as its ten keys, `specification` after `clause`
+/// and `template` and `arguments` after `message`: `template` always a
+/// string, and `arguments` always an object, `{}` when there are none (ADR
+/// 0030 amendment 3, R8 and R9).
 #[cfg(feature = "serde")]
 impl serde::Serialize for Diagnostic {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
 
-        let mut record = serializer.serialize_struct("Diagnostic", 9)?;
+        let mut record = serializer.serialize_struct("Diagnostic", 10)?;
         record.serialize_field("code", &self.code)?;
         record.serialize_field("severity", &self.severity)?;
         record.serialize_field("requirement_id", &self.requirement_id)?;
         record.serialize_field("clause", &self.clause)?;
+        record.serialize_field("specification", &self.specification)?;
         record.serialize_field("affected", &self.affected)?;
         record.serialize_field("location", &self.location)?;
         record.serialize_field("message", &self.message)?;
@@ -1697,6 +1825,8 @@ struct DiagnosticRecord {
     requirement_id: Cow<'static, str>,
     #[serde(default)]
     clause: Option<Cow<'static, str>>,
+    #[serde(default)]
+    specification: Option<Specification>,
     #[serde(default)]
     affected: Vec<ElementId>,
     #[serde(default)]
@@ -1729,6 +1859,7 @@ impl<'de> serde::Deserialize<'de> for Diagnostic {
             severity,
             requirement_id,
             clause,
+            specification,
             affected,
             location,
             message,
@@ -1745,6 +1876,7 @@ impl<'de> serde::Deserialize<'de> for Diagnostic {
             severity,
             requirement_id,
             clause,
+            specification,
             affected,
             location,
             message,
@@ -1803,6 +1935,7 @@ impl Ord for Diagnostic {
             severity,
             requirement_id,
             clause,
+            specification,
             affected,
             location,
             message,
@@ -1822,6 +1955,7 @@ impl Ord for Diagnostic {
             // details has its code's text as template and no arguments.
             .then_with(|| self.template().cmp(other.template()))
             .then_with(|| self.arguments().cmp(other.arguments()))
+            .then_with(|| specification.cmp(&other.specification))
     }
 }
 

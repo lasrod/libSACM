@@ -2070,7 +2070,7 @@ fn sacm23_term_003_set_value_sets_the_value_and_refuses_a_kind_without_it() {
     let mutation = applied(row, &mut doc, SetValue::new("t1", " new "));
     assert_eq!(
         mutation.changed_ids(),
-        [].as_slice(),
+        ([] as [ElementId; 0]).as_slice(),
         "{row}: setting the same value changed the Term"
     );
     let mutation = applied(row, &mut doc, SetValue::new("e0", ""));
@@ -2796,7 +2796,7 @@ fn sacm23_term_004_set_external_reference_sets_removes_and_refuses_a_kind_withou
     );
     assert_eq!(
         mutation.changed_ids(),
-        [].as_slice(),
+        ([] as [ElementId; 0]).as_slice(),
         "{row}: setting the same value changed the Term"
     );
     let mutation = applied(row, &mut doc, SetExternalReference::remove("t1"));
@@ -2811,7 +2811,7 @@ fn sacm23_term_004_set_external_reference_sets_removes_and_refuses_a_kind_withou
     let mutation = applied(row, &mut doc, SetExternalReference::remove("t1"));
     assert_eq!(
         mutation.changed_ids(),
-        [].as_slice(),
+        ([] as [ElementId; 0]).as_slice(),
         "{row}: removing what is absent changed the Term"
     );
     let error = refuse(row, &mut doc, SetExternalReference::new("nowhere", "u"));

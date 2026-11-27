@@ -156,6 +156,9 @@ templates! {
     XML_003_UNREPRESENTABLE_CHARACTER = XML_UNREPRESENTABLE_CHARACTER, Write("UnrepresentableCharacter"), "SACM-XML-003/unrepresentable-character",
         [Text("element"), Prose("attribute"), Count("code_point")],
         "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent";
+    XML_003_UNREPRESENTABLE_CHARACTER_IN_VALUE = XML_UNREPRESENTABLE_CHARACTER, Write("UnrepresentableCharacter"), "SACM-XML-003/unrepresentable-character-in-value",
+        [Text("element"), Prose("attribute"), Count("position"), Count("code_point")],
+        "the element {element:?} cannot be written: its {attribute} at index {position} holds U+{code_point:04X}, which XML 1.0 cannot represent";
     XMI_001_NOT_A_PACKAGE = XMI_INVALID_ROOT, Read("InvalidRoot"), "SACM-XMI-001/not-a-package",
         [Text("element")],
         "the root element {element:?} is not a SACM package";
@@ -900,8 +903,9 @@ mod tests {
         // ADR 0044 D4); slice 0077 added one refusal template (LIB-SEC-007;
         // ADR 0041 amendment 2); slice 0079 added one diagnostic template
         // (LIB-COMPAT-020); slice 0081 added two diagnostic templates
-        // (SACM23-XMI-032).
-        assert_eq!(count, 216, "LIB-API-017: the number of templates");
+        // (SACM23-XMI-032); slice 0082 added one refusal template
+        // (LIB-API-013).
+        assert_eq!(count, 217, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)

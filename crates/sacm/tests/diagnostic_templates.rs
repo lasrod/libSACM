@@ -35,13 +35,17 @@
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the table's.
+//! - `lib_api_013_each_diagnostic_template_input_names_its_clause_s_specification`
+//!   checks, for every diagnostic of every input, that `specification()` is
+//!   `Some` exactly when `clause()` is, and is XMI 2.5.1 exactly for the
+//!   clauses of XMI 2.5.1 (LIB-API-013, slice 0082 A9).
 //!
 //! No template is without an input: the design expects none, so there is no
 //! `NO_INPUT` list here.
 
 use std::fmt::Write as _;
 
-use sacm::diagnostic::{Code, Diagnostic, Severity};
+use sacm::diagnostic::{Code, Diagnostic, Severity, Specification};
 use sacm::model::{Document, ElementId};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
@@ -2413,6 +2417,26 @@ fn sites() -> Vec<Case> {
             ),
             "the name.expression of the element \"t2\" is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the Term \"t2\", which a tolerant write writes back and a strict write refuses; the first occurrence is read",
         ),
+        // SACM-MULT-001/repeated-reference: one href given twice in a
+        // reference end (`repeated_hrefs`, ADR 0040 D6).
+        case(
+            "SACM-MULT-001/repeated-reference",
+            validate(package(&format!(
+                "{}<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" target=\"c1\"><name content=\"i1\"/>\
+                 <source href=\"b.sacm.xmi#c\"/><source href=\"b.sacm.xmi#c\"/></argumentElement>",
+                claim("c1", "", "")
+            ))),
+            (WARNING, "SACM23-VAL-022", Some("11.13")),
+            &[
+                ("class", t("AssertedInference")),
+                ("id", t("i1")),
+                ("target", t("b.sacm.xmi#c")),
+                ("count", n(2)),
+                ("end", t("source")),
+            ],
+            "{class} {id:?} holds {target:?} {count} times in its {end}, whose ids are unique in SACM 2.3 (the repeat is kept)",
+            "AssertedInference \"i1\" holds \"b.sacm.xmi#c\" 2 times in its source, whose ids are unique in SACM 2.3 (the repeat is kept)",
+        ),
     ]
 }
 
@@ -2633,6 +2657,54 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     for case in cases.iter().chain(&sites) {
         check_row(case);
         check_message(case);
+    }
+}
+
+/// The clauses the crate cites that are XMI 2.5.1's; every other clause it
+/// cites is SACM 2.3's (LIB-API-013, slice 0082 A9).
+const XMI_251_CLAUSES: [&str; 8] = [
+    "7.3.3", "7.5.3", "7.6.1", "7.6.3", "7.8.6", "7.10.1", "7.10.2", "9.5.2",
+];
+
+#[test]
+fn lib_api_013_each_diagnostic_template_input_names_its_clause_s_specification() {
+    const ROW_013: &str = "LIB-API-013";
+    let mut cases = validation_cases();
+    cases.extend(reader_cases());
+    cases.extend(sites());
+    for case in &cases {
+        let template = case.template;
+        let found = diagnostics(case);
+        assert!(
+            !found.is_empty(),
+            "{ROW_013}: {template}: setup: the input gives no diagnostic"
+        );
+        for diagnostic in found {
+            let clause = diagnostic.clause();
+            let specification = diagnostic.specification();
+            assert_eq!(
+                clause.is_some(),
+                specification.is_some(),
+                "{ROW_013}: {template}: the {} diagnostic {:?} has the clause {clause:?} and \
+                 the specification {specification:?}",
+                diagnostic.code().as_str(),
+                diagnostic.message()
+            );
+            if let Some(clause) = clause {
+                let expected = if XMI_251_CLAUSES.contains(&clause) {
+                    Specification::Xmi251
+                } else {
+                    Specification::Sacm23
+                };
+                assert_eq!(
+                    specification,
+                    Some(expected),
+                    "{ROW_013}: {template}: the {} diagnostic {:?} cites the clause {clause}",
+                    diagnostic.code().as_str(),
+                    diagnostic.message()
+                );
+            }
+        }
     }
 }
 

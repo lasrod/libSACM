@@ -117,3 +117,16 @@ LIB-DIAG-003 is retired). The constructors are public only under `test-support`,
 its own types and does not need to build the crate's (lasrod/libSACM#113).
 
 *Amendment 3 status: accepted (the maintainer, 2026-11-26).*
+
+## Amendment 4 (2026-11-27): the clause's specification
+
+LIB-API-013; lasrod/libSACM#113 A9.
+- `Diagnostic::specification() -> Option<Specification>` names the document `clause()` is
+  in: `Specification::Sacm23` or `Specification::Xmi251` (`#[non_exhaustive]`). For every
+  diagnostic the crate makes, it is `Some` exactly when `clause()` is.
+- Each emit site names it. It is never inferred from the number: XMI §9.5.2 and SACM §9.3
+  share a chapter.
+- The diagnostic order gains a last key, 10: the specification, `None` first. `Display` is
+  unchanged.
+
+*Amendment 4 status: accepted (the maintainer, 2026-11-27).*

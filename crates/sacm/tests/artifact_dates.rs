@@ -821,7 +821,7 @@ fn sacm23_art_002_set_date_start_time_and_end_time_set_remove_and_refuse_in_orde
             let again = applied(&mut doc, set(name, target, Some(value)));
             assert_eq!(
                 again.changed_ids(),
-                [],
+                [] as [ElementId; 0],
                 "{ROW}: setting {name} of {target} to {value:?} again"
             );
         }
@@ -844,7 +844,7 @@ fn sacm23_art_002_set_date_start_time_and_end_time_set_remove_and_refuse_in_orde
         let mutation = applied(&mut doc, set(name, target, None));
         assert_eq!(
             mutation.changed_ids(),
-            [],
+            [] as [ElementId; 0],
             "{ROW}: removing the absent {name} of {target}"
         );
     }

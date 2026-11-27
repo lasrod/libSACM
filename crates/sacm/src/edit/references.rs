@@ -2,6 +2,7 @@
 //! the check of referenced ids that they share with the creates
 //! (LIB-EDIT-009, ADR 0027, ADR 0028, ADR 0029).
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::slice;
 
@@ -485,7 +486,7 @@ impl AddReference {
             }
         };
         Ok(Plan::Set {
-            element: &self.element,
+            element: Cow::Borrowed(&self.element),
             value,
         })
     }
@@ -664,7 +665,7 @@ impl RemoveReference {
             }
         };
         Ok(Plan::Set {
-            element: &self.element,
+            element: Cow::Borrowed(&self.element),
             value,
         })
     }
