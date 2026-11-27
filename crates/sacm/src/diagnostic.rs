@@ -1,36 +1,39 @@
-//! Diagnostics: findings about the content of a SACM document.
+//! Read what `read` and `validate` report: findings about the content of a document.
 //!
-//! A [`Diagnostic`] reports something about the content, such as a reference
-//! that does not resolve or an element kept from a non-SACM dialect. It is not
-//! an error: an error means an operation could not proceed and comes back as
-//! the `Err` of a `Result`, while diagnostics come back alongside a result
-//! that succeeded.
+//! A [`Diagnostic`] reports something about the content, such as a reference that does
+//! not resolve or an element kept from a non-SACM dialect.
 //!
-//! Each diagnostic carries a stable [`Code`] from the
-//! [diagnostics catalog][catalog], a [`Severity`], the matrix row and clause
-//! it enforces, the ids of the affected elements, an optional
-//! [`SourceLocation`], a message, and the
-//! [template and arguments](Diagnostic::template) the message is made from.
-//! [`CATALOG_JSON`] lists every code and template as JSON.
+//! # Entry points
 //!
-//! [`validation::validate`](crate::validation::validate) and
-//! [`xmi::read`](crate::xmi::read) return diagnostics. A strict
-//! [`xmi::write`](crate::xmi::write) never runs `validate`: it refuses output that
-//! would not be schema-valid, with the schema errors in
-//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid), and a document that holds
-//! preserved content.
-//! Every function that returns diagnostics returns them sorted by
-//! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds a
-//! diagnostic of severity [`Severity::Error`].
+//! | Item | What it is for |
+//! |---|---|
+//! | [`Diagnostic`] | One finding: its code, severity, affected elements and message. |
+//! | [`Code`] | The stable code, from the [diagnostics catalog][catalog]. |
+//! | [`Severity`] | Error, Warning or Info. |
+//! | [`has_errors`] | Says whether a list holds a diagnostic of severity [`Severity::Error`]. |
+//! | [`CATALOG_JSON`] | Every code and template, as JSON. |
 //!
-//! Diagnostics are read, not built: only this crate creates them. The
-//! `test-support` feature makes the constructors and `with_*` builders
-//! public for tests; they are not stable API, and docs.rs does not show
-//! them. With the `serde` feature a diagnostic also
-//! serializes, and reads back in the stable form of ADR 0030. A
-//! deserialized `Diagnostic`, `Mutation` or `EditError` is a record:
-//! [`has_errors`] reads a deserialized diagnostic's severity as given, and
-//! nothing else in the API takes one as input.
+//! # Rules
+//!
+//! - **Not an error.** An error means an operation could not proceed, and comes back as
+//!   the `Err` of a `Result`. Diagnostics come back alongside a result that succeeded.
+//! - **Who returns them.** [`validation::validate`](crate::validation::validate) and
+//!   [`xmi::read`](crate::xmi::read), sorted by [`Diagnostic`]'s order.
+//! - **`xmi::write` returns none.** A strict [`xmi::write`](crate::xmi::write) never runs
+//!   `validate`. It refuses a document that holds preserved content, and output that would
+//!   not be schema-valid, with the schema errors in
+//!   [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
+//! - **What one carries.** Besides its code and severity: the matrix row and clause it
+//!   enforces, the ids of the affected elements, an optional [`SourceLocation`], a
+//!   message, and the [template and arguments](Diagnostic::template) it is made from.
+//! - **Read, not built.** Only this crate creates diagnostics. The `test-support`
+//!   feature makes the constructors and `with_*` builders public for tests; they are
+//!   not stable API, and docs.rs does not show them.
+//! - **`serde`.** With the feature a diagnostic serializes, and reads back in the stable
+//!   form of ADR 0030.
+//! - **A deserialized value is a record.** [`has_errors`] reads a deserialized
+//!   diagnostic's severity as given. Nothing else in the API takes a deserialized
+//!   `Diagnostic`, `Mutation` or `EditError` as input.
 //!
 //! # Examples
 //!

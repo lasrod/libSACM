@@ -2,18 +2,22 @@
 //! ADR 0017 W5 keeps them crate-private). No `xmi:version` is pinned: the XMI
 //! namespace identifies the version (XMI 2.5.1 §7.5.3; ADR 0017 amendment 3).
 //!
-//! And the classes of a root's namespace (LIB-COMPAT-004; ADR 0041 D4, D5).
-//! No SACM revision sets a `Package::URI` (spec defect D7), so files use many
-//! namespaces: a root in the pinned one is SACM 2.3; one in a recognised
-//! older revision's, or in one whose URI contains `sacm` in any letter case,
-//! is read as SACM 2.3 by a tolerant read; SACM 2.4 is refused
-//! (LIB-COMPAT-018); anything else is not SACM.
+//! And the classes of a root's namespace (LIB-COMPAT-004; ADR 0041 D4, D5). No SACM
+//! revision sets a `Package::URI` (spec defect D7), so files use many namespaces:
 //!
-//! A read classifies each distinct namespace value once, and checks each
-//! against a root's family once ([`Classes`], [`Types`]): a value is the
-//! parser's interned URI, found by its address and length, so a long URI
-//! bound once and used by many roots or types costs its length once, not
-//! once per use.
+//! | A root's namespace | How it is read |
+//! |---|---|
+//! | the pinned one | SACM 2.3 |
+//! | a recognised older revision's | as SACM 2.3, by a tolerant read |
+//! | one whose URI contains `sacm` in any letter case | as SACM 2.3, by a tolerant read |
+//! | SACM 2.4's | refused (LIB-COMPAT-018) |
+//! | anything else | not SACM |
+//!
+//! - **Classified once.** A read classifies each distinct namespace value once, and
+//!   checks each against a root's family once ([`Classes`], [`Types`]).
+//! - **By address.** A value is the parser's interned URI, found by its address and
+//!   length. So a long URI bound once and used by many roots or types costs its length
+//!   once, not once per use.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

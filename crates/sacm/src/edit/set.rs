@@ -1,8 +1,9 @@
-//! The operations that set a feature of an existing element: its name, gid,
-//! flags, `assertionDeclaration`, a `UtilityElement`'s `content` and `key`
-//! (LIB-EDIT-008, LIB-EDIT-012, ADR 0029), and an `ArtifactAsset`'s
-//! `version`, `date`, `location`, `startTime` and `endTime` (SACM23-ART-002,
-//! SACM23-ART-004, SACM23-ART-005; ADR 0034 amendment 1).
+//! The operations that set a feature of an existing element.
+//!
+//! - **Any element's features.** Its name, gid, flags and `assertionDeclaration`, and a
+//!   `UtilityElement`'s `content` and `key` (LIB-EDIT-008, LIB-EDIT-012, ADR 0029).
+//! - **An `ArtifactAsset`'s values.** Its `version`, `date`, `location`, `startTime` and
+//!   `endTime` (SACM23-ART-002, SACM23-ART-004, SACM23-ART-005; ADR 0034 amendment 1).
 
 use std::borrow::Cow;
 

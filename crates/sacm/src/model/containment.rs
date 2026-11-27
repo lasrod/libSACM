@@ -1,11 +1,11 @@
 //! Containment: which SACM 2.3 composite role of a parent's class holds a
 //! child of a given kind (LIB-API-008, SACM23-XMI-006).
 //!
-//! One table, [`role`], gives both the role's name and its declared type, and
-//! [`admits`] and [`role_named`] are derived from it, so containment legality,
-//! the role names written to XMI and the role names read from it cannot drift
-//! apart. The role tables stay crate-private; legality is public through
-//! [`ElementKind::may_contain`] and [`ElementKind::child_kinds`].
+//! - **One table.** [`role`] gives both the role's name and its declared type;
+//!   [`admits`] and [`role_named`] are derived from it. So containment legality, the
+//!   role names written to XMI and the role names read from it cannot drift apart.
+//! - **Crate-private.** The role tables stay private; legality is public through
+//!   [`ElementKind::may_contain`] and [`ElementKind::child_kinds`].
 
 use super::{AbstractClass, ElementKind};
 

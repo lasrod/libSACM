@@ -12,50 +12,57 @@
 //!    XML 1.0 [23]-[26], [80] and [81], or the input is `Malformed`. The
 //!    declaration is read from the longest valid prefix, so a Latin-1 file is
 //!    refused for its encoding, not as malformed.
-//! 3. Without a byte order mark, a declared `ISO-8859-1`, in any ASCII
-//!    letter case and with no alias, decodes the whole input byte for byte,
-//!    each byte as the scalar value of the same number, and the declaration
-//!    is checked again on that text (LIB-COMPAT-016, ADR 0041 D7); after a
-//!    UTF-8 mark it is `Malformed`, as it contradicts the mark. Without a
-//!    UTF-16 mark, a declared encoding other than those, UTF-8 and ASCII is
-//!    `Unsupported`. After one, a name other than UTF-16, UTF-16LE or
-//!    UTF-16BE is `Malformed`. For an accepted name, the rest of the
-//!    declaration (`SDDecl` [32] and `?>`) must match too.
+//! 3. The declared encoding decides how the input is decoded; the first table gives
+//!    each case. For an accepted name, the rest of the declaration (`SDDecl` [32] and
+//!    `?>`) must match too.
 //! 4. Under an ASCII declaration, a non-ASCII character is `Malformed`.
 //! 5. Invalid UTF-8 is `Malformed`, at the first invalid byte. In UTF-16, an
 //!    unpaired surrogate is `Malformed` at the surrogate, and an odd byte
 //!    count after the last whole character. ISO-8859-1 has no invalid byte.
-//! 6. The scan of `limits` checks the depth, the namespace bindings in scope,
-//!    the namespace copies (LIB-SEC-003) and the attributes of each element
-//!    (LIB-SEC-007); roxmltree then parses with
-//!    DTDs refused and the node limit: a DOCTYPE is `Doctype`, the node
-//!    limit `LimitExceeded`, and any other error is `Malformed`.
-//! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
-//!    is `Malformed`, at the earliest offending construct: a character
-//!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
-//!    into U+FFFD), a declaration of the prefix `xmlns` (`xmlns:xmlns`), a
-//!    namespace declaration repeated in one start tag (`xmlns` or `xmlns:xml`
-//!    twice; roxmltree refuses other repeated prefixes itself), a prefix
-//!    undeclared with `xmlns:p=""`, an element or attribute name with
-//!    an empty prefix (`:c`), and a processing instruction whose target (the
-//!    XML Name after `<?`) is `xml` in any letter case, contains a colon, or
-//!    is followed by neither white space nor `?>`. Within the W3C XML
-//!    Conformance Test Suite (20130923), this list is closed: every
-//!    not-well-formed XML 1.0 and Namespaces 1.0 case in it is refused
-//!    (LIB-SEC-006). Outside the suite, other roxmltree leniencies may
-//!    remain: LIB-SEC-005's sweep checks only that this scan agrees with
-//!    roxmltree's tree.
+//! 6. The scan of `limits` checks the depth, the namespace bindings in scope, the
+//!    namespace copies (LIB-SEC-003) and the attributes of each element (LIB-SEC-007).
+//!    roxmltree then parses with DTDs refused and the node limit: a DOCTYPE is
+//!    `Doctype`, the node limit `LimitExceeded`, and any other error is `Malformed`.
+//! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error is
+//!    `Malformed`, at the earliest offending construct; the second table lists them.
 //!
-//! roxmltree stays private to the `xmi` module: its errors become our own
-//! reasons and a [`SourceLocation`].
+//! The declared encoding, in step 3:
 //!
-//! Every location comes from a `Locator` (or `locate`, for one offset), which
-//! ends lines as XML 1.0 §2.11 does: a line feed, a carriage return and line
-//! feed, or a lone carriage return each end one line. A leading byte order
-//! mark (U+FEFF) takes no column. A `Locator` advances, so the many
-//! locations of one read cost one pass over the text. roxmltree counts only
-//! line feeds, and counts the mark as a character, so its positions are
-//! converted to byte offsets first.
+//! | Byte order mark | Declared encoding | Result |
+//! |---|---|---|
+//! | none | `ISO-8859-1`, in any ASCII letter case and with no alias | the whole input is decoded byte for byte, each byte as the scalar value of the same number, and the declaration is checked again on that text (LIB-COMPAT-016, ADR 0041 D7) |
+//! | UTF-8 | `ISO-8859-1` | `Malformed`: it contradicts the mark |
+//! | none or UTF-8 | other than `ISO-8859-1`, UTF-8 and ASCII | `Unsupported` |
+//! | UTF-16 | other than UTF-16, UTF-16LE or UTF-16BE | `Malformed` |
+//!
+//! What step 7 refuses:
+//!
+//! | Construct | Detail |
+//! |---|---|
+//! | a character reference to a surrogate or above U+10FFFF | roxmltree would turn it into U+FFFD |
+//! | a declaration of the prefix `xmlns` | `xmlns:xmlns` |
+//! | a namespace declaration repeated in one start tag | `xmlns` or `xmlns:xml` twice; roxmltree refuses other repeated prefixes itself |
+//! | a prefix undeclared | `xmlns:p=""` |
+//! | an element or attribute name with an empty prefix | `:c` |
+//! | a processing instruction whose target (the XML Name after `<?`) is not allowed | it is `xml` in any letter case, contains a colon, or is followed by neither white space nor `?>` |
+//!
+//! - **Closed within the suite.** Within the W3C XML Conformance Test Suite (20130923),
+//!   the step-7 list is closed: every not-well-formed XML 1.0 and Namespaces 1.0 case in
+//!   it is refused (LIB-SEC-006).
+//! - **Outside the suite,** other roxmltree leniencies may remain: LIB-SEC-005's sweep
+//!   checks only that this scan agrees with roxmltree's tree.
+//! - **roxmltree stays private** to the `xmi` module: its errors become our own reasons
+//!   and a [`SourceLocation`].
+//!
+//! Locations:
+//!
+//! - **From a `Locator`** (or `locate`, for one offset), every one. It advances, so the
+//!   many locations of one read cost one pass over the text.
+//! - **Lines end as in XML 1.0 §2.11.** A line feed, a carriage return and line feed, or
+//!   a lone carriage return each end one line.
+//! - **A leading byte order mark** (U+FEFF) takes no column.
+//! - **roxmltree's positions are converted to byte offsets first:** it counts only line
+//!   feeds, and counts the mark as a character.
 
 use std::borrow::Cow;
 use std::collections::HashSet;

@@ -1,16 +1,18 @@
-//! The create operations of the Artifact package: `ArtifactPackage`,
-//! `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
-//! `Event`, `Resource`, `Activity`, `ArtifactAssetRelationship`,
-//! `ArtifactPackageInterface` and `ArtifactPackageBinding` (SACM23-ART-001,
-//! SACM23-ART-003, SACM23-ART-004 to SACM23-ART-013; LIB-EDIT-001, ADR 0019,
-//! ADR 0028, ADR 0034 and its amendments 1 and 2, ADR 0039).
+//! The create operations of the Artifact package.
 //!
-//! There is one create per class (ADR 0034). Each runs ADR 0019's four
-//! checks through the containment table, so a parent is legal exactly when a
-//! composite role of its class admits the new kind; the group's members and
-//! the relationship's sources and targets then get ADR 0028's reference
-//! checks. The values of an Artifact, an Event, a
-//! Resource and an Activity are held as given and never refused (D-DATE).
+//! - **Kinds.** `ArtifactPackage`, its interface and binding, `Property`, `Technique`,
+//!   `Participant`, `ArtifactGroup`, `Artifact`, `Event`, `Resource`, `Activity` and
+//!   `ArtifactAssetRelationship`.
+//! - **One create per class** (ADR 0034).
+//! - **Parents.** Each runs ADR 0019's four checks through the containment table: a
+//!   parent is legal exactly when a composite role of its class admits the new kind.
+//! - **References.** The group's members and the relationship's sources and targets
+//!   then get ADR 0028's reference checks.
+//! - **Values.** Those of an Artifact, an Event, a Resource and an Activity are held as
+//!   given and never refused (D-DATE).
+//! - **Rows.** SACM23-ART-001, SACM23-ART-003, SACM23-ART-004 to SACM23-ART-013;
+//!   LIB-EDIT-001.
+//! - **Design.** ADR 0019, ADR 0028, ADR 0034 and its amendments 1 and 2, ADR 0039.
 
 use super::EditError;
 use super::argumentation::{binding_operation, interface_operation, plan_referencing};

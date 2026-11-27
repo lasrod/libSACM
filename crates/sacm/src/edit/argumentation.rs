@@ -1,8 +1,10 @@
-//! The create operations of the argumentation kinds that reference other
-//! elements: `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup` and
-//! the five asserted relationships (SACM23-ARG-005, SACM23-ARG-006,
-//! SACM23-ARG-008 to SACM23-ARG-013, SACM23-VAL-004; LIB-EDIT-001, ADR 0019,
-//! ADR 0027, ADR 0028).
+//! The create operations of the argumentation kinds that reference other elements.
+//!
+//! - **Kinds.** `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup` and the five
+//!   asserted relationships.
+//! - **Rows.** SACM23-ARG-005, SACM23-ARG-006, SACM23-ARG-008 to SACM23-ARG-013,
+//!   SACM23-VAL-004; LIB-EDIT-001.
+//! - **Design.** ADR 0019, ADR 0027, ADR 0028.
 
 use std::slice;
 

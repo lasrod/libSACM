@@ -1,29 +1,33 @@
-//! The Boolean flags and the non-containment reference ends of the classes
-//! the model holds (formal/23-05-08 §8.2, §9.2 to §9.4, §10.3 to §10.6,
-//! §10.8 to §10.11, §11.2, §11.4 to §11.6, §11.9, §11.10, §11.12, §11.13,
-//! §12.2 to §12.5, §12.14; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005,
-//! SACM23-ARG-004 to SACM23-ARG-007, SACM23-ARG-013 to SACM23-ARG-015,
-//! SACM23-ART-010 to SACM23-ART-013, SACM23-TERM-002 to SACM23-TERM-008,
-//! SACM23-AC-002, SACM23-AC-003; ADR 0026, ADR 0027, ADR 0028, ADR 0034 and
-//! its amendments, ADR 0039).
+//! The Boolean flags and the non-containment reference ends of the classes the model
+//! holds.
 //!
-//! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
-//! flag or end it sets (ADR 0029), and so are their readers for a generic
-//! property panel (ADR 0029 amendment 1): [`Flag::ALL`] and
-//! [`ReferenceEnd::ALL`], `applies_to(kind)` and [`ReferenceEnd::bounds`].
-//! `ALL` is the one table the XMI reader, the writer, the id pre-pass,
-//! comparison, validation and the edits iterate, so that the name read, the
-//! name written and the order written cannot drift apart. Each entry names
-//! the class that owns it, and
-//! [`OWNERS`] orders those classes superclass first, the order `xmi::write`
-//! writes their features in. A later end adds one entry here, one accessor
-//! and one `Difference` variant. A multi-valued end ([`ReferenceEnd::is_many`])
-//! holds every id of its attribute, and each reference element appends one;
-//! a single-valued one holds at most one. No kind has two ends of one name,
-//! so the reader resolves an end by the element's kind (ADR 0034 amendment
-//! 2). The owners, the declared types and the bounds by end alone are
-//! crate-private, as the role tables of [`containment`](super::containment)
-//! are.
+//! - **Public names.** [`Flag`] and [`ReferenceEnd`] are public, so that an edit can
+//!   name the flag or end it sets (ADR 0029).
+//! - **Public readers,** for a generic property panel (ADR 0029 amendment 1):
+//!   [`Flag::ALL`] and [`ReferenceEnd::ALL`], `applies_to(kind)` and
+//!   [`ReferenceEnd::bounds`].
+//! - **`ALL` is the one table** the XMI reader, the writer, the id pre-pass, comparison,
+//!   validation and the edits iterate. So the name read, the name written and the order
+//!   written cannot drift apart.
+//! - **Owners.** Each entry names the class that owns it. [`OWNERS`] orders those
+//!   classes superclass first, the order `xmi::write` writes their features in.
+//! - **A later end** adds one entry here, one accessor and one `Difference` variant.
+//! - **Many or one.** A multi-valued end ([`ReferenceEnd::is_many`]) holds every id of
+//!   its attribute, and each reference element appends one. A single-valued one holds
+//!   at most one.
+//! - **By kind.** No kind has two ends of one name, so the reader resolves an end by the
+//!   element's kind (ADR 0034 amendment 2).
+//! - **Crate-private.** The owners, the declared types and the bounds by end alone, as
+//!   the role tables of [`containment`](super::containment) are.
+//!
+//! Traceability:
+//!
+//! - **SACM 2.3** (formal/23-05-08). §8.2, §9.2 to §9.4, §10.3 to §10.6, §10.8 to
+//!   §10.11, §11.2, §11.4 to §11.6, §11.9, §11.10, §11.12, §11.13, §12.2 to §12.5, §12.14.
+//! - **Rows.** SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004 to
+//!   SACM23-ARG-007, SACM23-ARG-013 to SACM23-ARG-015, SACM23-ART-010 to SACM23-ART-013,
+//!   SACM23-TERM-002 to SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003.
+//! - **Design.** ADR 0026, ADR 0027, ADR 0028, ADR 0034 and its amendments, ADR 0039.
 
 use std::fmt;
 

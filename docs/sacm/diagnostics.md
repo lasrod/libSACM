@@ -3,12 +3,13 @@
 Machine-readable diagnostic codes emitted by the `sacm` crate. **Codes are stable API**:
 once released, a code's meaning never changes and a retired code is never reused.
 
-Every diagnostic carries: `code`, `severity` (info / warning / error), the matrix row and
-clause it enforces, affected element ids, an optional source location (line/column), a
-human-readable message, and the template and arguments the message is made from
-(LIB-API-018). See decision D-DIAG. Every read and write refusal (`ReadError`,
-`WriteError`) carries a code too, and its message's template and arguments (LIB-API-017):
-see [Message templates](#message-templates).
+- **A diagnostic carries** its `code`, its `severity` (info / warning / error), the matrix
+  row and clause it enforces, the affected element ids, an optional source location
+  (line/column), a human-readable message, and the template and arguments the message is
+  made from (LIB-API-018). See decision D-DIAG.
+- **A refusal carries a code too.** Every read and write refusal (`ReadError`,
+  `WriteError`) has one, with its message's template and arguments (LIB-API-017): see
+  [Message templates](#message-templates).
 
 **Machine-readable form.** `crates/sacm/src/diagnostic/catalog.json`, also
 `sacm::diagnostic::CATALOG_JSON`: every code with its severities and every template with its
@@ -25,15 +26,18 @@ fails when it is stale.
   `{"name", "kind"}` with the kind `"text"`, `"count"` or `"prose"`, in the template's
   order, and the English with its placeholders. The English is not promised.
 
-> **Status.** The codes below are adopted from the assurance-forge C++ SACM library (same
-> author), so that the two implementations report the same finding with the same code.
-> Tool-specific wording from that project ("Assurance Forge", ODE containers) has been kept
-> where it explains the code. A row is *live* when its Meaning names the `Code::NAME`
-> constant whose text is the row's code: the crate emits that code, and the row says which
-> matrix rows emit it. A row naming no constant is *reserved*: the crate does not emit it
-> yet. Where a live row describes more than the crate emits, it says which part is emitted
-> and that the rest is reserved. A test (LIB-DIAG-002) checks that the live rows are
-> exactly the crate's `Code` constants.
+> **Status.**
+>
+> - **Adopted codes.** The codes come from the assurance-forge C++ SACM library (same
+>   author), so that the two implementations report a finding with the same code. Wording
+>   from that project ("Assurance Forge", ODE containers) is kept where it explains a code.
+> - **Live rows.** A row is *live* when its Meaning names the `Code::NAME` constant whose
+>   text is its code: the crate emits that code, and the row says which matrix rows emit it.
+> - **Reserved rows.** A row naming no constant is *reserved*: the crate does not emit it yet.
+>   A live row that describes more than the crate emits says which part is emitted and that
+>   the rest is reserved.
+> - **Checked.** A test (LIB-DIAG-002) checks that the live rows are exactly the crate's
+>   `Code` constants.
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it; then run `cargo xtask catalog`.
@@ -133,33 +137,38 @@ named arguments, so that an application can word the message in any language
   wrote, such as a parser error: `ArgumentValue::Prose`, a string in JSON. An application
   that words messages in another language words it itself. Every other argument is a
   name, id, value, number or code.
-- **Frames.** A diagnostic's `message` is the rendered sentence, with no frame; its
-  `Display` adds the severity, code, row, clause and location (ADR 0011). A refusal's
-  `Display` puts its variant's fixed frame around the rendered
-  sentence: for `Malformed`, `the input is not well-formed XML`, the location and `: `
-  first; for `Unsupported`, `the reader cannot represent the input`, the location and `: `
-  first, and after it ` ` and the label of its code: `(strict mode never reads it; ROW reads it
-  in tolerant mode)` for SACM-XMI-002, SACM-XMI-008 and SACM-XMI-015, where ROW is its `row`
-  argument, `(a limit of this version)` for SACM-XML-002, SACM-SEC-002, and SACM-XMI-008 and
-  SACM-XMI-015 without a row, and `(a defect in the input)` for SACM-XMI-003; for `DuplicateId` and
-  `RepeatedValue`, the locations
-  after it; for `InvalidLiteral`, the location and `: ` and the literals of its property
-  after it; for `LegacyShape`, `, a shape of the assurance-forge C++ library`, the location
-  and `: a strict read refuses it; a tolerant read reads it as its standard form, which
-  write writes` after it; for `MissingType`, the location and `: give it an xmi:type that
-  names its class` after it; for `LimitExceeded`, the location after it; and for the other
-  read refusals, the location after it. A
-  write refusal's `Display` is the sentence.
+- **A diagnostic has no frame.** Its `message` is the rendered sentence; its `Display` adds
+  the severity, code, row, clause and location (ADR 0011).
+- **A write refusal has no frame.** Its `Display` is the sentence.
+- **A read refusal has a frame.** Its `Display` puts its variant's fixed frame around the
+  rendered sentence:
+  - `Malformed`: `the input is not well-formed XML`, the location and `: ` first.
+  - `Unsupported`: `the reader cannot represent the input`, the location and `: ` first,
+    and after it ` ` and the label of its code, below.
+  - `DuplicateId` and `RepeatedValue`: the locations after it.
+  - `InvalidLiteral`: the location and `: ` and the literals of its property after it.
+  - `LegacyShape`: `, a shape of the assurance-forge C++ library`, the location and `: a
+    strict read refuses it; a tolerant read reads it as its standard form, which write
+    writes` after it.
+  - `MissingType`: the location and `: give it an xmi:type that names its class` after it.
+  - `LimitExceeded` and the other read refusals: the location after it.
+- **The label of an `Unsupported` refusal** follows its code:
+  - `(strict mode never reads it; ROW reads it in tolerant mode)` for SACM-XMI-002,
+    SACM-XMI-008 and SACM-XMI-015, where ROW is its `row` argument.
+  - `(a limit of this version)` for SACM-XML-002, SACM-SEC-002, and SACM-XMI-008 and
+    SACM-XMI-015 without a row.
+  - `(a defect in the input)` for SACM-XMI-003.
 - **No template.** A diagnostic built with `test-support`'s `Diagnostic::new`, or read from
   JSON that gives no template, as 0.1.0 wrote, has its code's text, such as
   `SACM-MULT-001`, as its template, and no arguments.
-- **Records.** A refusal read back with serde must name one of its variant's templates,
-  with that template's code and exactly its arguments, by name and kind; its `Display`
-  renders them. A diagnostic read back gives `template` and `arguments` together or
-  neither: one of its code's diagnostic templates with exactly its arguments, or its
-  code's text with none. Its `message` is kept as given. `arguments` may give its keys in
-  any order; they are read by name, held and written in the template's order. A missing,
-  extra, repeated or wrongly typed argument is refused.
+- **A refusal read back with serde** must name one of its variant's templates, with that
+  template's code and exactly its arguments, by name and kind; its `Display` renders them.
+- **A diagnostic read back** gives `template` and `arguments` together or neither: one of
+  its code's diagnostic templates with exactly its arguments, or its code's text with
+  none. Its `message` is kept as given.
+- **Arguments read back.** `arguments` may give its keys in any order; they are read by
+  name, held and written in the template's order. A missing, extra, repeated or wrongly
+  typed argument is refused.
 
 | Template | Carrier | Arguments | English |
 | --- | --- | --- | --- |

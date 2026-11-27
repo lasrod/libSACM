@@ -1,11 +1,12 @@
 //! The serialized form of [`EditError`] (LIB-API-006; ADR 0030 R1, R5 and
 //! R7).
 //!
-//! An `EditError` names its end, feature and expected class with
-//! `&'static str`s. It serializes through [`EditErrorRecord`], which writes
-//! the variant's catalog `code` right after the `"type"` tag, and it reads
-//! back through it: each name maps to the static name the crate uses, and
-//! any other name, or a code that is not the variant's, is refused.
+//! An `EditError` names its end, feature and expected class with `&'static str`s, so it
+//! serializes through [`EditErrorRecord`].
+//!
+//! - **Written.** The variant's catalog `code` comes right after the `"type"` tag.
+//! - **Read back.** Each name maps to the static name the crate uses. Any other name,
+//!   or a code that is not the variant's, is refused.
 
 use serde::{Deserialize, Serialize};
 

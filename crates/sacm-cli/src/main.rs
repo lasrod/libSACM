@@ -5,14 +5,13 @@
 //! functionality matrix (`docs/matrix/functionality-matrix.md`) for what is
 //! planned.
 //!
-//! Exit codes: 0 when the check passed or the file was converted; 1 when it
-//! ran and failed (for `validate`, an Error diagnostic, or a strict refusal
-//! of a file a tolerant read opens; for `roundtrip` and `convert`, a refused
-//! strict save, output that does not read back, or a difference); 2 when the
-//! tool could not do the job (a usage error, an I/O error, or input it cannot
-//! read: for `validate`, input neither a strict nor a tolerant read opens;
-//! for `roundtrip` and `convert`, input that `xmi::read` refuses). stdout
-//! carries the result; stderr carries only what stopped the command.
+//! stdout carries the result; stderr carries only what stopped the command.
+//!
+//! | Exit code | Meaning | `validate` | `roundtrip` and `convert` |
+//! |---|---|---|---|
+//! | 0 | The check passed, or the file was converted. | | |
+//! | 1 | It ran and failed. | An Error diagnostic, or a strict refusal of a file a tolerant read opens. | A refused strict save, output that does not read back, or a difference. |
+//! | 2 | The tool could not do the job: a usage error, an I/O error, or input it cannot read. | Input neither a strict nor a tolerant read opens. | Input that `xmi::read` refuses. |
 
 mod json;
 

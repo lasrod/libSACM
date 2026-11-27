@@ -1,154 +1,186 @@
-//! The interchange roots of an XMI document, their names and the package
-//! content under them (SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012,
-//! SACM23-XMI-014, SACM23-XMI-015, SACM23-XMI-016, SACM23-XMI-017,
-//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004 to -013,
-//! SACM23-ART-001, -003, -008, -009, -011; formal/23-05-08 §2.2, §2.4,
-//! §8.2-§8.12, §11.2-§11.18, §12.2, §12.3, §12.6, §12.8, §12.12, §12.13; XMI
-//! 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR 0021,
-//! ADR 0025, ADR 0026, ADR 0027, ADR 0028, ADR 0034).
+//! The interchange roots of an XMI document, their names and the package content
+//! under them.
 //!
-//! An interchange root is the document element or, when that is the XMI
-//! element, each of its element children outside the XMI namespace. The
-//! roots are read in two passes over a tree roxmltree has accepted:
+//! An interchange root is the document element or, when that is the XMI element, each
+//! of its element children outside the XMI namespace. The roots are read in two passes
+//! over a tree roxmltree has accepted. [`read`](super::read) documents the behaviour
+//! for callers; this is the order of the work.
 //!
-//! 1. Every root is classified by its local name alone. An `XMI` element
-//!    in neither XMI namespace (XMI 2.5.1's, or, in tolerant mode, the
-//!    `http://www.omg.org/XMI` EMF writes) is `Unsupported`, and any other
-//!    XMI-namespace element as the document element is `InvalidRoot`. Then
-//!    the namespace scan: a strict read refuses any name in EMF's namespace,
-//!    and a tolerant read reads the XMI names in it as XMI 2.5.1's, with one
-//!    SACM-XMI-015 Warning (LIB-COMPAT-002, ADR 0044 D1). An XMI element with no root is
-//!    `NoPackage`; otherwise the first root that is not one of the twelve
-//!    package kinds is `InvalidRoot` (both SACM-XMI-001). This pass comes
-//!    first, so SACM-XMI-001 takes precedence among the refusals found while
-//!    reading the roots, and which inputs get it does not depend on what this
-//!    release can read (ADR 0016 D3).
-//! 2. In document order, the XMI element's attributes, then each root and
-//!    whatever is beside it, are checked, and each root is added to the
-//!    document with its tree. A root's namespace and kind, its `xmi:id` (and
-//!    whether an earlier element has it) and its type are checked first, all
-//!    located at the root, then its other attributes, then its content in
-//!    document order. A `name` is read into its element's name
-//!    (SACM23-XMI-012). A child element is checked the same way, at its start
-//!    tag first: its role, its type and kind, and its `xmi:id`
-//!    (SACM23-XMI-016); then its attributes, of which an Assertion's
-//!    `assertionDeclaration` is read (SACM23-XMI-017), and its content.
-//!    Content that does not conform where it stands is kept as preserved
-//!    content of the element it sits in, with one SACM-XMI-003 per construct
-//!    (LIB-COMPAT-003, ADR 0033): an attribute, a child with its subtree,
-//!    text, or a `name`, `content`, `key`, value or reference element that
-//!    does not conform inside, kept whole. A part is read whole first, and
-//!    what it reported and the ids it took are given back if it is
-//!    preserved after all. A role element in reference form is a proxy: of
-//!    a root of this document, resolved once every root is read
-//!    (SACM23-XMI-030), or of an element of another document, held by its
-//!    container (SACM23-XMI-029). What a strict read cannot represent is
-//!    `Unsupported`, at its location, labelled by its entry of
-//!    `refusal::Unread` (LIB-API-011); nothing is dropped (ADR 0015,
-//!    D-PRESERVE).
+//! # Before the passes: ids
 //!
-//! Once every root is read and the same-file proxies are resolved, a
-//! tolerant read reads the reference targets written as EMF fragment paths
-//! as the ids of the elements they name, with one SACM-XMI-017 Warning
-//! ([`resolve_paths`]; LIB-COMPAT-002, ADR 0044 D2).
+//! - **Every `xmi:id` value is collected first,** so the id generated for an element
+//!   without one is no id written anywhere in the file, even later (SACM23-XMI-020;
+//!   ADR 0024).
+//! - **Every id a reference may name is collected too,** so no generated id makes a
+//!   dangling reference resolve.
+//! - **An id's value is its `xsd:ID` value.** XML white space around an `NCName` is
+//!   trimmed, with SACM-ID-004 Info (SACM23-XMI-025). Any other id is held as written.
+//! - **One id space.** Element ids and the ids of names, `content`s, `key`s and `value`s
+//!   share it (SACM23-XMI-022).
 //!
-//! In tolerant mode, every strict refusal but the fatal ones (malformed or
-//! unsafe input, a root that is no SACM 2.3 package, a repeated `xmi:id`,
-//! an encoding and a limit) is a [`Fault::Keep`]: the construct it is found
-//! in is kept as preserved content, with one Warning at the strict
-//! refusal's location (ADR 0035 D1). The construct is the attribute, for one
-//! on a start tag; the whole part, for one inside a `name`, `content`,
-//! `key`, value or reference element; the whole child, for a child whose
-//! kind or form is not read; and the later occurrence, for a repeat. A value
-//! kept because it is no literal counts as its property's occurrence, so a
-//! later one is a repeat. An empty `xmi:id` is read as none, with a
-//! generated id for an element. What `xmi:XMI` carries and holds besides its
-//! roots is kept as the document's own preserved content, placed among the
-//! roots (ADR 0035 D3); every package kind is read as a root (ADR 0035
-//! amendment 1).
+//! # Pass 1: classify the roots
 //!
-//! Before pass 2, every `xmi:id` value in the input is collected, so that the
-//! id generated for an element without one is no id written anywhere in the
-//! file, even later (SACM23-XMI-020; ADR 0024). An id's value is its
-//! `xsd:ID` value: XML white space around an `NCName` is trimmed, with
-//! SACM-ID-004 Info (SACM23-XMI-025), and any other id is held as written.
-//! Element ids and the ids of names, `content`s, `key`s and `value`s share
-//! one id space (SACM23-XMI-022).
+//! - **By local name alone.** Every root is classified by it.
+//! - **The XMI element.** An `XMI` element in neither XMI namespace (XMI 2.5.1's, or, in
+//!   tolerant mode, the `http://www.omg.org/XMI` EMF writes) is `Unsupported`. Any other
+//!   XMI-namespace element as the document element is `InvalidRoot`.
+//! - **The namespace scan.** A strict read refuses any name in EMF's namespace. A
+//!   tolerant read reads the XMI names in it as XMI 2.5.1's, with one SACM-XMI-015
+//!   Warning (LIB-COMPAT-002, ADR 0044 D1).
+//! - **SACM-XMI-001.** An XMI element with no root is `NoPackage`. Otherwise the first
+//!   root that is not one of the twelve package kinds is `InvalidRoot`.
+//! - **Precedence.** This pass comes first, so SACM-XMI-001 takes precedence among the
+//!   refusals found while reading the roots. Which inputs get it does not depend on
+//!   what this release can read (ADR 0016 D3).
 //!
-//! The `UtilityElement`s of every readable element are read as its children,
-//! each with its `content` and, on a `TaggedValue`, its `key`: a role element
-//! holding one `value` per `LangString`, each read like a `name`, with the
-//! `xmi:id`s of both kept by role and position (SACM23-BASE-004,
-//! SACM23-BASE-005; ADR 0025).
+//! # Pass 2: read the roots
 //!
-//! The name and text shapes of the assurance-forge C++ library that map one
-//! to one onto a `LangString` or a `MultiLangString` are read as their
-//! standard form, each with one SACM-XMI-012 Warning (LIB-COMPAT-008; ADR
-//! 0022 amendment 1): `name="…"` on a `ModelElement`, text as the `content` of
-//! a `name` or `value`, a `name` holding one `value` or one `content`
-//! carrying `lang`, the single-language shorthand of a `content` or `key`
-//! (`lang`/`content` attributes or text, with no `value`), `lang=`,
-//! `content=` or text on a `UtilityElement`, and `key=` and `value=` on a
-//! `TaggedValue`. A strict read reads them the same way and then, if the rest
-//! of the input read without a refusal, refuses the first one, so that every
-//! refusal both modes share comes first. A field given both in a shape and
-//! in the standard form, or twice, is `RepeatedValue`.
+//! In document order, the XMI element's attributes, then each root and whatever is
+//! beside it, are checked, and each root is added to the document with its tree.
 //!
-//! `xsi:nil` on a value element is an `xsd:boolean` (SACM23-XMI-026; XMI
-//! 2.5.1 §9.4.1): true reads as if the property were not written, which
-//! still counts as an occurrence, false reads the content, and a nil element
-//! holds no characters or elements.
+//! - **A root.** Its namespace and kind, its `xmi:id` (and whether an earlier element
+//!   has it) and its type are checked first, all located at the root. Then its other
+//!   attributes, then its content in document order.
+//! - **A `name`** is read into its element's name (SACM23-XMI-012).
+//! - **A child element** is checked the same way, at its start tag first: its role, its
+//!   type and kind, and its `xmi:id` (SACM23-XMI-016). Then its attributes, of which an
+//!   Assertion's `assertionDeclaration` is read (SACM23-XMI-017), and its content.
+//! - **Preserved content.** Content that does not conform where it stands is kept as
+//!   preserved content of the element it sits in, with one SACM-XMI-003 per construct
+//!   (LIB-COMPAT-003, ADR 0033).
+//! - **A construct** is an attribute, a child with its subtree, text, or a `name`,
+//!   `content`, `key`, value or reference element that does not conform inside, kept
+//!   whole.
+//! - **Read first, preserve after.** A part is read whole first. What it reported and
+//!   the ids it took are given back if it is preserved after all.
+//! - **Proxies.** A role element in reference form is a proxy: of a root of this
+//!   document, resolved once every root is read (SACM23-XMI-030), or of an element of
+//!   another document, held by its container (SACM23-XMI-029).
+//! - **`Unsupported`.** What a strict read cannot represent, at its location, labelled
+//!   by its entry of `refusal::Unread` (LIB-API-011). Nothing is dropped (ADR 0015,
+//!   D-PRESERVE).
 //!
-//! A name's `lang` and `content` (and those of a `value`), every element's
-//! `gid`, `isCitation` and `isAbstract`, an Assertion's
-//! `assertionDeclaration` and an asserted relationship's `isCounter` are
-//! read from the attribute or from a value element: an element in no
-//! namespace named after the property, whose character content is the value
-//! (SACM23-XMI-014, SACM23-BASE-006, SACM23-BASE-007, SACM23-BASE-008; XMI
-//! 2.5.1 §7.8.4; ADR 0021 amendment 1). A flag is an `xsd:boolean`. The
-//! reference ends of the element's kind (every element's `citedElement` and
-//! `abstractForm`, and the argumentation ends of ADR 0027) are read from the
-//! attribute, whose value is the target ids separated by XML white space
-//! (SACM23-XMI-005), or from reference elements with one `xmi:idref` or
-//! `href="#id"` each (SACM23-XMI-015), and held as ids, resolved or not (ADR
-//! 0026). A multi-valued end (`metaClaim`, `source`,
-//! `referencedArtifactElement`, a group's `argumentElement` or
-//! `artifactElement`) holds every token of the attribute, or one id per
-//! element, in document order. A flag or end the kind lacks is not read. An
-//! `argumentElement` element is a reference element under an
-//! `ArgumentGroup` and a child under an `ArgumentPackage`, and an
-//! `artifactElement` element one under an `ArtifactGroup` and a child under
-//! an `ArtifactPackage`: the parent's kind decides, and no class has both
-//! (ADR 0028, ADR 0034), so an element nested in a group's end is refused as
-//! a reference element would be, never read as a child. The id pre-pass also collects every id a reference may name, so
-//! that no generated id makes a dangling reference resolve. A property given
-//! more than once, a second `name`, `content` or `key` included, is
-//! `RepeatedValue`
-//! (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h; SACM23-XMI-021), and a
-//! declaration or flag that is not a literal is `InvalidLiteral`
-//! (SACM-ENUM-001, SACM23-VAL-006; ADR 0021 amendment 2, ADR 0026).
+//! # After the passes: EMF fragment paths
 //!
-//! Names are matched by namespace URI and local name, and a type value is
-//! resolved as a `QName` against the namespaces in scope, so the choice of
-//! prefix does not matter (SACM23-XMI-002). An element under `xmlns=""` is
-//! in no namespace.
+//! Once every root is read and the same-file proxies are resolved, a tolerant read
+//! reads the reference targets written as EMF fragment paths as the ids of the elements
+//! they name, with one SACM-XMI-017 Warning ([`resolve_paths`]; LIB-COMPAT-002,
+//! ADR 0044 D2).
 //!
-//! The XMI element itself may carry only namespace declarations and
-//! `xmi:version`, and hold, besides its roots, only white space, comments and
-//! processing instructions; it is no element of the document, so a strict
-//! read refuses anything else on it (a defect, or XMI metadata not read
-//! yet), and a tolerant read keeps it as the document's preserved content.
-//! An `xmi:version`, here or on a root, is ignored
-//! with any value: the XMI namespace identifies the version (XMI 2.5.1
-//! §7.5.3), and the writer does not write it (SACM23-XMI-024).
+//! # Tolerant mode
 //!
-//! Two attributes are read and reported (LIB-COMPAT-001, ADR 0022), one
-//! diagnostic per attribute at its name: an `xsi:type` is SACM-XMI-010, an
-//! Error in strict mode and a Warning in tolerant mode, and an `xmi:version`
-//! is SACM-XMI-011, Info. A strict read refuses the C++ shapes above and
-//! what a tolerant read keeps. A
-//! message names the element by its kind and id, never by the name or prefix
-//! written, so the choice of prefix does not change it (SACM23-XMI-002).
+//! - **[`Fault::Keep`].** Every strict refusal but the fatal ones: the construct it is
+//!   found in is kept as preserved content, with one Warning at the strict refusal's
+//!   location (ADR 0035 D1).
+//! - **The fatal ones.** Malformed or unsafe input, a root that is no SACM 2.3 package,
+//!   a repeated `xmi:id`, an encoding and a limit.
+//! - **A literal.** A value kept because it is no literal counts as its property's
+//!   occurrence, so a later one is a repeat.
+//! - **An empty `xmi:id`** is read as none, with a generated id for an element.
+//! - **`xmi:XMI`.** What it carries and holds besides its roots is kept as the
+//!   document's own preserved content, placed among the roots (ADR 0035 D3).
+//! - **Roots.** Every package kind is read as a root (ADR 0035 amendment 1).
+//!
+//! | The refusal is found | The construct kept |
+//! |---|---|
+//! | on a start tag | the attribute |
+//! | inside a `name`, `content`, `key`, value or reference element | the whole part |
+//! | at a child whose kind or form is not read | the whole child |
+//! | at a repeat | the later occurrence |
+//!
+//! # Values
+//!
+//! - **Attribute or value element.** A value element is an element in no namespace
+//!   named after the property, whose character content is the value (XMI 2.5.1 §7.8.4;
+//!   ADR 0021 amendment 1).
+//! - **Read from either:** a name's `lang` and `content` (and those of a `value`), every
+//!   element's `gid`, `isCitation` and `isAbstract`, an Assertion's
+//!   `assertionDeclaration` and an asserted relationship's `isCounter` (SACM23-XMI-014,
+//!   SACM23-BASE-006, SACM23-BASE-007, SACM23-BASE-008).
+//! - **A flag** is an `xsd:boolean`. A flag or end the kind lacks is not read.
+//! - **`xsi:nil`** on a value element is an `xsd:boolean` (SACM23-XMI-026; XMI 2.5.1
+//!   §9.4.1). True reads as if the property were not written, which still counts as an
+//!   occurrence; false reads the content. A nil element holds no characters or elements.
+//! - **`RepeatedValue`.** A property given more than once, a second `name`, `content` or
+//!   `key` included (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h; SACM23-XMI-021).
+//! - **`InvalidLiteral`.** A declaration or flag that is not a literal (SACM-ENUM-001,
+//!   SACM23-VAL-006; ADR 0021 amendment 2, ADR 0026).
+//! - **`UtilityElement`s** of every readable element are read as its children, each with
+//!   its `content` and, on a `TaggedValue`, its `key` (SACM23-BASE-004, SACM23-BASE-005;
+//!   ADR 0025).
+//! - **A `content` or `key`** is a role element holding one `value` per `LangString`,
+//!   each read like a `name`. The `xmi:id`s of both are kept by role and position.
+//!
+//! # References
+//!
+//! - **Which ends.** Those of the element's kind: every element's `citedElement` and
+//!   `abstractForm`, and the argumentation ends of ADR 0027.
+//! - **As an attribute,** whose value is the target ids separated by XML white space
+//!   (SACM23-XMI-005).
+//! - **As reference elements,** with one `xmi:idref` or `href="#id"` each
+//!   (SACM23-XMI-015).
+//! - **Held as ids,** resolved or not (ADR 0026).
+//! - **A multi-valued end** holds every token of the attribute, or one id per element,
+//!   in document order: `metaClaim`, `source`, `referencedArtifactElement`, a group's
+//!   `argumentElement` or `artifactElement`.
+//! - **The parent's kind decides** what a member-named element is. An `argumentElement`
+//!   is a reference element under an `ArgumentGroup` and a child under an
+//!   `ArgumentPackage`; an `artifactElement` likewise under an `ArtifactGroup` and an
+//!   `ArtifactPackage`. No class has both (ADR 0028, ADR 0034).
+//! - **Nested in a group's end.** An element there is refused as a reference element
+//!   would be, never read as a child.
+//!
+//! # The C++ name and text shapes
+//!
+//! The shapes of the assurance-forge C++ library that map one to one onto a
+//! `LangString` or a `MultiLangString` are read as their standard form, each with one
+//! SACM-XMI-012 Warning (LIB-COMPAT-008; ADR 0022 amendment 1):
+//!
+//! - `name="…"` on a `ModelElement`;
+//! - text as the `content` of a `name` or `value`;
+//! - a `name` holding one `value` or one `content` carrying `lang`;
+//! - the single-language shorthand of a `content` or `key` (`lang`/`content` attributes
+//!   or text, with no `value`);
+//! - `lang=`, `content=` or text on a `UtilityElement`;
+//! - `key=` and `value=` on a `TaggedValue`.
+//!
+//! The rules:
+//!
+//! - **Strict.** A strict read reads them the same way and then, if the rest of the
+//!   input read without a refusal, refuses the first one. So every refusal both modes
+//!   share comes first. A strict read also refuses what a tolerant read keeps.
+//! - **Twice.** A field given both in a shape and in the standard form, or twice, is
+//!   `RepeatedValue`.
+//!
+//! # Names, the XMI element and reported attributes
+//!
+//! - **Prefixes do not matter** (SACM23-XMI-002). Names are matched by namespace URI and
+//!   local name, and a type value is resolved as a `QName` against the namespaces in
+//!   scope. An element under `xmlns=""` is in no namespace.
+//! - **Messages.** A message names the element by its kind and id, never by the name or
+//!   prefix written.
+//! - **The XMI element** may carry only namespace declarations and `xmi:version`, and
+//!   hold, besides its roots, only white space, comments and processing instructions.
+//!   It is no element of the document.
+//! - **Anything else on it** (a defect, or XMI metadata not read yet) a strict read
+//!   refuses, and a tolerant read keeps as the document's preserved content.
+//! - **`xmi:version`,** here or on a root, is ignored with any value: the XMI namespace
+//!   identifies the version (XMI 2.5.1 §7.5.3). The writer does not write it
+//!   (SACM23-XMI-024). It is reported as SACM-XMI-011, Info, at its name.
+//! - **`xsi:type`** is reported as SACM-XMI-010 at its name: an Error in strict mode and
+//!   a Warning in tolerant mode (LIB-COMPAT-001, ADR 0022).
+//!
+//! # Traceability
+//!
+//! - **Rows.** SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012, SACM23-XMI-014 to
+//!   SACM23-XMI-017, SACM23-BASE-004 to SACM23-BASE-008, SACM23-ARG-004 to
+//!   SACM23-ARG-013, SACM23-ART-001, SACM23-ART-003, SACM23-ART-008, SACM23-ART-009,
+//!   SACM23-ART-011.
+//! - **SACM 2.3** (formal/23-05-08). §2.2, §2.4, §8.2-§8.12, §11.2-§11.18, §12.2, §12.3,
+//!   §12.6, §12.8, §12.12, §12.13.
+//! - **XMI 2.5.1.** §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10.
+//! - **Design.** ADR 0015, ADR 0016, ADR 0021, ADR 0025, ADR 0026, ADR 0027, ADR 0028,
+//!   ADR 0034.
 
 use std::collections::{BTreeMap, BTreeSet};
 

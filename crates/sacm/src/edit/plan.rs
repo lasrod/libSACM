@@ -1,15 +1,16 @@
 //! What an operation's checks computed, and the one change that applies it
 //! (LIB-EDIT-013, ADR 0019 amendment 3).
 //!
-//! [`check`](super::check), [`preview`](super::preview) and
-//! [`apply`](super::apply) share one code path: each operation's `plan` runs
-//! every check and builds every refusal, and returns a [`Plan`], which also
-//! knows the ids the change creates, changes and deletes ([`Plan::outcome`])
-//! and, for a delete, the references it leaves dangling. `check` drops it;
-//! `preview` reports it; `apply` hands it to [`Plan::commit`], which cannot
-//! fail. So `preview` and `apply` agree by construction (ADR 0031). A `Plan`
-//! borrows the operation, never the document, so `commit` can take the
-//! document mutably.
+//! - **One code path.** [`check`](super::check), [`preview`](super::preview) and
+//!   [`apply`](super::apply) share it: each operation's `plan` runs every check, builds
+//!   every refusal and returns a [`Plan`].
+//! - **What a `Plan` knows.** The ids the change creates, changes and deletes
+//!   ([`Plan::outcome`]) and, for a delete, the references it leaves dangling.
+//! - **What each does with it.** `check` drops it; `preview` reports it; `apply` hands
+//!   it to [`Plan::commit`], which cannot fail. So `preview` and `apply` agree by
+//!   construction (ADR 0031).
+//! - **Borrows.** A `Plan` borrows the operation, never the document, so `commit` can
+//!   take the document mutably.
 
 use super::DanglingReference;
 use super::set::ASSERTION_DECLARATION;

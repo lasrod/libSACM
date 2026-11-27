@@ -1,29 +1,40 @@
-//! The XMI writer (SACM23-XMI-003, -004, -005, -006, -007, -011, -012, -013,
-//! -017, SACM23-BASE-004, -005, -006, -007, -008, LIB-API-010,
-//! LIB-COMPAT-007, SACM23-ARG-004, -005, -007; ADR 0017, ADR 0022, ADR 0025,
-//! ADR 0026, ADR 0027).
+//! The XMI writer.
 //!
-//! Two passes. [`plan`] checks the document (in strict mode, refusing
-//! preserved content and output that would not be schema-valid, ADR 0035
-//! D4) and every element, and resolves what each is written as; only if that
-//! succeeds does [`write`] build the `String` from the plan,
-//! so a refusal never leaves partial output, and the output pass has no
-//! lookup that could fail. The output form is pinned byte for byte: UTF-8
-//! without a BOM, the XML declaration, LF line endings, two spaces per depth,
-//! one tag per line and `<x … />` for an element with no children.
-//! Preserved content (LIB-COMPAT-003, ADR 0033) is written back where it
-//! was read: its attributes after the typed ones, each child on its own line
-//! before the typed child it preceded, a fragment as one line with its text
-//! exactly as held, each declaring the namespace bindings it needs. The
-//! document's own preserved content, outside every element, is written on
-//! and in the `xmi:XMI` element, its children among the roots; a document
-//! that holds some is always wrapped (ADR 0035 D3). XMI metadata
-//! (SACM23-XMI-019, ADR 0042) is written back the same way in both modes:
-//! its attributes before the preserved ones, its children before the
-//! preserved children placed at the same index, a part's after its typed
-//! attributes and among its values; a document that holds some outside
-//! every element is wrapped too. Neither pass recurses, so deep nesting is
-//! safe.
+//! - **Two passes.** [`plan`] checks the document and every element, and resolves what
+//!   each is written as. Only if that succeeds does [`write`] build the `String` from
+//!   the plan.
+//! - **No partial output.** So a refusal never leaves any, and the output pass has no
+//!   lookup that could fail.
+//! - **Strict mode.** `plan` refuses preserved content and output that would not be
+//!   schema-valid (ADR 0035 D4).
+//! - **The form is pinned byte for byte.** UTF-8 without a BOM, the XML declaration, LF
+//!   line endings, two spaces per depth, one tag per line and `<x … />` for an element
+//!   with no children.
+//! - **No recursion.** Neither pass recurses, so deep nesting is safe.
+//!
+//! Preserved content (LIB-COMPAT-003, ADR 0033) is written back where it was read:
+//!
+//! - **Attributes** after the typed ones.
+//! - **Children,** each on its own line before the typed child it preceded. A fragment
+//!   is one line with its text exactly as held.
+//! - **Namespaces.** Each declares the namespace bindings it needs.
+//! - **The document's own,** outside every element, is written on and in the `xmi:XMI`
+//!   element, its children among the roots. A document that holds some is always
+//!   wrapped (ADR 0035 D3).
+//!
+//! XMI metadata (SACM23-XMI-019, ADR 0042) is written back the same way in both modes:
+//!
+//! - **Attributes** before the preserved ones.
+//! - **Children** before the preserved children placed at the same index.
+//! - **A part's** after its typed attributes and among its values.
+//! - **Outside every element.** A document that holds some is wrapped too.
+//!
+//! Traceability:
+//!
+//! - **Rows.** SACM23-XMI-003 to SACM23-XMI-007, SACM23-XMI-011 to SACM23-XMI-013,
+//!   SACM23-XMI-017, SACM23-BASE-004 to SACM23-BASE-008, LIB-API-010, LIB-COMPAT-007,
+//!   SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-007.
+//! - **Design.** ADR 0017, ADR 0022, ADR 0025, ADR 0026, ADR 0027.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};

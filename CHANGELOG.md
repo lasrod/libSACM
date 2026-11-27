@@ -90,6 +90,13 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - The crate root, the READMEs and docs/architecture.md are shorter and structured: an
   overview, a table of entry points, one example and the key rules. The functionality
   matrix is the inventory. docs/style.md is the style guide [LIB-DOC-009, LIB-DOC-006].
+- Every module's docs follow the style guide: what the module is for, its entry points,
+  then the rules a caller needs as short bullets and tables [LIB-DOC-011].
+- docs/sacm/diagnostics.md and compliance-points.md follow the style guide. No code,
+  severity, template or meaning changed [LIB-DOC-013].
+- The `validation` module docs no longer say a strict write refuses a relationship with
+  no `source` or `target`, or implementation constraints on a concrete element. A strict
+  write checks schema validity only; `validate` reports both [LIB-DOC-011].
 
 ## [0.4.0] - 2026-11-26
 

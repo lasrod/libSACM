@@ -12,13 +12,17 @@
 //!     "the English pattern, with {name}, {name:?} and {name:04X}";
 //! ```
 //!
-//! The carrier is `Diagnostic` for a [`Diagnostic`](super::Diagnostic)'s
-//! message, `Read("<Variant>")` for a `ReadError` variant,
-//! `Write("<Variant>")` for a `WriteError` variant, or `Unread` for the
-//! refusal `xmi/refusal.rs` builds from its list of what this version does
-//! not read. A const is named after its id: without `SACM-`, in upper case,
-//! with `-` and `/` as `_`. [`render`] builds the variable part of a message
-//! from a template and its arguments.
+//! | Carrier | The message it is for |
+//! |---|---|
+//! | `Diagnostic` | a [`Diagnostic`](super::Diagnostic)'s |
+//! | `Read("<Variant>")` | a `ReadError` variant's |
+//! | `Write("<Variant>")` | a `WriteError` variant's |
+//! | `Unread` | the refusal `xmi/refusal.rs` builds from its list of what this version does not read |
+//!
+//! - **A const is named after its id:** without `SACM-`, in upper case, with `-` and `/`
+//!   as `_`.
+//! - **[`render`]** builds the variable part of a message from a template and its
+//!   arguments.
 
 use std::fmt::Write as _;
 

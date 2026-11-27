@@ -2,34 +2,43 @@
 //! `ReadError::Unsupported`, and of what a tolerant read does with each
 //! entry (LIB-API-011, ADR 0033, ADR 0035).
 //!
-//! Content that does not conform is preserved, not refused
-//! (LIB-COMPAT-003). What is left is a limit of this version, input that
-//! only tolerant mode reads (a tolerance, which strict mode never applies,
-//! ADR 0022), and input that does not conform and that a strict read
-//! refuses. Conforming input this version does not read yet
-//! would be an `Interim` entry; since slice 0073 the list has none. Each
-//! refusal names which by one [`Unread`] entry, and its reason ends with that
-//! entry's label, so a caller can tell a gap of the library from a defect of
-//! the file. A tolerance's input need not be defective: a document in
-//! another SACM namespace is not (D-NS-PIN).
+//! Content that does not conform is preserved, not refused (LIB-COMPAT-003). What a
+//! strict read still refuses is one of:
 //!
-//! A tolerant read keeps the defects as preserved content, with one
-//! SACM-XMI-003 Warning ([`Unread::tolerant`], ADR 0035 D1, D2). It reads a
-//! root in an older SACM revision's namespace or a SACM-like one, with
-//! SACM-XMI-008 or SACM-XMI-002 (LIB-COMPAT-004, ADR 0041), and the XMI
-//! names EMF writes in `http://www.omg.org/XMI`, with SACM-XMI-015
-//! (LIB-COMPAT-002, ADR 0044 D1). It refuses only the limits, a SACM 2.4
-//! root and an `XMI` element in any other namespace. XMI
-//! metadata is read since slice 0073a, so no input gives SACM-XMI-014
-//! (SACM23-XMI-019, ADR 0042), and every link form is read or held since
-//! slice 0073b, so none gives SACM-XMI-007 (SACM23-XMI-029, ADR 0040
-//! amendment 1).
+//! - **A limit** of this version.
+//! - **A tolerance:** input that only tolerant mode reads, which strict mode never
+//!   applies (ADR 0022). It need not be defective: a document in another SACM namespace
+//!   is not (D-NS-PIN).
+//! - **A defect:** input that does not conform and that a strict read refuses.
+//! - **`Interim`:** conforming input this version does not read yet. Since slice 0073
+//!   the list has none.
+//!
+//! Each refusal names which by one [`Unread`] entry, and its reason ends with that
+//! entry's label. So a caller can tell a gap of the library from a defect of the file.
+//!
+//! A tolerant read:
+//!
+//! - **Keeps the defects** as preserved content, with one SACM-XMI-003 Warning
+//!   ([`Unread::tolerant`], ADR 0035 D1, D2).
+//! - **Reads a root** in an older SACM revision's namespace or a SACM-like one, with
+//!   SACM-XMI-008 or SACM-XMI-002 (LIB-COMPAT-004, ADR 0041).
+//! - **Reads the XMI names** EMF writes in `http://www.omg.org/XMI`, with SACM-XMI-015
+//!   (LIB-COMPAT-002, ADR 0044 D1).
+//! - **Refuses only** the limits, a SACM 2.4 root and an `XMI` element in any other
+//!   namespace.
+//!
+//! Two codes no input gives any more:
+//!
+//! - **SACM-XMI-014.** XMI metadata is read since slice 0073a (SACM23-XMI-019, ADR 0042).
+//! - **SACM-XMI-007.** Every link form is read or held since slice 0073b
+//!   (SACM23-XMI-029, ADR 0040 amendment 1).
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
-//! no other file of the crate builds the refusal, every `Interim` row is
-//! open and gates SACM23-CP-001 and the compliance point of its own package
-//! (every point, for a row of no package), and every `Tolerated` row exists
-//! and is neither deferred nor a candidate.
+//!
+//! - **One place.** No other file of the crate builds the refusal.
+//! - **`Interim` rows.** Each is open and gates SACM23-CP-001 and the compliance point
+//!   of its own package (every point, for a row of no package).
+//! - **`Tolerated` rows.** Each exists and is neither deferred nor a candidate.
 
 use super::ReadError;
 use super::input::locate;
