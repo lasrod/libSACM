@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-031: nothing in a Difference's target is an id (XMI.xsd: processContents="skip"): an xmi:id repeating an element id (c1), one repeated within a target (t1), an empty one, one that is no NCName (1x), one padded with spaces, an xmi:idref, a target under a Replace's container in an Extension of an Add, and a target of a Difference in a Claim's Extension (p). Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <xmi:Delete xmi:id="d1" target="c1"><target xmi:id="c1" href="other.sacm.xmi#c1"/></xmi:Delete>
+  <xmi:Add xmi:id="d2"><target xmi:id="1x" xmi:idref="c1"><sacm:Claim xmi:id="c1"><name content="Old"/></sacm:Claim><x xmi:id=""/><x xmi:id=" a b "/><x xmi:id="t1"/><x xmi:id="t1"/></target><xmi:Extension><xmi:Replace><container><target xmi:id="c1"/></container></xmi:Replace></xmi:Extension></xmi:Add>
+  <sacm:ArgumentPackage xmi:id="p">
+    <name content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name content="Safe"/>
+      <xmi:Extension><xmi:Difference><target xmi:id="p"/></xmi:Difference></xmi:Extension>
+    </argumentElement>
+  </sacm:ArgumentPackage>
+</xmi:XMI>

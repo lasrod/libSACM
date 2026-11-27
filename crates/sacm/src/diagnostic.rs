@@ -183,9 +183,13 @@ catalog! {
     /// SACM-XML-003: an element's id, name or other text holds a character
     /// that XML 1.0 cannot represent, such as U+0001, so it cannot be written.
     ///
-    /// The code of
-    /// [`WriteError::UnrepresentableCharacter`](crate::xmi::WriteError::UnrepresentableCharacter)
-    /// (SACM23-XMI-011, LIB-API-017). Fix: remove the character with an edit.
+    /// - **Edits.** Every edit that would store such text returns
+    ///   [`EditError::UnrepresentableCharacter`](crate::edit::EditError::UnrepresentableCharacter)
+    ///   (LIB-EDIT-025).
+    /// - **Writes.** The code of
+    ///   [`WriteError::UnrepresentableCharacter`](crate::xmi::WriteError::UnrepresentableCharacter)
+    ///   (SACM23-XMI-011, LIB-API-017).
+    /// - **Fix.** Remove the character from the text.
     pub const XML_UNREPRESENTABLE_CHARACTER: Code = Code::from_static("SACM-XML-003");
 
     /// SACM-SEC-002: the input passes a fixed limit of this version's parser.

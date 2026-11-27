@@ -1245,7 +1245,9 @@ fn sacm23_base_005_a_character_xml_cannot_represent_in_a_key_value_fails_the_wri
         ),
     ] {
         let mut doc = built();
-        if let Err(error) = edit::apply(
+        // An edit refuses the character (LIB-EDIT-025), so the test seam
+        // creates the TaggedValue.
+        if let Err(error) = edit::apply_unchecked_text(
             &mut doc,
             CreateTaggedValue::new("c1", value, LangString::new("v")).with_id("t"),
         ) {

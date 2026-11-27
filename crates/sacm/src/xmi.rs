@@ -145,6 +145,8 @@ mod refusal;
 mod roots;
 
 pub use limits::{Limit, Limits};
+// The rule the edits share with the writer (LIB-EDIT-025).
+pub(crate) use output::{first_unrepresentable, name_texts, string_attribute, value_texts};
 
 /// Reads an XMI document from its bytes.
 ///
@@ -490,10 +492,12 @@ pub use limits::{Limit, Limits};
 /// [`SacmElement::uuid`](crate::model::SacmElement::uuid) and
 /// [`SacmElement::label`](crate::model::SacmElement::label) give an
 /// element's own values. Metadata ids share the document's id space, as
-/// preserved ids do. A copy drops the `xmi:uuid` of each element and part
-/// it copies (XMI 2.5.1 §7.6.1: elements with one `xmi:uuid` "are all
-/// deemed to reference the same MOF element"), a delete removes the metadata with the
-/// element, and a move keeps it. Differences are kept, never applied.
+/// preserved ids do; nothing inside a Difference's `target` is an id
+/// (XMI.xsd: `processContents="skip"`). A copy drops the `xmi:uuid` of each
+/// element and part it copies (XMI 2.5.1 §7.6.1: elements with one `xmi:uuid`
+/// "are all deemed to reference the same MOF element"), a delete removes the
+/// metadata with the element, and a move keeps it. Differences are kept,
+/// never applied.
 ///
 /// Any other XMI-namespace element where metadata may stand, an `href` or
 /// an `xmi:idref` on a definition (production 2a), and an identity
@@ -650,7 +654,8 @@ pub use limits::{Limit, Limits};
 /// - An element without an `xmi:id`, a root or a child, gets a generated id,
 ///   `<snake_case kind>_<n>` as [`edit::apply`](crate::edit::apply)
 ///   generates one (`claim_1`), with the smallest `n` whose id is the value
-///   of no `xmi:id` in the input, is named by no reference in it (see
+///   of no `xmi:id` in the input outside a Difference's `target`, is named
+///   by no reference in it (see
 ///   [References](#references)), and was not generated earlier in the read,
 ///   so a reference that names no element never resolves to a generated
 ///   one. It is an ordinary id: [`write()`] writes it, and an edit continues
@@ -1854,14 +1859,14 @@ pub enum ReadError {
         /// Where the `xmi:XMI` start tag starts.
         location: Option<SourceLocation>,
     },
-    /// Two or more elements carry the same `xmi:id` (SACM-ID-001,
-    /// SACM23-VAL-001): two elements, two names, or an element and a name
-    /// (ADR 0024). XMI 2.5.1 §7.6.1 requires the value to be unique across
-    /// all elements within the file, and a [`Document`] holds each id once,
-    /// so the input is refused rather than read with an element dropped or
-    /// renamed. Ids compare by their `xsd:ID` value: XML white space around
-    /// an `NCName` is trimmed first, so `" c1 "` and `c1` repeat, and
-    /// otherwise as exact strings, so `c1` and `C1` differ. A generated id
+    /// Two or more elements carry the same `xmi:id`, outside a Difference's
+    /// `target` (SACM-ID-001, SACM23-VAL-001): two elements, two names, or an
+    /// element and a name (ADR 0024). XMI 2.5.1 §7.6.1 requires the value to
+    /// be unique across all elements within the file, and a [`Document`] holds
+    /// each id once, so the input is refused rather than read with an element
+    /// dropped or renamed. Ids compare by their `xsd:ID` value: XML white
+    /// space around an `NCName` is trimmed first, so `" c1 "` and `c1` repeat,
+    /// and otherwise as exact strings, so `c1` and `C1` differ. A generated id
     /// never repeats one.
     ///
     /// The refusal concerns the first id that repeats in document order.
@@ -2841,8 +2846,9 @@ impl std::error::Error for ReadError {}
 /// every element is wrapped in `xmi:XMI`. A strict write checks it as
 /// XMI.xsd types it: an `xmi:id` that is no `NCName` (SACM-ID-002) and an
 /// `IDREF` or `IDREFS` token that names no `xmi:id` of the output
-/// (SACM-REF-001) are [`WriteError::Invalid`]; what an extension holds is
-/// not checked otherwise.
+/// (SACM-REF-001) are [`WriteError::Invalid`]; nothing inside a Difference's
+/// `target` is checked (SACM23-XMI-031), and what an extension holds is not
+/// checked otherwise.
 ///
 /// ```
 /// use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
@@ -2916,7 +2922,8 @@ impl std::error::Error for ReadError {}
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
 ///    first such character; then its gid, its `version`, `date`,
-///    `startTime` and `endTime`, its name's `lang`, its name's `content`,
+///    `startTime`, `endTime`, `value` and `externalReference`, its name's
+///    `lang`, its name's `content`,
 ///    and each value of its `content`, then of its `key` and then of its
 ///    `location`, `lang` before `content`, the same way, naming the value's
 ///    position too. Preserved content is not
@@ -3070,49 +3077,27 @@ pub enum WriteError {
     /// write. Add a package as a root. This variant has no fields
     /// and will not gain any.
     NoRoot,
-    /// An element's id, gid, `version`, `date`, `startTime` or `endTime`,
-    /// its name's `lang` or `content`, or the `lang` or `content` of a value
-    /// of its `content`, `key` or `location`, holds a character that XML 1.0
-    /// cannot represent: one outside its `Char` production, such
-    /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
-    /// U+FFFF.
+    /// An element's id, gid, `version`, `date`, `startTime`, `endTime`,
+    /// `value` or `externalReference`, its name's `lang` or `content`, or the
+    /// `lang` or `content` of a value of its `content`, `key` or `location`,
+    /// holds a character that XML 1.0 cannot represent: one outside its
+    /// `Char` production, such as U+0000, another C0 control other than TAB,
+    /// LF and CR, U+FFFE or U+FFFF.
     ///
-    /// For a value of a `content`, `key` or `location`, `position` is the
-    /// value's index and the template is
-    /// `SACM-XML-003/unrepresentable-character-in-value`; otherwise
-    /// `position` is `None` and the template is
-    /// `SACM-XML-003/unrepresentable-character`.
-    ///
-    /// ```
-    /// use sacm::edit::{self, CreateArgumentPackage};
-    /// use sacm::model::{Document, LangString};
-    /// use sacm::xmi::{self, WriteAttribute, WriteError, WriteOptions};
-    ///
-    /// // An edit stores a name exactly, so it can hold a character XML cannot.
-    /// let mut doc = Document::new();
-    /// let name = LangString::new("bad\u{1}");
-    /// edit::apply(&mut doc, CreateArgumentPackage::root(name).with_id("arguments")).unwrap();
-    /// let error = xmi::write(&doc, &WriteOptions::default()).unwrap_err();
-    /// assert!(matches!(
-    ///     error,
-    ///     WriteError::UnrepresentableCharacter {
-    ///         attribute: WriteAttribute::NameContent,
-    ///         character: '\u{1}',
-    ///         position: None,
-    ///         ..
-    ///     }
-    /// ));
-    /// assert_eq!(
-    ///     error.to_string(),
-    ///     "the element \"arguments\" cannot be written: its name's content holds U+0001, \
-    ///      which XML 1.0 cannot represent"
-    /// );
-    /// ```
+    /// - **Not reached by edits or reads.** No edit stores such text
+    ///   ([`EditError::UnrepresentableCharacter`](crate::edit::EditError::UnrepresentableCharacter)),
+    ///   and [`read`] cannot hold it. Only a document built with the
+    ///   `test-support` seams reaches this refusal.
+    /// - **Position.** For a value of a `content`, `key` or `location`,
+    ///   `position` is the value's index and the template is
+    ///   `SACM-XML-003/unrepresentable-character-in-value`; otherwise
+    ///   `position` is `None` and the template is
+    ///   `SACM-XML-003/unrepresentable-character`.
     #[non_exhaustive]
     UnrepresentableCharacter {
         /// The element whose id, gid, `version`, `date`, `startTime`,
-        /// `endTime`, name, `content`, `key` or `location` holds the
-        /// character.
+        /// `endTime`, `value`, `externalReference`, name, `content`, `key` or
+        /// `location` holds the character.
         element: ElementId,
         /// The first such character in the attribute.
         character: char,
@@ -3392,7 +3377,8 @@ impl fmt::Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
-/// The attribute of an element that a [`WriteError`] names.
+/// The attribute of an element that a [`WriteError`] or an
+/// [`EditError`](crate::edit::EditError) names.
 ///
 /// Later releases add variants as they write more attributes, so match it
 /// with a fallback arm.

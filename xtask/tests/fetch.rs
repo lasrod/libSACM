@@ -1,7 +1,7 @@
 //! Acceptance tests for hash-pinned fetching of the SACM 2.3 sources
 //! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021),
-//! XML Schema Part 2 (LIB-TOOL-022) and the W3C XML Conformance Test Suite
-//! (LIB-SEC-006).
+//! XML Schema Part 2 (LIB-TOOL-022), XML Schema Part 1 (LIB-TOOL-024) and the
+//! W3C XML Conformance Test Suite (LIB-SEC-006).
 //!
 //! `fetch_into` and `fetch_suite` are driven with fake downloaders (and fake
 //! extractors), so no test touches the network. `curl_download` is driven
@@ -517,11 +517,13 @@ const XSD_PART_2: Artifact = Artifact {
     what: "XML Schema Part 2: Datatypes Second Edition (W3C Recommendation 28 October 2004)",
 };
 
+/// Renamed from `lib_tool_022_artifacts_has_five_entries` in slice 0088:
+/// LIB-TOOL-024 appends a sixth artifact, so LIB-TOOL-022 asks for at least
+/// five.
 #[test]
-fn lib_tool_022_artifacts_has_five_entries() {
-    assert_eq!(
-        ARTIFACTS.len(),
-        5,
+fn lib_tool_022_artifacts_has_at_least_five_entries() {
+    assert!(
+        ARTIFACTS.len() >= 5,
         "LIB-TOOL-022: ARTIFACTS lists the two SACM sources, XMI 2.5.1, XMI.xsd and XML Schema \
          Part 2, got {:?}",
         ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
@@ -550,6 +552,66 @@ fn lib_tool_022_the_first_four_artifacts_are_unchanged() {
         FIRST_FOUR_ARTIFACTS,
         "LIB-TOOL-022: the SACM sources, XMI 2.5.1 and XMI.xsd keep their file names, URLs, \
          pins, descriptions and order, ahead of XML Schema Part 2"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-024: XML Schema Part 1 is pinned after XML Schema Part 2
+// ---------------------------------------------------------------------------
+
+/// The first five artifacts as LIB-TOOL-002, LIB-TOOL-020, LIB-TOOL-021 and
+/// LIB-TOOL-022 pinned them.
+const FIRST_FIVE_ARTIFACTS: [Artifact; 5] = [
+    FIRST_FOUR_ARTIFACTS[0],
+    FIRST_FOUR_ARTIFACTS[1],
+    FIRST_FOUR_ARTIFACTS[2],
+    FIRST_FOUR_ARTIFACTS[3],
+    XSD_PART_2,
+];
+
+/// XML Schema Part 1: Structures Second Edition, exactly as LIB-TOOL-024
+/// states it, whose `skip` wildcard (§3.10.1) and ID table (§3.15.5)
+/// SACM23-XMI-031 quotes.
+const XSD_PART_1: Artifact = Artifact {
+    file_name: "XMLSchema-1-REC-20041028-structures.html",
+    url: "https://www.w3.org/TR/2004/REC-xmlschema-1-20041028/structures.html",
+    sha256: "92bfd116316332b1153941436430afbdb2040e036d5fb2d21d4c8fba36a7765a",
+    what: "XML Schema Part 1: Structures Second Edition (W3C Recommendation 28 October 2004)",
+};
+
+#[test]
+fn lib_tool_024_artifacts_has_six_entries() {
+    assert_eq!(
+        ARTIFACTS.len(),
+        6,
+        "LIB-TOOL-024: ARTIFACTS lists the two SACM sources, XMI 2.5.1, XMI.xsd, XML Schema \
+         Part 2 and XML Schema Part 1, got {:?}",
+        ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lib_tool_024_the_sixth_artifact_is_the_xml_schema_part_1_pin() {
+    assert_eq!(
+        ARTIFACTS.get(5),
+        Some(&XSD_PART_1),
+        "LIB-TOOL-024: the sixth artifact is XML Schema Part 1 with exactly the file name, W3C \
+         URL, SHA-256 pin and description of the acceptance"
+    );
+}
+
+#[test]
+fn lib_tool_024_the_first_five_artifacts_are_unchanged() {
+    assert!(
+        ARTIFACTS.len() >= 5,
+        "LIB-TOOL-024: ARTIFACTS still lists the first five sources, got {} entries",
+        ARTIFACTS.len()
+    );
+    assert_eq!(
+        ARTIFACTS[..5],
+        FIRST_FIVE_ARTIFACTS,
+        "LIB-TOOL-024: the SACM sources, XMI 2.5.1, XMI.xsd and XML Schema Part 2 keep their \
+         file names, URLs, pins, descriptions and order, ahead of XML Schema Part 1"
     );
 }
 

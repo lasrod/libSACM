@@ -34,8 +34,8 @@ pub(super) const TAGGED_VALUE: &str = "taggedValue";
 /// The name is held exactly as given, `LangString::default()` included, and
 /// keeps the `xmi:id` of the name it replaces
 /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)). A name
-/// holding a character XML cannot represent is held, and
-/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
+/// holding a character XML 1.0 cannot represent is refused, last
+/// ([`EditError::UnrepresentableCharacter`]). Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a `UtilityElement`, which has no
 /// name, as [`EditError::FeatureNotApplicable`]. A name that is an
@@ -120,12 +120,12 @@ impl SetName {
 ///
 /// [`new`](Self::new) sets it, exactly as given: `""` is a value, not a
 /// removal. [`remove`](Self::remove) removes it. A gid is not an `xmi:id`,
-/// so no value is refused, a gid another element holds included;
-/// [`validation::validate`](crate::validation::validate) reports a
-/// duplicate (SACM-ID-003). A gid holding a character XML cannot represent
-/// is held, and [`xmi::write`](crate::xmi::write) refuses it. Apply it with
-/// [`edit::apply`](super::apply); it refuses only an unknown element, as
-/// [`EditError::ElementNotFound`].
+/// so no value is refused for its content, a gid another element holds
+/// included; [`validation::validate`](crate::validation::validate) reports a
+/// duplicate (SACM-ID-003). Apply it with [`edit::apply`](super::apply); it
+/// refuses an unknown element, as [`EditError::ElementNotFound`], and then a
+/// gid holding a character XML 1.0 cannot represent
+/// ([`EditError::UnrepresentableCharacter`]).
 ///
 /// # Examples
 ///
@@ -371,8 +371,8 @@ impl SetAssertionDeclaration {
 /// keeps the `xmi:id` of its `content` element, and each value keeps the id
 /// of the value at its position; the ids of values beyond the new length
 /// are freed, as are all of them on a removal (ADR 0029). A content holding
-/// a character XML cannot represent is held, and
-/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
+/// a character XML 1.0 cannot represent is refused, last
+/// ([`EditError::UnrepresentableCharacter`]). Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `UtilityElement`
 /// as [`EditError::FeatureNotApplicable`]. Then it refuses an
@@ -746,9 +746,8 @@ string_set! {
     ///
     /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
     /// removal, and nothing is trimmed. [`remove`](Self::remove) removes it.
-    /// A version holding a character XML cannot represent is held, and
-    /// [`xmi::write`](crate::xmi::write) refuses it
-    /// ([`WriteAttribute::Version`](crate::xmi::WriteAttribute::Version)).
+    /// A version holding a character XML 1.0 cannot represent is refused,
+    /// last ([`EditError::UnrepresentableCharacter`]).
     /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
     /// element as [`EditError::ElementNotFound`], then a kind that is no
     /// `Artifact` as [`EditError::FeatureNotApplicable`], naming `version`.
@@ -784,9 +783,8 @@ string_set! {
     /// `xsd:string`, so [`new`](Self::new) holds any string exactly as given,
     /// `2024-03-01`, `spring 2024` and `""` alike, and nothing ever reports
     /// one (D-DATE). [`remove`](Self::remove) removes it. A date holding a
-    /// character XML cannot represent is held, and
-    /// [`xmi::write`](crate::xmi::write) refuses it
-    /// ([`WriteAttribute::Date`](crate::xmi::WriteAttribute::Date)). Apply it
+    /// character XML 1.0 cannot represent is refused, last
+    /// ([`EditError::UnrepresentableCharacter`]). Apply it
     /// with [`edit::apply`](super::apply). It refuses an unknown element as
     /// [`EditError::ElementNotFound`], then a kind that is neither an
     /// `Artifact` nor an `Event` as [`EditError::FeatureNotApplicable`],
@@ -881,9 +879,8 @@ string_set! {
 /// value is required, so there is no form that removes it, as for
 /// [`SetKey`]; a file without one still reads, and
 /// [`validation::validate`](crate::validation::validate) reports it. A value
-/// holding a character XML cannot represent is held, and
-/// [`xmi::write`](crate::xmi::write) refuses it
-/// ([`WriteAttribute::Value`](crate::xmi::WriteAttribute::Value)). Apply it
+/// holding a character XML 1.0 cannot represent is refused, last
+/// ([`EditError::UnrepresentableCharacter`]). Apply it
 /// with [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `ExpressionElement`
 /// as [`EditError::FeatureNotApplicable`], naming `value`. The element is in
@@ -961,10 +958,8 @@ string_set! {
     ///
     /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
     /// removal, and nothing is trimmed or checked as a URI.
-    /// [`remove`](Self::remove) removes it. One holding a character XML
-    /// cannot represent is held, and [`xmi::write`](crate::xmi::write)
-    /// refuses it
-    /// ([`WriteAttribute::ExternalReference`](crate::xmi::WriteAttribute::ExternalReference)).
+    /// [`remove`](Self::remove) removes it. One holding a character XML 1.0
+    /// cannot represent is refused, last ([`EditError::UnrepresentableCharacter`]).
     /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
     /// element as [`EditError::ElementNotFound`], then a kind that is no
     /// `Term` as [`EditError::FeatureNotApplicable`], naming
@@ -1002,8 +997,8 @@ string_set! {
 /// location keeps the `xmi:id` of its `location` element, and each value
 /// keeps the id of the value at its position; the ids of values beyond the
 /// new length are freed, as are all of them on a removal. A location
-/// holding a character XML cannot represent is held, and
-/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
+/// holding a character XML 1.0 cannot represent is refused, last
+/// ([`EditError::UnrepresentableCharacter`]). Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `Resource` as
 /// [`EditError::FeatureNotApplicable`], naming `location`. Then it checks

@@ -33,6 +33,8 @@ use crate::model::{
 /// written. Everything else is copied exactly, preserved content and the
 /// gid included; a copy within one document therefore repeats each gid,
 /// which [`validate`](crate::validation::validate) reports (SACM-ID-003).
+/// Its texts are not checked: a source document holds only text that
+/// `xmi::read` or an edit accepted (LIB-EDIT-025).
 /// The [`Mutation`](super::Mutation) lists the created ids in
 /// [`source_ids`](Self::source_ids) order, and changes and deletes nothing.
 /// The refusals are in the

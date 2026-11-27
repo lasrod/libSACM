@@ -209,7 +209,7 @@ const CREATE_COUNT: usize = 38;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERROR_COUNT: usize = 24;
+const EDIT_ERROR_COUNT: usize = 25;
 const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
@@ -239,6 +239,8 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("PositionOutOfRange", "SACM-CMD-009"),
     // The refusal of slice 0076 (LIB-COMPAT-019).
     ("KeptRootType", "SACM-CMD-005"),
+    // The refusal of slice 0088 (LIB-EDIT-025).
+    ("UnrepresentableCharacter", "SACM-XML-003"),
 ];
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
@@ -1234,6 +1236,27 @@ fn edit_error_samples() -> Vec<EditError> {
     }
     // The refusal of slice 0076 (LIB-COMPAT-019), on KEPT_TYPE_START.
     samples.push(refusal(&kept_type_start(), MoveElement::new("a", "case")));
+    // The refusals of slice 0088 (LIB-EDIT-025): U+0001 in a new package's
+    // name, and U+0004 in the second value of a Note's content.
+    samples.push(refusal(
+        &Document::new(),
+        CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),
+    ));
+    {
+        let mut doc = Document::new();
+        applied(
+            &mut doc,
+            CreateArgumentPackage::root(LangString::new("P")).with_id("p"),
+        );
+        applied(
+            &mut doc,
+            CreateNote::new("p", LangString::new("ok")).with_id("n1"),
+        );
+        let content: MultiLangString = [LangString::new("ok"), LangString::new("bad\u{4}")]
+            .into_iter()
+            .collect();
+        samples.push(refusal(&doc, SetContent::new("n1", content)));
+    }
     samples
 }
 
@@ -4007,7 +4030,7 @@ fn lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json() 
 
     // The golden files hold them: `operations.json` the three moves right
     // after the ReorderElements samples, `edit-errors.json` the four
-    // refusals just before the slice-0076 sample, its last, and
+    // refusals just before the slice-0076 sample, and
     // `mutations.json` the move last. (The bytes are
     // fixed by the LIB-API-006 golden tests, over every sample.)
     let value = |text: &str| -> serde_json::Value { from_json(text) };
@@ -4046,8 +4069,15 @@ fn lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json() 
     );
     let errors = items("edit-errors.json");
     let expected: Vec<serde_json::Value> = refusals.iter().map(|(_, text)| value(text)).collect();
+    // The slice-0076 sample is no longer the last (slice 0088 appends two).
+    let Some(kept) = errors
+        .iter()
+        .position(|item| item.get("type") == Some(&value(r#""KeptRootType""#)))
+    else {
+        panic!("{EDIT_017}: edit-errors.json holds no KeptRootType sample");
+    };
     assert_eq!(
-        errors.get(errors.len().saturating_sub(5)..errors.len().saturating_sub(1)),
+        errors.get(kept.saturating_sub(4)..kept),
         Some(expected.as_slice()),
         "{EDIT_017}: edit-errors.json does not hold the four refusals just before the slice-0076 sample"
     );

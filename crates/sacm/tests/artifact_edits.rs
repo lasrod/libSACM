@@ -98,6 +98,16 @@ fn applied(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mu
     mutation
 }
 
+/// Applies `operation` with the test seam, which skips the refusal of text
+/// XML 1.0 cannot represent (LIB-EDIT-025), so a write refusal can be shown.
+fn applied_unchecked(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> Mutation {
+    let operation = operation.into();
+    match edit::apply_unchecked_text(doc, operation.clone()) {
+        Ok(mutation) => mutation,
+        Err(error) => panic!("{row}: setup: {operation:?} was refused: {error} ({error:?})"),
+    }
+}
+
 /// Applies a create the test expects to succeed, and returns the one id it
 /// created, with nothing changed or deleted.
 fn create(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> ElementId {
@@ -1621,6 +1631,34 @@ fn sacm23_art_004_create_artifact_legal_parents_refusals_and_generated_id() {
     assert_an_artifact_is_no_parent(ART_004, ElementKind::Artifact, make);
 }
 
+/// The edit refuses a version holding U+0001 on `a1` of `doc`; set with the
+/// test seam, the write refuses it.
+fn assert_version_holding_u_0001(doc: &mut Document) {
+    // The edit refuses U+0001 (LIB-EDIT-025); set with the test seam, the
+    // write refuses it.
+    let error = refuse(ART_004, doc, SetVersion::new("a1", "a\u{1}b"));
+    assert!(
+        matches!(
+            &error,
+            EditError::UnrepresentableCharacter {
+                element,
+                character: '\u{1}',
+                attribute: WriteAttribute::Version,
+                position: None,
+                ..
+            } if element.as_str() == "a1"
+        ),
+        "{ART_004}: a version holding U+0001 is not refused as UnrepresentableCharacter on a1: \
+         {error:?}"
+    );
+    applied_unchecked(ART_004, doc, SetVersion::new("a1", "a\u{1}b"));
+    assert_eq!(
+        unrepresentable(ART_004, doc),
+        ("a1".to_owned(), WriteAttribute::Version),
+        "{ART_004}: the write refusal of a version holding U+0001"
+    );
+}
+
 #[test]
 fn sacm23_art_004_set_version_sets_removes_and_refuses_a_kind_without_it() {
     let mut doc = built_with_an_artifact(ART_004);
@@ -1698,18 +1736,7 @@ fn sacm23_art_004_set_version_sets_removes_and_refuses_a_kind_without_it() {
             "version",
         );
     }
-    // U+0001 is accepted, and the write refuses it.
-    applied(ART_004, &mut doc, SetVersion::new("a1", "a\u{1}b"));
-    assert_eq!(
-        element(ART_004, &doc, "a1").version(),
-        Some("a\u{1}b"),
-        "{ART_004}: a version holding U+0001 is not held"
-    );
-    assert_eq!(
-        unrepresentable(ART_004, &doc),
-        ("a1".to_owned(), WriteAttribute::Version),
-        "{ART_004}: the write refusal of a version holding U+0001"
-    );
+    assert_version_holding_u_0001(&mut doc);
     // The operation holds what it is given.
     let set = SetVersion::new("a1", "1.3");
     assert_eq!(
@@ -2265,15 +2292,16 @@ fn sacm23_art_005_semantic_compare_and_write_refusals_cover_the_location() {
         ],
         "{ART_005}: not Location, LocationId and LocationValueIds, in that order"
     );
-    // U+0001 in a value is held, and refused on write: the lang before the
+    // U+0001 in a value, set with the test seam (an edit refuses it,
+    // LIB-EDIT-025), is held, and refused on write: the lang before the
     // content, and the name before both.
     let mut doc = with_a_location(ART_005);
-    applied(
+    applied_unchecked(
         ART_005,
         &mut doc,
         SetLocation::new("r", LangString::new("a\u{1}").with_lang("e\u{1}")),
     );
-    applied(
+    applied_unchecked(
         ART_005,
         &mut doc,
         SetName::new("r", LangString::new("n\u{1}")),
@@ -2289,7 +2317,7 @@ fn sacm23_art_005_semantic_compare_and_write_refusals_cover_the_location() {
         ("r".to_owned(), WriteAttribute::LocationValueLang),
         "{ART_005}: a location value's lang"
     );
-    applied(
+    applied_unchecked(
         ART_005,
         &mut doc,
         SetLocation::new("r", LangString::new("a\u{1}").with_lang("en")),

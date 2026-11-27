@@ -4256,7 +4256,7 @@ tests = [
   "crates/sacm/tests/set_operations.rs::lib_edit_008_a_gid_is_set_and_removed_exactly_on_a_model_element_and_a_utility_element",
   "crates/sacm/tests/set_operations.rs::lib_edit_008_a_duplicate_gid_is_accepted_and_validate_reports_it",
   "crates/sacm/tests/set_operations.rs::lib_edit_008_a_set_gid_round_trips_with_absent_empty_and_a_value_apart",
-  "crates/sacm/tests/set_operations.rs::lib_edit_008_a_gid_holding_a_character_xml_cannot_represent_is_accepted_and_the_write_fails",
+  "crates/sacm/tests/set_operations.rs::lib_edit_008_a_gid_holding_a_character_xml_cannot_represent_fails_the_write",
   "crates/sacm/tests/set_operations.rs::lib_edit_008_is_citation_and_is_abstract_are_set_true_and_false_on_every_kind",
   "crates/sacm/tests/set_operations.rs::lib_edit_008_the_flags_are_set_independently_of_cited_element_and_abstract_form",
   "crates/sacm/tests/set_operations.rs::lib_edit_008_is_abstract_on_an_element_with_an_abstract_form_is_accepted_and_reported",
@@ -5088,7 +5088,7 @@ tests = [
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_a_preserved_value_is_no_value",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_validate_reports_a_term_or_expression_with_no_value",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_set_value_sets_the_value_and_refuses_a_kind_without_it",
-  "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_a_value_holding_u_0001_is_accepted_and_refused_by_the_write_in_order",
+  "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_a_value_holding_u_0001_is_refused_by_the_write_in_order",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_a_value_difference_displays_both_values",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_semantic_compare_reports_one_value_difference_compared_exactly",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_003_category_on_a_term_and_an_expression_reads_and_validates_with_clause_10_9",
@@ -8655,7 +8655,7 @@ source = "D-QUOTE; docs review (docs/follow-ups.md, cleared in slice 0051); W3C 
 kind = "tooling"
 code = ["xtask/src/fetch.rs"]
 tests = [
-  "xtask/tests/fetch.rs::lib_tool_022_artifacts_has_five_entries",
+  "xtask/tests/fetch.rs::lib_tool_022_artifacts_has_at_least_five_entries",
   "xtask/tests/fetch.rs::lib_tool_022_the_fifth_artifact_is_the_xml_schema_part_2_pin",
   "xtask/tests/fetch.rs::lib_tool_022_the_first_four_artifacts_are_unchanged",
 ]
@@ -8911,11 +8911,36 @@ area = "XMI"
 milestone = "M7"
 title = "The content of a Difference's target is outside the id space"
 requirement = "In both modes, the attributes of a Difference's `target` element, and the attributes and elements inside it (XMI.xsd: `processContents=\"skip\"`), XMI 2.5.1's `xmi:id` included, are kept as written and are not ids: they are not checked as NCNames or for duplicates, do not reserve an id, and a strict write does not refuse them. The conformance statement's limit on them is removed."
-source = "XMI 2.5.1 XMI.xsd, complexType Difference, element target; SACM23-XMI-019; follow-up of slice 0073a; M6 close audit (probes diff1-diff3)"
+source = "XMI 2.5.1 XMI.xsd, complexType Difference, element target (`<xsd:any processContents=\"skip\"/>`, `<xsd:anyAttribute processContents=\"skip\"/>`); XML Schema Part 1 §3.10.1 (\"skip: No constraints at all: the item must simply be well-formed XML\"), §3.15.5; SACM 2.3 §2.4 (\"shall be able to import and export XMI documents that conform with the SACM XML Schema\"); ADR 0042 amendment 2; spec defect D33; SACM23-XMI-019; follow-up of slice 0073a"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-019", "LIB-COMPAT-002"]
 notes = "Filed at the M6 close (slice 0080). Today a duplicate `xmi:id` inside a target refuses the read in both modes (SACM-ID-001), and one that is no NCName makes a strict write refuse (SACM-ID-002); the conformance statement names the limit."
+acceptance = [
+  "A Difference's unqualified `target` (under `xmi:Difference`, `Add`, `Replace`, `Delete`, or an unqualified `difference` or `container` in one), its attributes and all it holds are kept as written in both modes, with no diagnostic, wherever the Difference stands.",
+  "Nothing there is an id: no repeat, empty id or non-NCName is refused by a read or a strict write, `is_id_in_use` is false for it, `with_id` may use it, and it steers no generated id; a reference to it dangles.",
+  "An `xmi:id` repeated outside a target is still refused, naming only the outside locations; the fixture writes the golden output in both modes.",
+  "The conformance statement drops the limit; ADR 0042 amendment 2 records the rule.",
+]
+code = [
+  "crates/sacm/src/model/preserved.rs",
+  "crates/sacm/src/xmi/roots.rs",
+  "crates/sacm/src/validation/metadata.rs",
+  "crates/sacm/src/xmi.rs",
+  "docs/adr/0042-xmi-metadata-and-same-file-proxies.md",
+  "docs/sacm/compliance-points.md",
+]
+tests = [
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_the_fixture_reads_in_both_modes_with_no_diagnostic",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_both_writes_give_the_golden_output",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_no_xmi_id_in_a_target_is_in_the_id_space",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_a_strict_write_checks_no_id_in_a_target",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_a_reference_to_an_xmi_id_in_a_target_dangles",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_a_repeat_outside_a_target_still_refuses_and_names_no_target",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_only_the_target_of_a_difference_is_outside_the_id_space",
+  "crates/sacm/tests/difference_targets.rs::sacm23_xmi_031_edits_and_generated_ids_ignore_a_target",
+]
+verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
 id = "LIB-EDIT-022"
@@ -9352,6 +9377,84 @@ source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structur
 kind = "docs"
 status = "planned"
 depends_on = ["LIB-DOC-012"]
+
+[[row]]
+id = "LIB-TOOL-024"
+area = "TOOL"
+milestone = "M7"
+title = "XML Schema Part 1 is pinned"
+requirement = "`cargo xtask fetch-spec` downloads XML Schema Part 1: Structures (W3C REC 2004-10-28) into third_party/sacm-2.3/ and checks its pinned SHA-256, as LIB-TOOL-022 does for Part 2, so the rules SACM23-XMI-031 quotes (the `skip` wildcard, the ID table) are pinned too."
+source = "SACM23-XMI-031 (XML Schema Part 1 §3.10.1, §3.15.5); LIB-TOOL-022; the lead, 2026-11-27"
+kind = "tooling"
+status = "verified"
+depends_on = ["LIB-TOOL-022"]
+acceptance = [
+  "The sixth artifact is `XMLSchema-1-REC-20041028-structures.html` from its W3C URL with SHA-256 92bfd116316332b1153941436430afbdb2040e036d5fb2d21d4c8fba36a7765a; the first five are unchanged.",
+  "CLAUDE.md and the sacm-expert skill name it beside Part 2.",
+]
+code = [
+  "xtask/src/fetch.rs",
+  "CLAUDE.md",
+]
+tests = [
+  "xtask/tests/fetch.rs::lib_tool_024_artifacts_has_six_entries",
+  "xtask/tests/fetch.rs::lib_tool_024_the_sixth_artifact_is_the_xml_schema_part_1_pin",
+  "xtask/tests/fetch.rs::lib_tool_024_the_first_five_artifacts_are_unchanged",
+]
+verification = "docs/verification/0088-xmi031-edit-text.md"
+
+[[row]]
+id = "LIB-EDIT-025"
+area = "EDIT"
+milestone = "M7"
+title = "Edits refuse text XML 1.0 cannot represent"
+requirement = "No edit stores a string holding a character outside XML 1.0's `Char` production. It refuses one as `EditError::UnrepresentableCharacter` (SACM-XML-003), which names the element, the text, the value's index and the first such character, as `WriteError::UnrepresentableCharacter` would. So a document that `xmi::read` returned, changed by accepted edits, never holds text `xmi::write` must refuse. The refusal is each operation's last check; `check`, `preview` and `apply` agree; a refusal changes nothing."
+source = "XML Schema Part 2 §3.2.1 \"The ·value space· of string is the set of finite-length sequences of characters (as defined in [XML 1.0 (Second Edition)]) that ·match· the Char production from [XML 1.0 (Second Edition)].\"; XMI 2.5.1 §8.2.1 rule 4j (p. 51) \"Single-valued DataType-typed Properties of a Class that have a string representation for their data are mapped to XML attributes of type \"xsd:string;\"\"; the maintainer's decision of 2026-11-27; D-VAL-LAYER; ADR 0019 amendment 4; ADR 0030 amendment 9"
+kind = "editing"
+status = "verified"
+depends_on = ["LIB-EDIT-001", "LIB-EDIT-008", "LIB-EDIT-012", "LIB-EDIT-013", "LIB-EDIT-023", "SACM23-XMI-011", "LIB-API-013", "LIB-API-006"]
+acceptance = [
+  "Every text an edit stores (names, gid, version, date, startTime, endTime, value, externalReference, content, key and location values, a tagged value's key) is refused with the stated attribute, position and element when it holds a character outside XML 1.0's `Char`; the document is unchanged.",
+  "The first such character of the first text, in the writer's order, is named; U+0000-U+0008, U+000B, U+000C, U+000E-U+001F, U+FFFE and U+FFFF are refused; every other `Char` edge is accepted and round-trips.",
+  "It is the last check; an operation that stores nothing is not refused; `check`, `preview`, `apply` and the batch forms agree.",
+  "Code SACM-XML-003, the Display and the JSON golden match; an operation read from JSON is checked alike.",
+  "A read holds no such text, and any document built by accepted edits writes in both modes while it has a root.",
+]
+code = [
+  "crates/sacm/src/edit.rs",
+  "crates/sacm/src/edit/record.rs",
+  "crates/sacm/src/xmi/output.rs",
+  "crates/sacm/src/xmi.rs",
+  "docs/sacm/diagnostics.md",
+  "docs/adr/0019-edit-operations.md",
+]
+tests = [
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_create_refuses_a_name_xml_cannot_represent",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_set_name_refuses_a_name_xml_cannot_represent",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_set_gid_refuses_a_gid_xml_cannot_represent",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_version_is_refused_on_create_and_set",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_date_is_refused_on_create_and_set",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_start_time_and_an_end_time_are_refused_on_create_and_set",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_value_is_refused_on_create_and_set",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_an_external_reference_is_refused_on_create_and_set",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_content_values_are_refused_with_their_position",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_key_values_are_refused_with_their_position",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_location_values_are_refused_with_their_position",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_set_tagged_value_refuses_its_content_then_its_key",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_the_first_character_of_the_first_text_is_named",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_every_character_outside_xml_char_is_refused",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_every_xml_char_edge_is_accepted_and_reads_back",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_the_refusal_is_the_last_check",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_check_preview_and_apply_agree_and_a_refusal_changes_nothing",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_an_operation_that_stores_nothing_is_not_refused",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_an_edit_names_what_the_write_would_refuse",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_the_refusal_has_code_sacm_xml_003_and_the_catalog_names_it",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_display_and_json_match_the_golden_samples",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_an_operation_read_from_json_is_refused_alike",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_read_never_holds_a_character_xml_cannot_represent",
+  "crates/sacm/tests/unrepresentable_text.rs::lib_edit_025_a_document_built_by_accepted_edits_always_writes",
+]
+verification = "docs/verification/0088-xmi031-edit-text.md"
 
 [[row]]
 id = "LIB-DOC-010"

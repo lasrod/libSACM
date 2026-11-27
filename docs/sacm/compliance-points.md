@@ -133,12 +133,6 @@ standard leaves a gap:
 - **XMI metadata, strict write.** It checks only its ids and IDREFs. If the metadata was
   otherwise not valid against XMI.xsd when read, it is not valid when written
   (ADR 0043 S7).
-- **An `xmi:id` in a Difference's `target`,** on it or inside it, is still read as an id,
-  though XMI.xsd does not check the target's attributes and content
-  (`processContents="skip"`). One that repeats another `xmi:id` refuses the read in both
-  modes (SACM-ID-001).
-- **Such an id that is no NCName** makes a strict write refuse the document (SACM-ID-002;
-  SACM23-XMI-031).
 - **Links to other files** are held and written back, never resolved.
 - **Comments and processing instructions** carry no model content and are not kept: a read
   drops them and a write writes none (ADR 0033).

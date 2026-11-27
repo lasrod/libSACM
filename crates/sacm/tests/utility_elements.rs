@@ -2278,7 +2278,9 @@ fn sacm23_base_004_a_character_xml_cannot_represent_in_a_content_value_fails_the
         ),
     ] {
         let mut doc = built();
-        if let Err(error) = edit::apply(
+        // An edit refuses the character (LIB-EDIT-025), so the test seam
+        // creates the Description.
+        if let Err(error) = edit::apply_unchecked_text(
             &mut doc,
             CreateDescription::new("c1", mls(&[en("en", "ok"), value])).with_id("d"),
         ) {

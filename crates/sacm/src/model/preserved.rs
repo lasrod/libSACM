@@ -32,6 +32,80 @@ pub(crate) const EMF_XMI_NS: &str = "http://www.omg.org/XMI";
 /// read but never written (ADR 0017 T1; SACM23-XMI-026).
 pub(crate) const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
 
+/// Where an element stands towards the content XMI.xsd leaves open (ADR 0044
+/// D1; ADR 0042 amendment 2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Region {
+    /// Content XMI.xsd or the SACM schema types.
+    #[default]
+    Closed,
+    /// Inside an `xmi:Extension` or `xmi:extension` (`processContents="lax"`):
+    /// any name may stand there, and an `xmi:id` is an id.
+    Lax,
+    /// A Difference's `target`, its attributes and all it holds
+    /// (`processContents="skip"`): nothing there is an id (SACM23-XMI-031).
+    Skip,
+}
+
+/// Where an element's children stand.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Scope {
+    /// The region of the children, unless a child starts a new one.
+    region: Region,
+    /// Whether the element is a Difference, whose unqualified `target` child
+    /// is [`Region::Skip`].
+    difference: bool,
+}
+
+impl Scope {
+    /// The region of a child (`namespace`, `local`) of an element whose
+    /// children stand in `self`, and the scope of that child's own children.
+    ///
+    /// - **`Skip`:** an unqualified `target` of a Difference, and everything
+    ///   in it: a child stands where its parent's children do, and `Skip`
+    ///   starts no other region.
+    /// - **A Difference:** `xmi:Difference`, `xmi:difference`, `xmi:Add`,
+    ///   `xmi:Replace` or `xmi:Delete`, or an unqualified `difference` or
+    ///   `container` in one. Inside `Skip` it changes nothing.
+    /// - **`Lax`:** the children of an Extension in `Closed` content. An
+    ///   Extension counts when `extension_namespace` says its namespace is
+    ///   an XMI one.
+    pub(crate) fn enter(
+        self,
+        namespace: Option<&str>,
+        local: &str,
+        extension_namespace: bool,
+    ) -> (Region, Self) {
+        let unqualified = namespace.is_none_or(str::is_empty);
+        let region = if unqualified && self.difference && local == "target" {
+            Region::Skip
+        } else {
+            self.region
+        };
+        let difference = (namespace == Some(XMI_NS)
+            && matches!(
+                local,
+                "Difference" | "difference" | "Add" | "Replace" | "Delete"
+            ))
+            || (unqualified && self.difference && matches!(local, "difference" | "container"));
+        let children = if region == Region::Closed
+            && extension_namespace
+            && matches!(local, "extension" | "Extension")
+        {
+            Region::Lax
+        } else {
+            region
+        };
+        (
+            region,
+            Self {
+                region: children,
+                difference,
+            },
+        )
+    }
+}
+
 /// The preserved content of one element, its holder, or of the document
 /// outside its elements: attributes after the typed ones (for the document,
 /// on `xmi:XMI`), in input order, and children placed among its typed
@@ -313,7 +387,7 @@ impl QName {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, Placed, Preserved};
+    use super::{Item, Placed, Preserved, Region, Scope, XMI_NS};
 
     fn text(index: usize, text: &str) -> Placed {
         Placed {
@@ -335,5 +409,243 @@ mod tests {
             [text(0, "a"), text(1, "b\nc"), text(2, "d")]
         );
         assert_eq!(preserved.element_count(), 0);
+    }
+
+    /// The region of each element of `path`, entered in turn from `start`:
+    /// each step is the child of the one before. An element counts as an
+    /// Extension's namespace exactly when it is in the XMI namespace, as the
+    /// reader passes it for XMI 2.5.1.
+    fn regions(start: Scope, path: &[(Option<&str>, &str)]) -> Vec<Region> {
+        let mut scope = start;
+        let mut found = Vec::with_capacity(path.len());
+        for &(namespace, local) in path {
+            let (region, below) = scope.enter(namespace, local, namespace == Some(XMI_NS));
+            found.push(region);
+            scope = below;
+        }
+        found
+    }
+
+    const XMI: Option<&str> = Some(XMI_NS);
+    const SACM: Option<&str> = Some("http://www.omg.org/spec/SACM/20220301");
+
+    /// A case of [`regions`]: what it is, the path from the top, and the
+    /// region of each element along it.
+    type Case = (
+        &'static str,
+        Vec<(Option<&'static str>, &'static str)>,
+        Vec<Region>,
+    );
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the cases of one acceptance item read best as one list"
+    )]
+    fn a_difference_target_and_all_it_holds_are_skip() {
+        use Region::{Closed, Lax, Skip};
+        let cases: [Case; 12] = [
+            (
+                "a target under xmi:Difference under xmi:XMI, and an xmi:Extension and an \
+                 xmi:Difference with its own target inside it",
+                vec![
+                    (XMI, "XMI"),
+                    (XMI, "Difference"),
+                    (None, "target"),
+                    (None, "x"),
+                    (XMI, "Extension"),
+                    (XMI, "Difference"),
+                    (None, "target"),
+                    (SACM, "Claim"),
+                ],
+                vec![Closed, Closed, Skip, Skip, Skip, Skip, Skip, Skip],
+            ),
+            (
+                "an xmi:Extension directly in a target",
+                vec![
+                    (XMI, "Difference"),
+                    (None, "target"),
+                    (XMI, "Extension"),
+                    (None, "y"),
+                ],
+                vec![Closed, Skip, Skip, Skip],
+            ),
+            (
+                "a target under xmi:Add",
+                vec![(XMI, "Add"), (None, "target"), (None, "x")],
+                vec![Closed, Skip, Skip],
+            ),
+            (
+                "a target under xmi:Replace",
+                vec![(XMI, "Replace"), (None, "target"), (None, "x")],
+                vec![Closed, Skip, Skip],
+            ),
+            (
+                "a target under xmi:Delete",
+                vec![(XMI, "Delete"), (None, "target"), (None, "x")],
+                vec![Closed, Skip, Skip],
+            ),
+            (
+                "a target under xmi:difference",
+                vec![(XMI, "difference"), (None, "target"), (None, "x")],
+                vec![Closed, Skip, Skip],
+            ),
+            (
+                "a target in an unqualified difference in an xmi:Difference",
+                vec![(XMI, "Difference"), (None, "difference"), (None, "target")],
+                vec![Closed, Closed, Skip],
+            ),
+            (
+                "a target in an unqualified container in an xmi:Add",
+                vec![(XMI, "Add"), (None, "container"), (None, "target")],
+                vec![Closed, Closed, Skip],
+            ),
+            (
+                "a target in a difference in a container in an xmi:Replace",
+                vec![
+                    (XMI, "Replace"),
+                    (None, "container"),
+                    (None, "difference"),
+                    (None, "target"),
+                ],
+                vec![Closed, Closed, Closed, Skip],
+            ),
+            (
+                "a target in the empty namespace",
+                vec![(XMI, "Delete"), (Some(""), "target")],
+                vec![Closed, Skip],
+            ),
+            (
+                "a target of an xmi:Difference in an element in an xmi:Extension (Lax)",
+                vec![
+                    (XMI, "Extension"),
+                    (None, "foo"),
+                    (XMI, "Difference"),
+                    (None, "target"),
+                    (None, "x"),
+                ],
+                vec![Closed, Lax, Lax, Skip, Skip],
+            ),
+            (
+                "a target of an xmi:Replace's container in an xmi:Extension of an xmi:Add",
+                vec![
+                    (XMI, "Add"),
+                    (XMI, "Extension"),
+                    (XMI, "Replace"),
+                    (None, "container"),
+                    (None, "target"),
+                    (None, "x"),
+                ],
+                vec![Closed, Closed, Lax, Lax, Skip, Skip],
+            ),
+        ];
+        for (what, path, expected) in cases {
+            assert_eq!(
+                regions(Scope::default(), &path),
+                expected,
+                "SACM23-XMI-031: {what}: the regions along {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_an_unqualified_target_of_a_difference_is_skip() {
+        use Region::{Closed, Lax};
+        let cases: [Case; 14] = [
+            (
+                "a target in an unqualified container that is in no Difference",
+                vec![(XMI, "Extension"), (None, "container"), (None, "target")],
+                vec![Closed, Lax, Lax],
+            ),
+            (
+                "a target in an unqualified difference under xmi:XMI",
+                vec![(XMI, "XMI"), (None, "difference"), (None, "target")],
+                vec![Closed, Closed, Closed],
+            ),
+            (
+                "a target in a qualified container or difference in an xmi:Difference",
+                vec![(XMI, "Difference"), (SACM, "container"), (None, "target")],
+                vec![Closed, Closed, Closed],
+            ),
+            (
+                "the children of an Extension in no namespace",
+                vec![(None, "Extension"), (None, "x")],
+                vec![Closed, Closed],
+            ),
+            (
+                "the children of an Extension in the SACM namespace",
+                vec![(SACM, "Extension"), (None, "x")],
+                vec![Closed, Closed],
+            ),
+            (
+                "an xmi:target in an xmi:Difference",
+                vec![(XMI, "Difference"), (XMI, "target")],
+                vec![Closed, Closed],
+            ),
+            (
+                "a target in the SACM namespace in an xmi:Difference",
+                vec![(XMI, "Difference"), (SACM, "target")],
+                vec![Closed, Closed],
+            ),
+            (
+                "a target in an xmi:Extension",
+                vec![(XMI, "Extension"), (None, "target")],
+                vec![Closed, Lax],
+            ),
+            (
+                "a target in an xmi:Extension under xmi:XMI",
+                vec![
+                    (XMI, "XMI"),
+                    (XMI, "Extension"),
+                    (None, "target"),
+                    (None, "x"),
+                ],
+                vec![Closed, Closed, Lax, Lax],
+            ),
+            (
+                "an xmi:Difference itself, under xmi:XMI",
+                vec![(XMI, "XMI"), (XMI, "Difference")],
+                vec![Closed, Closed],
+            ),
+            (
+                "an xmi:Difference itself, in an xmi:Extension",
+                vec![(XMI, "Extension"), (XMI, "Difference")],
+                vec![Closed, Lax],
+            ),
+            (
+                "a difference or a container itself, in an xmi:Difference",
+                vec![
+                    (XMI, "Difference"),
+                    (None, "difference"),
+                    (None, "container"),
+                ],
+                vec![Closed, Closed, Closed],
+            ),
+            (
+                "a target in an element that is no Difference, in an xmi:Difference",
+                vec![(XMI, "Difference"), (None, "foo"), (None, "target")],
+                vec![Closed, Closed, Closed],
+            ),
+            (
+                "a target in a SACM element",
+                vec![(SACM, "ArgumentPackage"), (None, "target")],
+                vec![Closed, Closed],
+            ),
+        ];
+        for (what, path, expected) in cases {
+            assert_eq!(
+                regions(Scope::default(), &path),
+                expected,
+                "SACM23-XMI-031: {what}: the regions along {path:?}"
+            );
+        }
+        assert_eq!(
+            regions(
+                Scope::default(),
+                &[(XMI, "Documentation"), (None, "target")]
+            ),
+            [Closed, Closed],
+            "SACM23-XMI-031: a target in an xmi:Documentation is not Skip"
+        );
     }
 }

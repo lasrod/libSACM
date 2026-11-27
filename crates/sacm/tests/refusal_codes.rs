@@ -736,8 +736,10 @@ mod api {
 
     #[test]
     fn lib_api_017_each_write_error_variant_has_its_code() {
+        // An edit refuses the U+0001 (LIB-EDIT-025), so the test seam
+        // creates it.
         let mut unrepresentable = Document::new();
-        if let Err(error) = edit::apply(
+        if let Err(error) = edit::apply_unchecked_text(
             &mut unrepresentable,
             CreateArgumentPackage::root(LangString::new("bad\u{1}")).with_id("arguments"),
         ) {

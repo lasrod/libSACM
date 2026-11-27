@@ -194,3 +194,12 @@ LIB-RT-005. Additive under amendment 1. `compare::Changes` is `{"created_ids",
 record. `Changes` joins the Types list.
 
 *Amendment 8 status: accepted (the maintainer, 2026-11-27).*
+
+## Amendment 9 (2026-11-27): an unrepresentable character in an edit
+
+LIB-EDIT-025. `EditError::UnrepresentableCharacter` is `{"type", "code", "element",
+"character", "attribute", "position"}`: `character` a one-character string, `attribute` the
+`WriteAttribute` variant name, `position` a number or `null`. Every key is required on input.
+Additive under amendment 1.
+
+*Amendment 9 status: accepted (the maintainer, 2026-11-27).*
