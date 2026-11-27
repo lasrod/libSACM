@@ -7496,7 +7496,7 @@ title = "Examples on every major type"
 requirement = "Every public type and every fallible public function has a runnable example; `# Errors` and `# Panics` sections are present where applicable."
 source = "Project goal (well documented)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-001", "LIB-DOC-014", "LIB-DOC-015"]
 acceptance = [
   "Every public struct, enum and trait of `sacm` has an `# Examples` section with a runnable doctest; a test checks the ones written out in the source, and the verifier checks those the operation macros generate in the rendered docs.",
@@ -7517,6 +7517,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_002_the_section_lint_check_finds_an_allow",
   "xtask/tests/docs_style.rs::lib_doc_002_errors_and_panics_sections_are_enforced_by_clippy",
 ]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-DOC-003"
@@ -9383,7 +9384,7 @@ title = "Edit item docs follow the style guide"
 requirement = "The item docs of the `edit` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-012"]
 acceptance = [
   "In the `///` docs of crates/sacm/src/edit.rs and edit/, a test finds no prose paragraph or list item over four display lines, and no summary over two, for public items (as LIB-DOC-012 counts them, trait-impl items included).",
@@ -9400,6 +9401,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_014_no_paragraph_or_list_item_in_the_edit_item_docs_runs_over_four_lines",
   "xtask/tests/docs_style.rs::lib_doc_014_no_edit_item_summary_runs_over_two_lines",
 ]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-DOC-015"
@@ -9409,7 +9411,7 @@ title = "XMI item docs follow the style guide"
 requirement = "The item docs of the `xmi` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules. The facts the `xmi` module docs link to (the role table and per-feature sections of `read`, what `write` writes) are kept."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-012"]
 acceptance = [
   "In the `///` docs of crates/sacm/src/xmi.rs and xmi/, a test finds no prose paragraph or list item over four display lines, and no summary over two, for public items (as LIB-DOC-012 counts them, trait-impl items included).",
@@ -9427,6 +9429,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_015_no_paragraph_or_list_item_in_the_xmi_item_docs_runs_over_four_lines",
   "xtask/tests/docs_style.rs::lib_doc_015_no_xmi_item_summary_runs_over_two_lines",
 ]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "LIB-TOOL-024"
@@ -9525,7 +9528,7 @@ title = "The docs answer what Assurance Forge had to work out"
 requirement = "The item docs state these, each with an example where it helps: `referrers()` indexes every `ReferenceEnd`, `reasoning` included; `ElementId` implements `Borrow<str>`, so an id set can be queried with `&str`; exactly which ids `deleted_ids()` lists under each delete policy; how to tell that an edit changed nothing; and why a Claim with two descriptions gives SACM-MULT-001 (D-DESC-MULT)."
 source = "lasrod/libSACM#113 D1-D4 and Files and modes"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-014"]
 acceptance = [
   "`Document::referrers` says it indexes every `ReferenceEnd`, `reasoning` included; `ElementId`'s docs say it borrows as `str`, so an id set can be queried with `&str`.",
@@ -9545,6 +9548,7 @@ tests = [
   "doctest:crates/sacm/src/edit/delete.rs",
   "doctest:crates/sacm/src/edit.rs",
 ]
+verification = "docs/verification/0089-docs-items-rest.md"
 
 [[row]]
 id = "SACM23-XMI-032"

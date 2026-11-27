@@ -1,8 +1,8 @@
 ---
 slice: 0089
 name: docs-items-rest
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-DOC-014, LIB-DOC-015, LIB-DOC-002, LIB-DOC-010]
 mode: pr
 ---
@@ -46,4 +46,5 @@ guarantee comes from LIB-RT-004's wording, now true because edits refuse unsavab
   metadata ids); LIB-DOC-002 and -010 PASS but wait on them. Fix round: the verifier's texts;
   LIB-DOC-015's acceptance names the copy exception; the lead adds row LIB-EDIT-026 (planned)
   so the acceptance's reference resolves. The guarantee stays stated, with its exceptions.
-
+- 2026-11-28 verification: re-verify PASS on all four rows (9132b55). Record
+  `docs/verification/0089-docs-items-rest.md`. Rows `verified`.
