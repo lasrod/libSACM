@@ -20,8 +20,9 @@ the OMG standard format for assurance cases, so that tools can exchange them.
   and `TerminologyPackage`, with their elements, interfaces and bindings.
 - **Reads and writes XMI.** Strict SACM 2.3 by default. A tolerant read opens files from
   other tools: the dialect EMF writes, and older SACM revisions.
-- **Loses nothing.** Content that is not SACM 2.3 is kept as written and reported. A
-  strict write refuses it; nothing is dropped silently.
+- **Loses no SACM content.** Content that is not SACM 2.3 where it stands is kept as
+  written and reported, and a strict write refuses it. Comments and processing
+  instructions are not kept.
 - **Validates.** The standard's rules, reported with stable diagnostic codes.
 - **Edits atomically.** Create, change, move, copy and delete; a refused edit changes nothing.
 - **Compares.** Every difference in SACM content between two documents.

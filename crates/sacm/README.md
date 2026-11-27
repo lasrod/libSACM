@@ -13,7 +13,7 @@ the OMG standard for exchanging assurance cases between tools as XMI files.
 | To | Start at |
 |---|---|
 | Read an XMI file | `sacm::xmi::read` |
-| Inspect elements | `Document::get`, `SacmElement` |
+| Inspect elements | `sacm::model::Document::get`, `sacm::model::SacmElement` |
 | Check the model against the SACM 2.3 rules | `sacm::validation::validate` |
 | Change the model | `sacm::edit::apply` |
 | Compare two documents | `sacm::compare::semantic_compare` |
@@ -25,7 +25,8 @@ the OMG standard for exchanging assurance cases between tools as XMI files.
   Terminology (SACM 2.3 clause 2). The
   [conformance statement](https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md)
   says what that covers and where it stops.
-- **Nothing dropped.** Content that is not SACM 2.3 is kept as written, with a diagnostic.
+- **Nothing dropped.** Content that is not SACM 2.3 where it stands is kept as written,
+  with a diagnostic. Comments and processing instructions are not kept.
 - **Atomic edits.** A refused operation changes nothing.
 - **Safe on input.** No `unsafe`, no panics on input, bounded reads.
 
@@ -94,8 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Reading and writing are strict by default.
 
-- **Open another tool's file:** read with `with_mode(Mode::Tolerant)`. It keeps what a
-  strict read refuses, as preserved content with a Warning.
+- **Open another tool's file:** read with `with_mode(Mode::Tolerant)`. It keeps most of
+  what a strict read refuses, as preserved content with a Warning. It still refuses
+  malformed XML, a DOCTYPE, a SACM 2.4 root, a repeated `xmi:id` and input over the read
+  limits.
 - **Hand a file on:** write in strict mode. It refuses output that would not be
   schema-valid, and a document that holds preserved content.
 - **Check the model:** call `validation::validate`. A strict write never validates, so a

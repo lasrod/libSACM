@@ -14,9 +14,10 @@
 //! [`CATALOG_JSON`] lists every code and template as JSON.
 //!
 //! [`validation::validate`](crate::validation::validate) and
-//! [`xmi::read`](crate::xmi::read) return diagnostics, and a strict
-//! [`xmi::write`](crate::xmi::write) refuses a document with the validation
-//! Errors in [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
+//! [`xmi::read`](crate::xmi::read) return diagnostics. A strict
+//! [`xmi::write`](crate::xmi::write) never runs `validate`: it refuses only output
+//! that would not be schema-valid, with the schema errors in
+//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
 //! Every function that returns diagnostics returns them sorted by
 //! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds a
 //! diagnostic of severity [`Severity::Error`].

@@ -75,7 +75,7 @@ sacm
 
 ## Data flow
 
-A `Document` is the centre. Every function takes one or returns one.
+A `Document` is the centre. Each call below takes one or returns one.
 
 | Call | From | To | Note |
 |---|---|---|---|
@@ -109,9 +109,9 @@ A `Document` is the centre. Every function takes one or returns one.
 ### Modes ([ADR 0035](adr/0035-tolerant-read-and-schema-only-save.md))
 
 - **Strict read, the default.** It refuses what it does not read.
-- **Tolerant read.** It keeps what a strict read refuses, as preserved content with a
-  Warning. So it opens every well-formed file whose roots are SACM packages, with the
-  exceptions below.
+- **Tolerant read.** It keeps most of what a strict read refuses, as preserved content
+  with a Warning. So it opens every well-formed file whose roots are SACM packages, with
+  the exceptions below.
 - **What a tolerant read still refuses** (LIB-COMPAT-001): a DOCTYPE, a SACM 2.4 root, an
   `XMI` element in a namespace other than XMI 2.5.1's or EMF's, a repeated `xmi:id`, an
   encoding it cannot decode, and input over the parser's capacity or the read limits.

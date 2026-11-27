@@ -456,6 +456,18 @@ is hidden -->
         "LIB-DOC-009: list items within the limit, tables, code fences, block quotes, \
          link reference definitions, HTML and badges are not reported"
     );
+    let shorter_close = "````\n```\na\nb\nc\nd\ne\n````\n";
+    assert_eq!(
+        long_in(shorter_close),
+        [],
+        "LIB-DOC-009: a backtick fence shorter than the opening fence does not close it"
+    );
+    let info_close = "```\n```rust\na\nb\nc\nd\ne\n```\n";
+    assert_eq!(
+        long_in(info_close),
+        [],
+        "LIB-DOC-009: a fence line with an info string does not close the open fence"
+    );
 }
 
 #[test]
@@ -511,6 +523,12 @@ fn lib_doc_009_the_paragraph_rule_counts_prose_after_a_list_or_a_fence() {
         long_in(after_fence),
         [(4, 5, Paragraph)],
         "LIB-DOC-009: the lines after a closed fence are prose again"
+    );
+    let two_backticks = "``x`` starts,\ntwo,\nthree,\nfour,\nfive.\n";
+    assert_eq!(
+        long_in(two_backticks),
+        [(1, 5, Paragraph)],
+        "LIB-DOC-009: two backticks open a code span, not a fence, so the lines are prose"
     );
     let after_comment = "<!-- a\ncomment -->\nOne,\ntwo,\nthree,\nfour,\nfive.\n";
     assert_eq!(
@@ -765,7 +783,12 @@ fn lib_doc_009_rustdoc_holds_no_diagram() {
             "LIB-DOC-009: the diagram check must report `{line}`"
         );
     }
-    for line in ["//! ```text", "/// A merman.", "//! ```"] {
+    for line in [
+        "//! ```text",
+        "/// A merman.",
+        "//! ```",
+        "/// Use `mermaid` here.",
+    ] {
         assert!(
             diagrams(line).is_empty(),
             "LIB-DOC-009: `{line}` is not a diagram, but was reported"
@@ -948,6 +971,10 @@ fn lib_doc_006_the_crate_root_and_readmes_link_the_matrix() {
         (
             "README.md",
             "[m](https://github.com/someone/else/blob/main/docs/matrix/functionality-matrix.md)",
+        ),
+        (
+            "README.md",
+            "[m](https://github.com/lasrod/libSACM/blob//docs/matrix/functionality-matrix.md)",
         ),
     ] {
         assert!(

@@ -27,7 +27,7 @@ sacm 0.4.0 (SACM 2.3)
 |---|---|---|---|
 | 0 | Passed | `valid`, or `readable` with `--tolerant` | The round trip is faithful; `convert` wrote `<out>`. |
 | 1 | The check ran and failed | An Error diagnostic, or a strict refusal of a file a tolerant read opens | A refused strict save, output that does not read back, or a difference. `convert` neither creates nor changes `<out>`. |
-| 2 | The tool could not do the job | A usage error, an I/O error, or input neither mode opens | A usage error, an I/O error such as an output that cannot be written, or input the reader refuses |
+| 2 | The tool could not do the job | A usage error, an I/O error, or input neither mode opens | A usage error, an I/O error such as an output that cannot be written, or input the reader refuses. |
 
 - **stdout** carries the result.
 - **stderr** carries only what stopped the command, such as

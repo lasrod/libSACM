@@ -1203,10 +1203,6 @@ requirement = "The crate root documentation, crate READMEs and repository README
 source = "Verification 0001 finding (present-tense claims in crates/sacm/src/lib.rs and README)"
 kind = "docs"
 status = "implemented"
-
-# ===========================================================================
-# M1 — Minimal editable vertical slice
-# ===========================================================================
 notes = "Moved from M0 to M7 on 2026-11-09 (slice 0012): useful, not foundational."
 acceptance = [
   "The crate root and the three READMEs each link the functionality matrix for current status (a test checks the link).",
@@ -1221,6 +1217,10 @@ code = [
 tests = [
   "xtask/tests/docs_style.rs::lib_doc_006_the_crate_root_and_readmes_link_the_matrix",
 ]
+
+# ===========================================================================
+# M1 — Minimal editable vertical slice
+# ===========================================================================
 
 [[row]]
 id = "LIB-API-002"

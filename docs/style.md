@@ -29,7 +29,7 @@ Bad: the point is buried, and one sentence carries four facts.
 
 Good: each fact is one bullet that opens with its key word.
 
-> - **Atomic.** A refused operation changes nothing, and no edit leaves a reference dangling.
+> - **Atomic.** A refused operation changes nothing, and no edit creates a dangling reference.
 > - **Ask first.** `edit::check` says whether an operation would be accepted;
 >   `edit::preview` says what it would do.
 > - **Deletes.** A delete cascades only where its policies allow; each refuses by default.
@@ -40,7 +40,7 @@ Good: each fact is one bullet that opens with its key word.
 |---|---|
 | The crate root (`crates/sacm/src/lib.rs`) | What the crate is for, a table of entry points, one complete example, the key rules. |
 | Module and item rustdoc | A one-line summary of what it is for, then only what the signature does not say. |
-| `README.md` and the two crate READMEs | Short; they point to the crate root and do not repeat it. |
+| `README.md` and the two crate READMEs | Short: what it is, how to start, and a link to the crate root. The crate README shows the crate root's example (LIB-DOC-001). |
 | [architecture.md](architecture.md) and [sacm/](sacm/) | Generated tables stay as generated. |
 | The user guide and the SACM primer | Planned; they follow this guide when written. |
 

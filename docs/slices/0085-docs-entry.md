@@ -39,3 +39,7 @@ root draft the maintainer chose in the blind pilot (Fable 5.2, scratchpad
   version and exit codes, the serde version, the planned list). Four crate-root doctests
   removed: each operation has a doctest in its item docs; the SACM concept prose goes to the
   primer (LIB-DOC-005). Rows `implemented`.
+- 2026-11-27 verification: FAIL on both rows, two false claims (a tolerant read "keeps what
+  strict refuses"; "nothing dropped", though comments and processing instructions are not
+  kept). Fix round: the verifier's texts, the stale strict-write sentence in diagnostic.rs,
+  five test controls; the matrix banner moved back; two follow-ups.

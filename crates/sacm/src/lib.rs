@@ -84,11 +84,12 @@
 //! ## Strict and tolerant modes
 //!
 //! Reading and writing each take a [`Mode`](xmi::Mode), strict by default.
-//! Neither mode drops content silently.
+//! Neither mode drops model content silently. Comments and processing instructions are
+//! not kept.
 //!
 //! | | Strict (the default) | Tolerant |
 //! |---|---|---|
-//! | `read` | Refuses, or reports as an Error, what is not SACM 2.3. | Opens files from other tools and keeps what strict refuses, with a Warning. |
+//! | `read` | Refuses, or reports as an Error, what is not SACM 2.3. | Opens files from other tools and keeps most of what strict refuses, with a Warning; [Modes](xmi#modes) lists what it still refuses. |
 //! | `write` | Refuses output that would not be schema-valid. | Writes back what a tolerant read kept. |
 //!
 //! - **Nothing dropped.** Content that is not SACM 2.3 where it stands is kept as
@@ -110,7 +111,7 @@
 //! Every change is an operation given to [`edit::apply`]. The [`edit`] module
 //! lists them all.
 //!
-//! - **Atomic.** A refused operation changes nothing, and no edit leaves a reference dangling.
+//! - **Atomic.** A refused operation changes nothing, and no edit creates a dangling reference.
 //! - **Ask first.** [`edit::check`] says whether an operation would be accepted;
 //!   [`edit::preview`] says what it would do.
 //! - **Batches.** [`edit::batch`] and [`edit::apply_all`] apply several operations as one change.
@@ -134,11 +135,12 @@
 //!
 //! Both are off by default.
 //!
-//! - **`serde`.** Operations, mutations, refusals, diagnostics and
-//!   [`compare::Changes`] implement `Serialize` and `Deserialize`. See [below](#the-serde-feature).
+//! - **`serde`.** `Serialize` and `Deserialize` for edits, diagnostics and refusals; see
+//!   [below](#the-serde-feature).
 //! - **`test-support`.** Not stable API: it may change or disappear in any release. It
-//!   makes `Document::insert` and the constructors of diagnostics public, so tests can
-//!   build them. Enable it only under `[dev-dependencies]`.
+//!   makes `Document::insert`, `Document::set_assertion_declaration` and the constructors
+//!   of diagnostics public, so tests can build documents and diagnostics. Enable it only
+//!   under `[dev-dependencies]`.
 //!
 //! ## The `serde` feature
 //!
