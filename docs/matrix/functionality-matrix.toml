@@ -8893,6 +8893,9 @@ code = [
   "docs/adr/0011-errors-and-diagnostics.md",
 ]
 tests = [
+  "xtask/tests/catalog.rs::lib_diag_006_generate_names_each_input_it_cannot_read",
+  "xtask/tests/catalog.rs::lib_diag_006_generate_reads_only_the_entries_of_its_inputs",
+  "xtask/tests/catalog.rs::lib_diag_006_a_row_naming_another_code_s_constant_is_not_its_live_row",
   "crates/sacm/tests/catalog_json.rs::lib_diag_006_catalog_json_is_the_shipped_file",
   "crates/sacm/tests/catalog_json.rs::lib_diag_006_the_catalog_holds_the_value_position_template",
   "crates/sacm/tests/catalog_json.rs::lib_diag_006_every_listed_code_and_specification_is_the_crate_s",

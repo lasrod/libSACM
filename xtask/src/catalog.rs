@@ -508,26 +508,3 @@ impl Cursor<'_> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::live_row_severity;
-
-    #[test]
-    fn a_row_that_names_another_code_s_constant_is_not_its_live_row() {
-        let catalog = concat!(
-            "| SACM-XMI-001 | Error | Unlike `Code::XMI_MISSING_ID`. `Code::XMI_INVALID_ROOT`. |\n",
-            "| SACM-XMI-004 | Info | No id. `Code::XMI_MISSING_ID`. |\n",
-        );
-        assert_eq!(
-            live_row_severity(catalog, "XMI_MISSING_ID", "SACM-XMI-004"),
-            Some("Info"),
-            "LIB-DIAG-006: the live row is the one whose first cell is the code"
-        );
-        assert_eq!(
-            live_row_severity(catalog, "XMI_MISSING_ID", "SACM-XMI-009"),
-            None,
-            "LIB-DIAG-006: a constant named only in other codes' rows has no live row"
-        );
-    }
-}

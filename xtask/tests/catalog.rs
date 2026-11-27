@@ -395,14 +395,27 @@ fn synthetic(test: &str, templates: &str, diagnostics: &str, catalog: &str) -> T
     tmp
 }
 
+/// `base` with its first `from` replaced by `to`.
+fn with(base: &str, from: &str, to: &str) -> String {
+    let changed = base.replacen(from, to, 1);
+    assert_ne!(changed, base, "{ROW}: setup: {from:?} is not in the input");
+    changed
+}
+
 /// [`CATALOG`] with its first `from` replaced by `to`.
 fn catalog_with(from: &str, to: &str) -> String {
-    let changed = CATALOG.replacen(from, to, 1);
-    assert_ne!(
-        changed, CATALOG,
-        "{ROW}: setup: {from:?} is not in the catalog"
-    );
-    changed
+    with(CATALOG, from, to)
+}
+
+/// `generate` of `tmp`, which must refuse with an error holding `expected`.
+fn assert_refused(what: &str, tmp: &TempRoot, expected: &str) {
+    match generate(tmp.root()) {
+        Ok(text) => panic!("{ROW}: {what}: generate accepted it: {text}"),
+        Err(error) => assert!(
+            error.contains(expected),
+            "{ROW}: {what}: the error does not hold {expected:?}: {error}"
+        ),
+    }
 }
 
 #[test]
@@ -476,5 +489,154 @@ fn lib_diag_006_severities_come_from_the_code_rows() {
             error.contains("[no-row] SACM-XMI-001") && !error.contains("[severity]"),
             "{ROW}: a constant without a live row is not the [no-row] problem: {error}"
         ),
+    }
+}
+
+#[test]
+fn lib_diag_006_a_row_naming_another_code_s_constant_is_not_its_live_row() {
+    // The SACM-XMI-001 row names SACM-XMI-002's constant first, with
+    // another severity: SACM-XMI-002 keeps the severities of its own row.
+    let earlier = synthetic(
+        "other-row",
+        TEMPLATES,
+        DIAGNOSTICS,
+        &catalog_with(
+            "No root. `Code::XMI_INVALID_ROOT`",
+            "No root. Unlike `Code::XMI_NAMESPACE_NOT_PINNED`. `Code::XMI_INVALID_ROOT`",
+        ),
+    );
+    assert_eq!(
+        generated("another code's constant in an earlier row", earlier.root()),
+        EXPECTED,
+        "{ROW}: the live row is the one whose first cell is the code"
+    );
+
+    // SACM-XMI-001's constant is named only in SACM-XMI-002's row.
+    let only_other = synthetic(
+        "only-other-row",
+        TEMPLATES,
+        DIAGNOSTICS,
+        &with(
+            &catalog_with(" `Code::XMI_INVALID_ROOT`", ""),
+            "Not pinned. ",
+            "Not pinned. Unlike `Code::XMI_INVALID_ROOT`. ",
+        ),
+    );
+    assert_refused(
+        "a constant named only in another code's row",
+        &only_other,
+        "[no-row] SACM-XMI-001",
+    );
+}
+
+#[test]
+fn lib_diag_006_generate_names_each_input_it_cannot_read() {
+    // (a) A template that names no Code constant.
+    let unknown = synthetic(
+        "unknown-code",
+        &with(
+            TEMPLATES,
+            "XMI_002_OTHER_NAMESPACE = XMI_NAMESPACE_NOT_PINNED,",
+            "XMI_002_OTHER_NAMESPACE = NOT_A_CODE,",
+        ),
+        DIAGNOSTICS,
+        CATALOG,
+    );
+    assert_refused(
+        "a template naming NOT_A_CODE",
+        &unknown,
+        "[unknown-code] SACM-XMI-002/other-namespace",
+    );
+
+    // (b) No `pub enum Specification`.
+    let no_specification = synthetic(
+        "no-specification",
+        TEMPLATES,
+        &with(
+            DIAGNOSTICS,
+            "pub enum Specification {",
+            "pub enum Specifications {",
+        ),
+        CATALOG,
+    );
+    assert_refused(
+        "a diagnostic.rs without `pub enum Specification`",
+        &no_specification,
+        "[no-specification]",
+    );
+
+    // (c) Template entries that do not parse.
+    for (what, from, to) in [
+        (
+            "the 2nd of 3 entries without its `;`",
+            "namespace\";",
+            "namespace\"",
+        ),
+        (
+            "the carrier Edit(\"X\")",
+            "Write(\"NoRoot\")",
+            "Edit(\"X\")",
+        ),
+        ("the argument kind Id(\"x\")", "Text(\"row\")", "Id(\"x\")"),
+        (
+            "the carrier Read(\"Not a name\")",
+            "Write(\"NoRoot\")",
+            "Read(\"Not a name\")",
+        ),
+        ("the carrier Read(\"\")", "Write(\"NoRoot\")", "Read(\"\")"),
+        ("an unexpected `#`", "[],", "[#],"),
+    ] {
+        let malformed = synthetic(
+            "malformed-entry",
+            &with(TEMPLATES, from, to),
+            DIAGNOSTICS,
+            CATALOG,
+        );
+        assert_refused(what, &malformed, "[malformed-entry]");
+    }
+}
+
+#[test]
+fn lib_diag_006_generate_reads_only_the_entries_of_its_inputs() {
+    for (what, templates, diagnostics) in [
+        (
+            "a templates! table at the very start of template.rs",
+            with(TEMPLATES, "//! The template table.\n", ""),
+            DIAGNOSTICS.to_owned(),
+        ),
+        (
+            "a template name that starts with `_`",
+            with(
+                TEMPLATES,
+                "XMI_001_NO_ROOT_TO_WRITE =",
+                "_XMI_001_NO_ROOT_TO_WRITE =",
+            ),
+            DIAGNOSTICS.to_owned(),
+        ),
+        (
+            "a serde(rename) after `pub enum Specification { … }`",
+            TEMPLATES.to_owned(),
+            format!(
+                "{DIAGNOSTICS}#[cfg_attr(feature = \"serde\", serde(rename = \"after the enum\"))]\n\
+                 pub struct After;\n"
+            ),
+        ),
+        (
+            "Code constants whose names are not names",
+            TEMPLATES.to_owned(),
+            with(
+                DIAGNOSTICS,
+                "impl Code {\n",
+                "impl Code {\n    pub const NOT A NAME: Code = Code::from_static(\"SACM-XMI-098\");\n    \
+                 pub const : Code = Code::from_static(\"SACM-XMI-099\");\n",
+            ),
+        ),
+    ] {
+        let tmp = synthetic("only-entries", &templates, &diagnostics, CATALOG);
+        assert_eq!(
+            generated(what, tmp.root()),
+            EXPECTED,
+            "{ROW}: {what}: the catalog is not the synthetic inputs' catalog"
+        );
     }
 }

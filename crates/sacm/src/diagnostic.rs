@@ -11,6 +11,7 @@
 //! it enforces, the ids of the affected elements, an optional
 //! [`SourceLocation`], a message, and the
 //! [template and arguments](Diagnostic::template) the message is made from.
+//! [`CATALOG_JSON`] lists every code and template as JSON.
 //!
 //! [`validation::validate`](crate::validation::validate) and
 //! [`xmi::read`](crate::xmi::read) return diagnostics, and a strict
@@ -1322,8 +1323,8 @@ fn diagnostic_details_from_record(
 }
 
 /// Every diagnostic code and message template of this release, as JSON
-/// (LIB-DIAG-006): for generating translation keys and failing CI on one an
-/// application does not word.
+/// (LIB-DIAG-006): for generating translation keys, and for failing CI when
+/// an application has no wording for a code or template.
 ///
 /// The same text is `src/diagnostic/catalog.json` in the published crate;
 /// its shape is in the [diagnostics catalog][catalog]. `"format"` changes

@@ -38,3 +38,6 @@ Library rows: acceptance by the lead from the design brief (session scratchpad
   and SACM23-XMI-019 tests). Deviations accepted: a code's row needs its code in the first
   cell too (with a unit test); a short shape list in diagnostics.md; three more generator
   errors. Rows `implemented`.
+- 2026-11-27 verification: FAIL on both rows, test gaps only (document preserved content in
+  `changes`; the generator's refusals of malformed sources). Fix round: the tests and the
+  source wording to the builder; CHANGELOG wording with the verifier's text.

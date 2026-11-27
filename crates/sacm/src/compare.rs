@@ -1,9 +1,10 @@
 //! Comparing documents by their SACM content: [`semantic_compare`] lists
 //! every [`Difference`] between two documents, and `==` on two
 //! [`Document`]s is true exactly when there is none. [`changes`] lists only
-//! the ids created, changed and deleted between them, as [`Changes`], in the
-//! order of a batch's net lists (LIB-RT-005); with the `serde` feature,
-//! `Changes` serializes as a record.
+//! the ids created, changed and deleted between them, as [`Changes`]: a
+//! batch's net lists, with the created ids in document order rather than
+//! creation order (LIB-RT-005). With the `serde` feature, `Changes`
+//! serializes as a record.
 //!
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an

@@ -624,6 +624,37 @@ fn lib_rt_005_a_change_of_content_or_ids_alone_changes_the_element() {
         !found.is_empty(),
         "{ROW}: only the xmi:uuid differs: is_empty()"
     );
+
+    let wrapper =
+        |what: &str, attributes: &str| read_in(what, &vendor_wrapped(attributes), Mode::Tolerant);
+    let one = wrapper("v:w=\"1\" on xmi:XMI", " v:w=\"1\"");
+    let two = wrapper("v:w=\"2\" on xmi:XMI", " v:w=\"2\"");
+    let none = wrapper("no vendor attribute on xmi:XMI", "");
+    for (what, left, right) in [
+        ("only a vendor attribute of xmi:XMI differs", &one, &two),
+        (
+            "a vendor attribute of xmi:XMI on the left only",
+            &one,
+            &none,
+        ),
+    ] {
+        assert_eq!(
+            semantic_compare(left, right),
+            [Difference::DocumentPreservedContent],
+            "{ROW}: setup: {what}: not exactly one DocumentPreservedContent"
+        );
+        let found = changes(left, right);
+        assert_changes(what, &found, &[], &[], &[], true);
+        assert!(!found.is_empty(), "{ROW}: {what}: is_empty()");
+    }
+}
+
+/// [`claim_with`] inside an `xmi:XMI` element that declares the vendor
+/// namespace `v` and carries `attributes`.
+fn vendor_wrapped(attributes: &str) -> String {
+    let root = claim_with("c1_name", "").replacen(NS, "", 1);
+    let root = root.replacen(" xmlns:v=\"urn:vendor\"", "", 1);
+    format!("<xmi:XMI{NS} xmlns:v=\"urn:vendor\"{attributes}>{root}</xmi:XMI>")
 }
 
 /// A root ArgumentPackage `p` holding the element `x` of `kind` and a

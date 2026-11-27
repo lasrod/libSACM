@@ -47,8 +47,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `edit::preview_batch` and `edit::preview_all` return what a batch would do, the delete
   cascade included, without changing the document [LIB-EDIT-024].
 - `compare::changes(before, after)` and `compare::Changes`: the ids created, changed and
-  deleted between two documents, in the order of a batch's net lists, and whether the order
-  of the roots or the content outside every element changed [LIB-RT-005].
+  deleted between two documents, as a batch's net lists give them (the created ids in
+  document order, not creation order), and whether the order of the roots or the content
+  outside every element changed [LIB-RT-005].
 - `diagnostic::CATALOG_JSON`, also shipped as `src/diagnostic/catalog.json`: every code with
   its severities, and every message template with its code, carrier, arguments and English,
   as JSON [LIB-DIAG-006].

@@ -182,7 +182,8 @@
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none. [`compare::changes`] lists the ids created,
-//!   changed and deleted between them, as a batch's net lists do.
+//!   changed and deleted between them, like a batch's net lists but with the
+//!   created ids in document order.
 //!
 //! The [functionality matrix][matrix] tracks every requirement: what is
 //! built, what is planned, and the tests behind each.
