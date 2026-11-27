@@ -2,15 +2,14 @@
 //! because the application declared it a subclass of the element's kind
 //! (LIB-COMPAT-017, ADR 0044 D3).
 
-/// A class outside SACM 2.3 that a tolerant read read an element as an
-/// instance of, because the application declared it a subclass of the
-/// element's kind
-/// ([`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass),
-/// LIB-COMPAT-017).
+/// A class outside SACM 2.3 that a tolerant read read an element as an instance of, because
+/// the application declared it a subclass of the element's kind.
 ///
-/// [`SacmElement::subclass`](super::SacmElement::subclass) gives it. It is
-/// preserved content of the element: a tolerant write writes it back as the
-/// element's `xmi:type`, and a strict write refuses the element.
+/// - **Declared with** [`ReadOptions::with_subclass`](crate::xmi::ReadOptions::with_subclass)
+///   (LIB-COMPAT-017).
+/// - **Read with** [`SacmElement::subclass`](super::SacmElement::subclass).
+/// - **Preserved content.** A tolerant write writes it back as the element's `xmi:type`, and
+///   a strict write refuses the element.
 ///
 /// ```
 /// use sacm::model::ElementKind;

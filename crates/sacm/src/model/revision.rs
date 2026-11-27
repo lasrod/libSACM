@@ -6,20 +6,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// One state of a [`Document`](super::Document) within the process: what
 /// [`Document::revision`](super::Document::revision) returns.
 ///
-/// A revision is opaque. It can be copied, compared for equality and
-/// hashed, and nothing else: no order, no default, no public constructor.
-/// [`edit::apply_preview`](crate::edit::apply_preview) uses it to refuse a
-/// [`Preview`](crate::edit::Preview) taken before the document changed
-/// (SACM-CMD-003).
-///
-/// Every new, default or read document gets a revision no other document of
-/// the process has, and so does every successful edit, even one that
-/// changes nothing. `Clone` copies the revision, so a clone and its original
-/// share it until either changes; a refused edit keeps it. Document `==`
-/// ignores it (ADR 0020).
-///
-/// The values depend on how many documents the process has made, so compare
-/// revisions only with each other, never with a number.
+/// - **Opaque.** It can be copied, compared for equality and hashed, and nothing else: no
+///   order, no default, no public constructor.
+/// - **For previews.** [`edit::apply_preview`](crate::edit::apply_preview) uses it to refuse
+///   a [`Preview`](crate::edit::Preview) taken before the document changed (SACM-CMD-003).
+/// - **New.** Every new, default or read document gets a revision no other document of the
+///   process has. So does every successful edit, even one that changes nothing.
+/// - **Kept.** `Clone` copies the revision, so a clone and its original share it until either
+///   changes. A refused edit keeps it.
+/// - **Not compared.** Document `==` ignores it (ADR 0020).
+/// - **No number.** The values depend on how many documents the process has made, so compare
+///   revisions only with each other.
 ///
 /// # Examples
 ///

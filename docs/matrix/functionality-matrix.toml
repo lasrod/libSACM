@@ -9281,11 +9281,30 @@ id = "LIB-DOC-012"
 area = "DOC"
 milestone = "M7"
 title = "Item docs follow the style guide"
-requirement = "Every public item's rustdoc follows the LIB-DOC-009 style guide: a one-line summary of what it is for, then only what a caller needs that the signature does not say, as a short list where there are several points."
+requirement = "The item docs of the `model`, `compare`, `diagnostic` and `validation` modules follow the LIB-DOC-009 style guide: a short summary of what the item is for, then only what a caller needs that the signature does not say, as short bullets where there are several points. The `edit` and `xmi` item docs follow in LIB-DOC-014 and LIB-DOC-015."
 source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
 kind = "docs"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-DOC-011"]
+acceptance = [
+  "In the `///` docs of crates/sacm/src/model.rs and model/, compare.rs, diagnostic.rs and diagnostic/, and validation.rs and validation/, a test finds no prose paragraph or list item over four display lines, and no summary (the first paragraph of an item's docs) over two.",
+  "Each item opens with what it is for; the rest says only what a caller needs that the signature does not, as short bullets where there are several points; no fact a caller needs is lost.",
+  "Every doctest still passes, every intra-doc link resolves, and nothing is claimed that the matrix does not show as verified.",
+]
+code = [
+  "crates/sacm/src/model/document.rs",
+  "crates/sacm/src/model/reference.rs",
+  "crates/sacm/src/model/lang_string.rs",
+  "crates/sacm/src/model/id.rs",
+  "crates/sacm/src/diagnostic.rs",
+  "crates/sacm/src/compare.rs",
+  "crates/sacm/src/validation.rs",
+]
+tests = [
+  "xtask/tests/docs_style.rs::lib_doc_012_the_item_doc_reader_splits_blocks_and_finds_summaries",
+  "xtask/tests/docs_style.rs::lib_doc_012_no_paragraph_or_list_item_in_the_item_docs_runs_over_four_lines",
+  "xtask/tests/docs_style.rs::lib_doc_012_no_item_summary_runs_over_two_lines",
+]
 
 [[row]]
 id = "LIB-DOC-013"
@@ -9312,6 +9331,28 @@ tests = [
 verification = "docs/verification/0086-docs-modules.md"
 
 [[row]]
+id = "LIB-DOC-014"
+area = "DOC"
+milestone = "M7"
+title = "Edit item docs follow the style guide"
+requirement = "The item docs of the `edit` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules."
+source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-012"]
+
+[[row]]
+id = "LIB-DOC-015"
+area = "DOC"
+milestone = "M7"
+title = "XMI item docs follow the style guide"
+requirement = "The item docs of the `xmi` module follow the LIB-DOC-009 style guide, as LIB-DOC-012 says for the other modules. The facts the `xmi` module docs link to (the role table and per-feature sections of `read`, what `write` writes) are kept."
+source = "lasrod/libSACM#113 (docs); the maintainer, 2026-11-26 (short, structured docs everywhere)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-012"]
+
+[[row]]
 id = "LIB-DOC-010"
 area = "DOC"
 milestone = "M7"
@@ -9320,7 +9361,7 @@ requirement = "The item docs state these, each with an example where it helps: `
 source = "lasrod/libSACM#113 D1-D4 and Files and modes"
 kind = "docs"
 status = "planned"
-depends_on = ["LIB-DOC-012"]
+depends_on = ["LIB-DOC-014"]
 
 [[row]]
 id = "SACM23-XMI-032"

@@ -55,245 +55,8 @@
 //! | SACM-PKG-001 | SACM23-VAL-014 | §9.4, §10.6, §11.5 or §12.4 | Warning | a binding names a binding of its own kind as a participant (D-BIND-PART) |
 //! | SACM-PKG-002 | SACM23-VAL-023 | §10.5, §11.6 or §12.5 | Warning | an interface whose `isCitation` is not true does not reside inside the package its `implements` names |
 //!
-//! The sections below say what each rule counts, which elements a finding affects, and
-//! how to fix it.
-//!
-//! # Names
-//!
-//! - **Who needs one.** Every `ModelElement`
-//!   ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement)): any
-//!   named, identifiable element, such as a package, claim, asserted relationship,
-//!   artifact or term.
-//! - **Not checked.** The four `UtilityElement` kinds (`Description`,
-//!   `ImplementationConstraint`, `Note`, `TaggedValue`) have no name.
-//! - **An empty name** (`<name/>`) is a name.
-//! - **Fix.** Give the element a `<name lang="…" content="…"/>` child.
-//!
-//! # `content`, `key` and `location`
-//!
-//! A `UtilityElement`'s `content`, a `TaggedValue`'s `key` and a `Resource`'s `location`
-//! (§12.10) are each a `MultiLangString` (§8.5).
-//!
-//! - **When present,** it must hold at least one value, and no two of its values may
-//!   share a `lang`.
-//! - **When absent,** a `content` or a `location` gives no finding, but a `TaggedValue`
-//!   must have a `key`.
-//! - **Languages are compared exactly.** Two absent ones are equal, an absent one and
-//!   `""` differ, and so do `en` and `EN`.
-//! - **Affected.** The element that holds the role. The message names the role and the
-//!   language.
-//! - **Fix.** Give the `content`, `key` or `location` one `<value lang="…" content="…"/>`
-//!   per language.
-//!
-//! ```
-//! use sacm::diagnostic::Code;
-//! use sacm::edit::{self, CreateArgumentPackage, CreateNote};
-//! use sacm::model::{Document, LangString, MultiLangString};
-//! use sacm::validation;
-//!
-//! let mut doc = Document::new();
-//! edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
-//! // A Note whose content says two things in English.
-//! let content: MultiLangString = [
-//!     LangString::new("Reviewed").with_lang("en"),
-//!     LangString::new("Checked").with_lang("en"),
-//! ]
-//! .into_iter()
-//! .collect();
-//! edit::apply(&mut doc, CreateNote::new("p", content).with_id("n1"))?;
-//!
-//! let found = validation::validate(&doc);
-//! assert_eq!(found.len(), 1);
-//! assert_eq!(found[0].code(), Code::MULTIPLICITY_VIOLATION);
-//! assert_eq!(found[0].affected()[0].as_str(), "n1");
-//! # Ok::<(), sacm::edit::EditError>(())
-//! ```
-//!
-//! # Ids
-//!
-//! - **What is checked.** Every element's id, and the `xmi:id` of every name
-//!   ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), `content`, `key`,
-//!   `location` and `value`
-//!   ([`SacmElement::content_id`](crate::model::SacmElement::content_id) and the like).
-//! - **Affected.** The element, or the element that owns the name or text.
-//! - **An `NCName`** starts with a letter or `_` and continues with letters, digits, `-`,
-//!   `.` or `_`; it has no spaces and no `:`. XML 1.0 Fifth Edition and Namespaces in
-//!   XML Third Edition give the full character ranges.
-//! - **Why a document holds one that is not.** [`xmi::read`](crate::xmi::read) reads an
-//!   id such as `1c`, `a:b` or `a b` as written, so that nothing is lost. A strict read
-//!   refuses only an empty one.
-//! - **Trimmed.** `read` reads an `NCName` with XML white space around it, such as
-//!   `" c1 "`, trimmed.
-//! - **Edits.** [`edit::apply`](crate::edit::apply) never creates an id that is not an
-//!   `NCName`.
-//! - **Fix.** Give the element, or its name, `content`, `key`, `location` or `value`, an
-//!   id that is an `NCName`.
-//!
-//! # Descriptions
-//!
-//! - **Two or more are a Warning,** affecting the element (D-DESC-MULT). The §8.6 text
-//!   gives `description:Description[0..1]`, while the model says `0..*`, so every
-//!   description is kept.
-//! - **Not counted.** Notes, implementation constraints and tagged values.
-//! - **Fix.** Merge the descriptions into one.
-//!
-//! # `gid`
-//!
-//! - **Compared across the whole document** (§8.2), on elements of every kind.
-//! - **One finding per value** two or more elements hold, affecting every holder in
-//!   document order.
-//! - **Compared exactly,** letter case and white space included. An absent or empty
-//!   (`""`) gid is not compared (D-GID-EMPTY).
-//! - **Not an `xmi:id`.** A gid equal to an id is no finding.
-//! - **Fix.** Give each element its own gid.
-//!
-//! # Nested `ArgumentPackage`s
-//!
-//! An `ArgumentPackage` that nests a plain `ArgumentPackage` may hold only
-//! `ArgumentPackage`s (§11.4, D-PKG-HOMOG).
-//!
-//! - **One finding per other `argumentElement` child,** such as a `Claim`, affecting the
-//!   package, then the child.
-//! - **Interfaces and bindings.** An `ArgumentPackageInterface` or
-//!   `ArgumentPackageBinding` child neither triggers the rule nor is reported.
-//! - **Not counted.** `UtilityElement` children.
-//! - **Owners.** Only a plain `ArgumentPackage` is checked as an owner, and each package
-//!   for its own children only.
-//! - **Fix.** Move the other elements into a nested package.
-//!
-//! # References
-//!
-//! A reference is held as the id it names (ADR 0026).
-//!
-//! ## An id that names no element: SACM-REF-001
-//!
-//! - **One finding per element and end** for each distinct id, with the end's clause,
-//!   affecting the element, then the id. An id a multi-valued end holds twice is one
-//!   finding.
-//! - **What dangles.** An id absent from the document, and the `xmi:id` of a `name`,
-//!   `content`, `key`, `location` or `value`, which identifies no element.
-//! - **What resolves.** A reference to any element, the element itself included.
-//! - **Fix.** Point it at an element, or remove it.
-//!
-//! ## An id of preserved content: SACM-REF-003
-//!
-//! - **In the file, merely not read.** An id of an element of preserved content
-//!   (ADR 0033) is one SACM-REF-003 Warning, reported the same way, and never
-//!   SACM-REF-001 or SACM-REF-002.
-//! - **Not checked.** References inside preserved content.
-//!
-//! ## An element of the wrong kind: SACM-REF-002
-//!
-//! Each end has a declared type (ptc/22-03-13, on which the text agrees):
-//!
-//! | End | Declared type |
-//! |---|---|
-//! | `citedElement`, `abstractForm` | `SACMElement` |
-//! | `metaClaim` | `Claim` |
-//! | `reasoning` | `ArgumentReasoning` |
-//! | `source`, `target` | `ArgumentAsset` |
-//! | `structure` | `ArgumentPackage` |
-//! | `referencedArtifactElement` | `ArtifactElement` (every kind but the `UtilityElement`s) |
-//! | an `ArgumentGroup`'s `argumentElement` | `ArgumentationElement` |
-//! | an `ArtifactGroup`'s `artifactElement` | `ArtifactElement` |
-//!
-//! - **One Error per element and end** for each distinct id that resolves to an element
-//!   of a kind the type does not admit (SACM23-VAL-004), with the end's clause,
-//!   affecting the element, then the id.
-//! - **A dangling id** is only SACM-REF-001.
-//! - **`ArtifactReference`s only** (SACM23-VAL-016). §11.15 requires them as the sources
-//!   of an `AssertedEvidence`, and §11.17 and §11.18 as the sources and target of an
-//!   `AssertedArtifactSupport` and an `AssertedArtifactContext`. Each distinct other
-//!   `ArgumentAsset` there is one SACM-REF-002 Error with that clause.
-//! - **One finding per wrong reference.** An id the generic rule already reports is not
-//!   reported again.
-//! - **Fix.** Point the reference at an element of the right kind.
-//!
-//! ## A repeated id: SACM-MULT-001
-//!
-//! - **Ends hold repeats as read** (ADR 0027): a multi-valued end, such as `metaClaim`,
-//!   `source`, `referencedArtifactElement` or a group's `argumentElement` or
-//!   `artifactElement`, holds its ids in order, repeats included.
-//! - **One Warning per id** one end of one element holds two or more times
-//!   (SACM23-VAL-022), with the end's clause, affecting the element, then the id.
-//!   SACM's ends hold each id once.
-//! - **Always reported,** whatever else applies to the id. A strict save still writes
-//!   the repeat.
-//! - **Fix.** Remove the repeats.
-//!
-//! ## A missing `source` or `target`: SACM-MULT-001
-//!
-//! - **An asserted relationship needs** at least one `source` and one `target` (§11.13).
-//! - **One read without them is kept as read.** Each missing end is one SACM-MULT-001
-//!   Error, affecting the relationship.
-//! - **Fix.** Give it the missing end.
-//!
-//! # Citations and abstract elements
-//!
-//! - **`citedElement` without `isCitation`** (§8.2) is a SACM-CITE-001 Error, affecting
-//!   the element, whether or not the cited id resolves. `isCitation` true alone is no
-//!   finding.
-//! - **`abstractForm` on an abstract element** (§8.2) is a SACM-ABS-001 Error, affecting
-//!   it: an element with an `abstractForm` must be concrete.
-//! - **The element an `abstractForm` names** should be abstract and of the same kind.
-//!   There is one SACM-ABS-001 Warning when it is not abstract and another when it is
-//!   of another kind, each affecting the element, then the referenced element.
-//! - **An `abstractForm` that names no element** gives only SACM-REF-001.
-//!
-//! §8.6 allows implementation constraints only on an abstract element:
-//!
-//! - **One SACM-ABS-001 Error,** however many constraints it has, for a `ModelElement`
-//!   with `implementationConstraint` children whose `isAbstract` is not true. It
-//!   affects the element.
-//! - **Fix.** Set `isAbstract="true"`, or remove the constraints.
-//!
-//! §11.8 derives an `asCited` declaration from the cited Assertion. An Assertion
-//! declared `asCited` gets one SACM-CITE-002 Warning for each of:
-//!
-//! - **`isCitation` is not true,** affecting it.
-//! - **It has no `citedElement`,** affecting it. A `citedElement` that names no element
-//!   gives only SACM-REF-001.
-//! - **Its `citedElement` names an element that is not of an Assertion kind,** affecting
-//!   it, then that element.
-//! - **Fix.** Make the element a citation of a Claim or an asserted relationship, or
-//!   give it another declaration.
-//!
-//! ```
-//! use sacm::diagnostic::{Code, Severity};
-//! use sacm::validation;
-//! use sacm::xmi::{self, ReadOptions};
-//!
-//! let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
-//!     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
-//!   <name content="Arguments"/>
-//!   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="c2">
-//!     <name content="The brakes are safe"/>
-//!   </argumentElement>
-//!   <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
-//!     <name content="The pump is safe"/>
-//!   </argumentElement>
-//! </sacm:ArgumentPackage>"#;
-//! let document = xmi::read(input, &ReadOptions::default())?.into_document();
-//! // c2 is not abstract, so c1 should not conform to it.
-//! let found = validation::validate(&document);
-//! assert_eq!(found.len(), 1);
-//! assert_eq!((found[0].code(), found[0].severity()), (Code::ABSTRACT_FORM_INVALID, Severity::Warning));
-//! let affected: Vec<&str> = found[0].affected().iter().map(|id| id.as_str()).collect();
-//! assert_eq!(affected, ["c1", "c2"]);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
-//!
-//! # Package interfaces and bindings
-//!
-//! They are checked for what they hold and what they reference (§9.3, §9.4, §10.5,
-//! §10.6, §11.5, §11.6, §12.4, §12.5; D-IFACE-CITE, D-BIND-PART, D-SEV).
-//!
-//! - **A citation** is an element with `isCitation` true and a `citedElement`, an id or
-//!   an `href`.
-//! - **A cross-document reference** (`href`, SACM23-XMI-027) counts as a value of its
-//!   end wherever a rule asks whether the end holds one.
-//! - **Its target is never checked** for its kind or place: an `href` is never
-//!   SACM-REF-001, SACM-REF-002 or SACM-REF-003 (ADR 0040 D6).
+//! [`validate`]'s docs say what each rule counts. The [diagnostics catalog][catalog]
+//! gives, for each code, the elements a finding affects and how to fix it.
 //!
 //! # Examples
 //!
@@ -322,6 +85,8 @@
 //! assert!(diagnostic::has_errors(&all));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+//!
+//! [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
 
 mod constraints;
 mod descriptions;
@@ -371,15 +136,87 @@ const RULES: &[Rule] = &[
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns
-/// the findings, sorted by [`Diagnostic`]'s order. An empty result means no
-/// rule found anything, not that the document conforms in full.
+/// the findings, sorted by [`Diagnostic`]'s order.
 ///
-/// The document is not changed. See the [module docs](self) for what is
-/// checked.
+/// - **Read-only.** The document is not changed. The [module docs](self)
+///   list what is checked.
+/// - **An empty result** means no rule found anything, not that the document
+///   conforms in full.
+/// - **Rules are added.** A later minor release may add a rule. That is not a
+///   breaking change, and it never changes what a strict
+///   [`xmi::write`](crate::xmi::write) writes, which checks schema validity
+///   only (ADR 0035 D4).
 ///
-/// A later minor release may add a rule. That is not a breaking change, and
-/// it never changes what a strict [`xmi::write`](crate::xmi::write) writes,
-/// which checks schema validity only (ADR 0035 D4).
+/// # What the rules count
+///
+/// The [diagnostics catalog][catalog] gives, for each code, the elements a
+/// finding affects and how to fix it.
+///
+/// - **Names.** Every `ModelElement`
+///   ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
+///   needs one; the four `UtilityElement` kinds have none. An empty name
+///   (`<name/>`) is a name.
+/// - **Languages.** The `lang`s of a `content`, `key` or `location` are
+///   compared exactly: two absent ones are equal, an absent one and `""`
+///   differ, and so do `en` and `EN`.
+/// - **Absent texts.** An absent `content` or `location` gives no finding; a
+///   `TaggedValue` must have a `key`.
+/// - **Ids.** [`xmi::read`](crate::xmi::read) reads an id that is no `NCName`,
+///   such as `1c`, `a:b` or `a b`, as written, so that nothing is lost.
+///   [`edit::apply`](crate::edit::apply) never creates one.
+/// - **Ids of names and texts.** The `xmi:id` of a name
+///   ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) or a text
+///   ([`SacmElement::content_id`](crate::model::SacmElement::content_id) and
+///   the like) is checked too; a finding affects the element that owns it.
+/// - **Descriptions.** Two or more are a Warning, and every one is kept
+///   (D-DESC-MULT). Notes, implementation constraints and tagged values are
+///   not counted.
+/// - **`gid`.** Compared exactly across the whole document, on every kind. An
+///   absent or empty (`""`) gid is not compared (D-GID-EMPTY). A gid is not
+///   an `xmi:id`: a gid equal to an id is no finding.
+/// - **Nested `ArgumentPackage`s.** Only a plain `ArgumentPackage` is checked
+///   as an owner, for its own children. An interface or binding child neither
+///   triggers the rule nor is reported, and `UtilityElement`s are not counted.
+/// - **References.** A reference is held as the id it names (ADR 0026). A
+///   reference to any element resolves, the element itself included. The
+///   `xmi:id` of a `name`, `content`, `key`, `location` or `value` names none.
+/// - **One finding per distinct id** of each end of each element. An id the
+///   declared-type rule reports (SACM23-VAL-004) is not reported again by the
+///   `ArtifactReference` rule (SACM23-VAL-016).
+/// - **A reference that names no element** is only SACM-REF-001. The rules
+///   about the element an `abstractForm`, or the `citedElement` of an
+///   `asCited` Assertion, names do not report it.
+/// - **Repeated ids.** A multi-valued end holds its ids as read, repeats
+///   included (ADR 0027). A repeat is reported whatever else applies to the
+///   id, and a strict save still writes it.
+/// - **Preserved content.** An id of an element held as preserved content
+///   (ADR 0033) is SACM-REF-003, never SACM-REF-001 or SACM-REF-002.
+///   References inside preserved content are not checked.
+/// - **Citations.** A citation has `isCitation` true and a `citedElement`, an
+///   id or an `href`. `isCitation` true alone is no finding. A `citedElement`
+///   without it is SACM-CITE-001, whether or not the cited id resolves.
+/// - **Cross-document references.** An `href` (SACM23-XMI-027) counts as a
+///   value of its end. Its target is never checked: an `href` is never
+///   SACM-REF-001, SACM-REF-002 or SACM-REF-003 (ADR 0040 D6).
+///
+/// # Declared types
+///
+/// SACM-REF-002 reports an id that names an element its end's declared type
+/// (ptc/22-03-13, on which the text agrees) does not admit. The catalog
+/// gives the types of the ends not listed here.
+///
+/// | End | Declared type |
+/// |---|---|
+/// | `citedElement`, `abstractForm` | `SACMElement` |
+/// | `metaClaim` | `Claim` |
+/// | `reasoning` | `ArgumentReasoning` |
+/// | `source`, `target` | `ArgumentAsset` |
+/// | `structure` | `ArgumentPackage` |
+/// | `referencedArtifactElement` | `ArtifactElement` (every kind but the `UtilityElement`s) |
+/// | an `ArgumentGroup`'s `argumentElement` | `ArgumentationElement` |
+/// | an `ArtifactGroup`'s `artifactElement` | `ArtifactElement` |
+///
+/// # Examples
 ///
 /// An empty name is a name: `<name/>` gives no finding.
 ///
@@ -395,6 +232,62 @@ const RULES: &[Rule] = &[
 /// assert!(validation::validate(&document).is_empty());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+///
+/// Two values of one `content` in the same language are one finding:
+///
+/// ```
+/// use sacm::diagnostic::Code;
+/// use sacm::edit::{self, CreateArgumentPackage, CreateNote};
+/// use sacm::model::{Document, LangString, MultiLangString};
+/// use sacm::validation;
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// // A Note whose content says two things in English.
+/// let content: MultiLangString = [
+///     LangString::new("Reviewed").with_lang("en"),
+///     LangString::new("Checked").with_lang("en"),
+/// ]
+/// .into_iter()
+/// .collect();
+/// edit::apply(&mut doc, CreateNote::new("p", content).with_id("n1"))?;
+///
+/// let found = validation::validate(&doc);
+/// assert_eq!(found.len(), 1);
+/// assert_eq!(found[0].code(), Code::MULTIPLICITY_VIOLATION);
+/// assert_eq!(found[0].affected()[0].as_str(), "n1");
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+///
+/// An `abstractForm` that names a concrete element is a Warning, affecting
+/// the element, then the element it names:
+///
+/// ```
+/// use sacm::diagnostic::{Code, Severity};
+/// use sacm::validation;
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name content="Arguments"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="c2">
+///     <name content="The brakes are safe"/>
+///   </argumentElement>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+///     <name content="The pump is safe"/>
+///   </argumentElement>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+/// // c2 is not abstract, so c1 should not conform to it.
+/// let found = validation::validate(&document);
+/// assert_eq!(found.len(), 1);
+/// assert_eq!((found[0].code(), found[0].severity()), (Code::ABSTRACT_FORM_INVALID, Severity::Warning));
+/// let affected: Vec<&str> = found[0].affected().iter().map(|id| id.as_str()).collect();
+/// assert_eq!(affected, ["c1", "c2"]);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
 #[must_use]
 pub fn validate(document: &Document) -> Vec<Diagnostic> {
     run(document, RULES)

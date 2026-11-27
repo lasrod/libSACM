@@ -139,18 +139,20 @@ use crate::model::{
 /// One way in which two documents differ in SACM content, as
 /// [`semantic_compare`] reports it.
 ///
-/// "Left" and "right" are the first and the second document given to
-/// [`semantic_compare`]. Each variant names one feature of one element, except
-/// [`RootOrder`](Self::RootOrder), which is about the document.
-/// [`element_id`](Self::element_id) gives the id to look up with
-/// [`Document::get`](crate::model::Document::get) on either side.
-///
-/// New variants are added as the model holds more SACM features, so a `match`
-/// needs a wildcard arm. A variant's fields stay as they are, `{id, left,
-/// right}` for most, so you can build an expected value in a test: a new
-/// comparison adds a variant, never a field (ADR 0045 D3).
-///
-/// `Display` writes one line for people to read. Its wording is not API.
+/// - **Left and right** are the first and the second document given to
+///   [`semantic_compare`].
+/// - **One feature of one element** per variant, except the three about the
+///   document: [`RootOrder`](Self::RootOrder),
+///   [`DocumentMetadata`](Self::DocumentMetadata) and
+///   [`DocumentPreservedContent`](Self::DocumentPreservedContent).
+/// - **Look it up.** [`element_id`](Self::element_id) gives the id to pass to
+///   [`Document::get`](crate::model::Document::get) on either side.
+/// - **Variants are added** as the model holds more SACM features, so a
+///   `match` needs a wildcard arm.
+/// - **Fields stay.** A variant's fields stay as they are, `{id, left,
+///   right}` for most, so you can build an expected value in a test: a new
+///   comparison adds a variant, never a field (ADR 0045 D3).
+/// - **`Display`** writes one line for people to read. Its wording is not API.
 ///
 /// # Examples
 ///
@@ -231,9 +233,10 @@ pub enum Difference {
         /// The gid in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// The element's `isCitation` (SACM 2.3 §8.2,
-    /// [`SacmElement::is_citation`](crate::model::SacmElement::is_citation))
-    /// differs on each side. Absent is `false`.
+    /// The element's `isCitation` (SACM 2.3 §8.2) differs on each side.
+    ///
+    /// Absent is `false`. See
+    /// [`SacmElement::is_citation`](crate::model::SacmElement::is_citation).
     IsCitation {
         /// The element's id.
         id: ElementId,
@@ -242,9 +245,10 @@ pub enum Difference {
         /// The flag in the right document.
         right: bool,
     },
-    /// The element's `isAbstract` (SACM 2.3 §8.2,
-    /// [`SacmElement::is_abstract`](crate::model::SacmElement::is_abstract))
-    /// differs on each side. Absent is `false`.
+    /// The element's `isAbstract` (SACM 2.3 §8.2) differs on each side.
+    ///
+    /// Absent is `false`. See
+    /// [`SacmElement::is_abstract`](crate::model::SacmElement::is_abstract).
     IsAbstract {
         /// The element's id.
         id: ElementId,
@@ -253,10 +257,11 @@ pub enum Difference {
         /// The flag in the right document.
         right: bool,
     },
-    /// The asserted relationship's `isCounter` (SACM 2.3 §11.13,
-    /// [`SacmElement::is_counter`](crate::model::SacmElement::is_counter))
-    /// differs on each side. Absent is `false`, and so is the flag of a
-    /// kind that has none.
+    /// The asserted relationship's `isCounter` (SACM 2.3 §11.13) differs on
+    /// each side.
+    ///
+    /// Absent is `false`, and so is the flag of a kind that has none. See
+    /// [`SacmElement::is_counter`](crate::model::SacmElement::is_counter).
     IsCounter {
         /// The element's id.
         id: ElementId,
@@ -265,12 +270,12 @@ pub enum Difference {
         /// The flag in the right document.
         right: bool,
     },
-    /// The element's `citedElement` (SACM 2.3 §8.2,
-    /// [`SacmElement::cited_element`](crate::model::SacmElement::cited_element))
-    /// differs on each side; `None` is no cited element.
+    /// The element's `citedElement` (SACM 2.3 §8.2) differs on each side;
+    /// `None` is no cited element.
     ///
     /// References are compared by id, resolved or not: two references to
-    /// ids that name no element differ exactly when the ids do.
+    /// ids that name no element differ exactly when the ids do. See
+    /// [`SacmElement::cited_element`](crate::model::SacmElement::cited_element).
     CitedElement {
         /// The element's id.
         id: ElementId,
@@ -279,10 +284,11 @@ pub enum Difference {
         /// The cited id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The element's `abstractForm` (SACM 2.3 §8.2,
-    /// [`SacmElement::abstract_form`](crate::model::SacmElement::abstract_form))
-    /// differs on each side; `None` is no abstract form. Compared as
-    /// [`CitedElement`](Self::CitedElement) is.
+    /// The element's `abstractForm` (SACM 2.3 §8.2) differs on each side;
+    /// `None` is no abstract form.
+    ///
+    /// Compared as [`CitedElement`](Self::CitedElement) is. See
+    /// [`SacmElement::abstract_form`](crate::model::SacmElement::abstract_form).
     AbstractForm {
         /// The element's id.
         id: ElementId,
@@ -291,12 +297,11 @@ pub enum Difference {
         /// The abstract form's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The Assertion's `metaClaim` ids (SACM 2.3 §11.10,
-    /// [`SacmElement::meta_claims`](crate::model::SacmElement::meta_claims))
-    /// differ on each side.
+    /// The Assertion's `metaClaim` ids (SACM 2.3 §11.10) differ on each side.
     ///
     /// The ids are compared in order and with repeats (D-ORDER, ADR 0027):
-    /// `[m1, m2]` and `[m2, m1]` differ, and so do `[m1]` and `[m1, m1]`.
+    /// `[m1, m2]` and `[m2, m1]` differ, and so do `[m1]` and `[m1, m1]`. See
+    /// [`SacmElement::meta_claims`](crate::model::SacmElement::meta_claims).
     MetaClaims {
         /// The element's id.
         id: ElementId,
@@ -305,10 +310,11 @@ pub enum Difference {
         /// The meta-claim ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// The asserted relationship's `reasoning` (SACM 2.3 §11.13,
-    /// [`SacmElement::reasoning`](crate::model::SacmElement::reasoning))
-    /// differs on each side; `None` is no reasoning. Compared as
-    /// [`CitedElement`](Self::CitedElement) is.
+    /// The asserted relationship's `reasoning` (SACM 2.3 §11.13) differs on
+    /// each side; `None` is no reasoning.
+    ///
+    /// Compared as [`CitedElement`](Self::CitedElement) is. See
+    /// [`SacmElement::reasoning`](crate::model::SacmElement::reasoning).
     Reasoning {
         /// The element's id.
         id: ElementId,
@@ -317,10 +323,11 @@ pub enum Difference {
         /// The reasoning's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The asserted relationship's `source` ids (SACM 2.3 §11.13,
-    /// [`SacmElement::sources`](crate::model::SacmElement::sources)) differ
-    /// on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are.
+    /// The asserted relationship's `source` ids (SACM 2.3 §11.13) differ on
+    /// each side.
+    ///
+    /// Compared in order and with repeats, as [`MetaClaims`](Self::MetaClaims)
+    /// are. See [`SacmElement::sources`](crate::model::SacmElement::sources).
     Sources {
         /// The element's id.
         id: ElementId,
@@ -329,10 +336,11 @@ pub enum Difference {
         /// The source ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// The asserted relationship's `target` (SACM 2.3 §11.13,
-    /// [`SacmElement::target`](crate::model::SacmElement::target)) differs
-    /// on each side; `None` is no target. Compared as
-    /// [`CitedElement`](Self::CitedElement) is.
+    /// The asserted relationship's `target` (SACM 2.3 §11.13) differs on
+    /// each side; `None` is no target.
+    ///
+    /// Compared as [`CitedElement`](Self::CitedElement) is. See
+    /// [`SacmElement::target`](crate::model::SacmElement::target).
     Target {
         /// The element's id.
         id: ElementId,
@@ -341,10 +349,11 @@ pub enum Difference {
         /// The target's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The `ArgumentReasoning`'s `structure` (SACM 2.3 §11.12,
-    /// [`SacmElement::structure`](crate::model::SacmElement::structure))
-    /// differs on each side; `None` is no structure. Compared as
-    /// [`CitedElement`](Self::CitedElement) is.
+    /// The `ArgumentReasoning`'s `structure` (SACM 2.3 §11.12) differs on
+    /// each side; `None` is no structure.
+    ///
+    /// Compared as [`CitedElement`](Self::CitedElement) is. See
+    /// [`SacmElement::structure`](crate::model::SacmElement::structure).
     Structure {
         /// The element's id.
         id: ElementId,
@@ -354,10 +363,11 @@ pub enum Difference {
         right: Option<ElementId>,
     },
     /// The `ArtifactReference`'s `referencedArtifactElement` ids (SACM 2.3
-    /// §11.9,
-    /// [`SacmElement::referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements))
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are.
+    /// §11.9) differ on each side.
+    ///
+    /// Compared in order and with repeats, as [`MetaClaims`](Self::MetaClaims)
+    /// are. See
+    /// [`SacmElement::referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements).
     ReferencedArtifactElements {
         /// The element's id.
         id: ElementId,
@@ -367,10 +377,11 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `ArgumentGroup`'s members, its `argumentElement` ids (SACM 2.3
-    /// §11.2,
-    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are.
+    /// §11.2), differ on each side.
+    ///
+    /// Compared in order and with repeats, as [`MetaClaims`](Self::MetaClaims)
+    /// are. See
+    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members).
     #[doc(alias = "argumentElement")]
     GroupMembers {
         /// The group's id.
@@ -381,10 +392,11 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `ArtifactGroup`'s members, its `artifactElement` ids (SACM 2.3
-    /// §12.3,
-    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are.
+    /// §12.3), differ on each side.
+    ///
+    /// Compared in order and with repeats, as [`MetaClaims`](Self::MetaClaims)
+    /// are. See
+    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members).
     ///
     /// ```
     /// use sacm::compare::Difference;
@@ -410,10 +422,12 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `ArtifactAssetRelationship`'s sources, its `source` ids (SACM 2.3
-    /// §12.14, [`SacmElement::sources`](crate::model::SacmElement::sources)),
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are; an asserted relationship's are
-    /// [`Sources`](Self::Sources).
+    /// §12.14), differ on each side.
+    ///
+    /// - **Compared** in order and with repeats, as
+    ///   [`MetaClaims`](Self::MetaClaims) are. See
+    ///   [`SacmElement::sources`](crate::model::SacmElement::sources).
+    /// - **An asserted relationship's** are [`Sources`](Self::Sources).
     #[doc(alias = "source")]
     ArtifactSources {
         /// The relationship's id.
@@ -424,10 +438,12 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `ArtifactAssetRelationship`'s targets, its `target` ids (SACM 2.3
-    /// §12.14, [`SacmElement::targets`](crate::model::SacmElement::targets)),
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are; an asserted relationship's one
-    /// target is [`Target`](Self::Target).
+    /// §12.14), differ on each side.
+    ///
+    /// - **Compared** in order and with repeats, as
+    ///   [`MetaClaims`](Self::MetaClaims) are. See
+    ///   [`SacmElement::targets`](crate::model::SacmElement::targets).
+    /// - **An asserted relationship's** one target is [`Target`](Self::Target).
     ///
     /// ```
     /// use sacm::compare::Difference;
@@ -453,10 +469,11 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `category` ids of a Category, a Term or an Expression (SACM 2.3
-    /// §10.8, §10.9,
-    /// [`SacmElement::categories`](crate::model::SacmElement::categories))
-    /// differ on each side. Compared in order and with repeats, as
-    /// [`MetaClaims`](Self::MetaClaims) are.
+    /// §10.8, §10.9) differ on each side.
+    ///
+    /// Compared in order and with repeats, as [`MetaClaims`](Self::MetaClaims)
+    /// are. See
+    /// [`SacmElement::categories`](crate::model::SacmElement::categories).
     ///
     /// ```
     /// use sacm::compare::Difference;
@@ -482,9 +499,10 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The `ExpressionElements` an Expression is formed from, its `element`
-    /// ids (SACM 2.3 §10.10,
-    /// [`SacmElement::expression_elements`](crate::model::SacmElement::expression_elements)),
-    /// differ on each side. Compared in order and with repeats.
+    /// ids (SACM 2.3 §10.10), differ on each side.
+    ///
+    /// Compared in order and with repeats. See
+    /// [`SacmElement::expression_elements`](crate::model::SacmElement::expression_elements).
     #[doc(alias = "element")]
     ExpressionElements {
         /// The Expression's id.
@@ -494,9 +512,10 @@ pub enum Difference {
         /// The element ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// A Term's `origin` (SACM 2.3 §10.11,
-    /// [`SacmElement::origin`](crate::model::SacmElement::origin)) differs on
-    /// each side; `None` is no origin.
+    /// A Term's `origin` (SACM 2.3 §10.11) differs on each side; `None` is no
+    /// origin.
+    ///
+    /// See [`SacmElement::origin`](crate::model::SacmElement::origin).
     Origin {
         /// The Term's id.
         id: ElementId,
@@ -506,10 +525,11 @@ pub enum Difference {
         right: Option<ElementId>,
     },
     /// The `TerminologyGroup`'s members, its `terminologyElement` ids (SACM
-    /// 2.3 §10.3,
-    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
-    /// differ on each side. Compared in order and with repeats; an
-    /// `ArgumentGroup`'s are [`GroupMembers`](Self::GroupMembers).
+    /// 2.3 §10.3), differ on each side.
+    ///
+    /// - **Compared** in order and with repeats. See
+    ///   [`SacmElement::group_members`](crate::model::SacmElement::group_members).
+    /// - **An `ArgumentGroup`'s** are [`GroupMembers`](Self::GroupMembers).
     #[doc(alias = "terminologyElement")]
     TerminologyGroupMembers {
         /// The group's id.
@@ -519,11 +539,12 @@ pub enum Difference {
         /// The member ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// A package's interfaces, its `interface` ids, on a package of any
-    /// family: Assurance Case (§9.2), Terminology, Argumentation or Artifact
-    /// (ptc/22-03-13,
-    /// [`SacmElement::interfaces`](crate::model::SacmElement::interfaces)),
-    /// differ on each side. Compared in order and with repeats.
+    /// A package's interfaces, its `interface` ids, differ on each side.
+    ///
+    /// - **Any family.** An Assurance Case package (§9.2), or a Terminology,
+    ///   Argumentation or Artifact package (ptc/22-03-13).
+    /// - **Compared** in order and with repeats. See
+    ///   [`SacmElement::interfaces`](crate::model::SacmElement::interfaces).
     #[doc(alias = "interface")]
     Interfaces {
         /// The package's id.
@@ -533,10 +554,12 @@ pub enum Difference {
         /// The interface ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// An interface's `implements`, on an interface of any package family
-    /// (SACM 2.3 §9.3, §10.5, §11.6, §12.5,
-    /// [`SacmElement::implements`](crate::model::SacmElement::implements))
-    /// differs on each side; `None` is no `implements`.
+    /// An interface's `implements` differs on each side; `None` is no
+    /// `implements`.
+    ///
+    /// On an interface of any package family (SACM 2.3 §9.3, §10.5, §11.6,
+    /// §12.5). See
+    /// [`SacmElement::implements`](crate::model::SacmElement::implements).
     Implements {
         /// The interface's id.
         id: ElementId,
@@ -545,11 +568,13 @@ pub enum Difference {
         /// The package's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// A binding's participants, its `participantPackage` ids, on a binding
-    /// of any package family (SACM 2.3 §9.4, §11.5, §12.4; ptc/22-03-13 for
-    /// a `TerminologyPackageBinding`,
-    /// [`SacmElement::participant_packages`](crate::model::SacmElement::participant_packages)),
-    /// differ on each side. Compared in order and with repeats.
+    /// A binding's participants, its `participantPackage` ids, differ on each
+    /// side.
+    ///
+    /// - **Any family.** A binding of any package family (SACM 2.3 §9.4,
+    ///   §11.5, §12.4; ptc/22-03-13 for a `TerminologyPackageBinding`).
+    /// - **Compared** in order and with repeats. See
+    ///   [`SacmElement::participant_packages`](crate::model::SacmElement::participant_packages).
     #[doc(alias = "participantPackage")]
     ParticipantPackages {
         /// The binding's id.
@@ -560,9 +585,10 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The cross-document references (`href`s) of one end of an element
-    /// differ, in order (SACM23-XMI-027, ADR 0040 D8;
-    /// [`SacmElement::hrefs`](crate::model::SacmElement::hrefs)). One per end
-    /// that differs, in [`ReferenceEnd::ALL`] order.
+    /// differ, in order (SACM23-XMI-027, ADR 0040 D8).
+    ///
+    /// One per end that differs, in [`ReferenceEnd::ALL`] order. See
+    /// [`SacmElement::hrefs`](crate::model::SacmElement::hrefs).
     #[doc(alias = "href")]
     Hrefs {
         /// The element's id.
@@ -575,9 +601,10 @@ pub enum Difference {
         right: Vec<Href>,
     },
     /// The proxies of an element differ, in order: its children held in
-    /// other documents (SACM23-XMI-029, ADR 0040 amendment 1, A6;
-    /// [`SacmElement::proxies`](crate::model::SacmElement::proxies)).
-    /// Compared exactly: the role and the `href` of each, with repeats.
+    /// other documents (SACM23-XMI-029, ADR 0040 amendment 1, A6).
+    ///
+    /// Compared exactly: the role and the `href` of each, with repeats. See
+    /// [`SacmElement::proxies`](crate::model::SacmElement::proxies).
     #[doc(alias = "href")]
     Proxies {
         /// The element's id.
@@ -600,12 +627,12 @@ pub enum Difference {
         /// The name in the right document, or `None` when missing.
         right: Option<LangString>,
     },
-    /// The `xmi:id` of the element's name
-    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) differs
-    /// on each side; `None` is a name without an id, or no name.
+    /// The `xmi:id` of the element's name differs on each side; `None` is a
+    /// name without an id, or no name.
     ///
     /// A name's id is compared because equal documents must write equal
-    /// bytes, and `write` writes it (ADR 0024).
+    /// bytes, and `write` writes it (ADR 0024). See
+    /// [`SacmElement::name_id`](crate::model::SacmElement::name_id).
     NameId {
         /// The id of the element that owns the name.
         id: ElementId,
@@ -614,12 +641,12 @@ pub enum Difference {
         /// The name's id in the right document, or `None` when it has none.
         right: Option<ElementId>,
     },
-    /// The `content` of a `UtilityElement` (SACM 2.3 §8.7,
-    /// [`SacmElement::content`](crate::model::SacmElement::content)) differs
-    /// on each side; `None` is no content.
+    /// The `content` of a `UtilityElement` (SACM 2.3 §8.7) differs on each
+    /// side; `None` is no content.
     ///
     /// Contents are compared exactly and in order: no content, an empty one,
-    /// `[en, fr]` and `[fr, en]` are all different values.
+    /// `[en, fr]` and `[fr, en]` are all different values. See
+    /// [`SacmElement::content`](crate::model::SacmElement::content).
     Content {
         /// The element's id.
         id: ElementId,
@@ -628,9 +655,10 @@ pub enum Difference {
         /// The content in the right document, or `None` when it has none.
         right: Option<MultiLangString>,
     },
-    /// The `xmi:id` of the element's `content`
-    /// ([`SacmElement::content_id`](crate::model::SacmElement::content_id))
-    /// differs on each side; `None` is a content without an id, or none.
+    /// The `xmi:id` of the element's `content` differs on each side; `None`
+    /// is a content without an id, or none.
+    ///
+    /// See [`SacmElement::content_id`](crate::model::SacmElement::content_id).
     ContentId {
         /// The element's id.
         id: ElementId,
@@ -639,13 +667,13 @@ pub enum Difference {
         /// The content's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The `xmi:id`s of the values of the element's `content`
-    /// ([`SacmElement::content_value_ids`](crate::model::SacmElement::content_value_ids)),
-    /// by position, differ on each side.
+    /// The `xmi:id`s of the values of the element's `content`, by position,
+    /// differ on each side.
     ///
     /// A position one side lacks counts as a value without an id, so a
     /// different number of values without ids is only a
-    /// [`Content`](Self::Content) difference.
+    /// [`Content`](Self::Content) difference. See
+    /// [`SacmElement::content_value_ids`](crate::model::SacmElement::content_value_ids).
     ContentValueIds {
         /// The element's id.
         id: ElementId,
@@ -654,9 +682,11 @@ pub enum Difference {
         /// The value ids in the right document: one per value.
         right: Vec<Option<ElementId>>,
     },
-    /// The `key` of a `TaggedValue` (SACM 2.3 §8.12,
-    /// [`SacmElement::key`](crate::model::SacmElement::key)) differs on each
-    /// side; `None` is no key. Compared as [`Content`](Self::Content) is.
+    /// The `key` of a `TaggedValue` (SACM 2.3 §8.12) differs on each side;
+    /// `None` is no key.
+    ///
+    /// Compared as [`Content`](Self::Content) is. See
+    /// [`SacmElement::key`](crate::model::SacmElement::key).
     Key {
         /// The element's id.
         id: ElementId,
@@ -665,9 +695,10 @@ pub enum Difference {
         /// The key in the right document, or `None` when it has none.
         right: Option<MultiLangString>,
     },
-    /// The `xmi:id` of the element's `key`
-    /// ([`SacmElement::key_id`](crate::model::SacmElement::key_id)) differs
-    /// on each side; `None` is a key without an id, or none.
+    /// The `xmi:id` of the element's `key` differs on each side; `None` is a
+    /// key without an id, or none.
+    ///
+    /// See [`SacmElement::key_id`](crate::model::SacmElement::key_id).
     KeyId {
         /// The element's id.
         id: ElementId,
@@ -676,10 +707,11 @@ pub enum Difference {
         /// The key's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The `xmi:id`s of the values of the element's `key`
-    /// ([`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids)),
-    /// by position, differ on each side. Compared as
-    /// [`ContentValueIds`](Self::ContentValueIds) are.
+    /// The `xmi:id`s of the values of the element's `key`, by position,
+    /// differ on each side.
+    ///
+    /// Compared as [`ContentValueIds`](Self::ContentValueIds) are. See
+    /// [`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids).
     KeyValueIds {
         /// The element's id.
         id: ElementId,
@@ -688,12 +720,12 @@ pub enum Difference {
         /// The value ids in the right document: one per value.
         right: Vec<Option<ElementId>>,
     },
-    /// The `version` of an `Artifact` (SACM 2.3 §12.7,
-    /// [`SacmElement::version`](crate::model::SacmElement::version)) differs
-    /// on each side; `None` is no version.
+    /// The `version` of an `Artifact` (SACM 2.3 §12.7) differs on each side;
+    /// `None` is no version.
     ///
     /// Versions are compared exactly, as gids are: no version, `""` and
-    /// `" 1.2"` are three different values.
+    /// `" 1.2"` are three different values. See
+    /// [`SacmElement::version`](crate::model::SacmElement::version).
     Version {
         /// The element's id.
         id: ElementId,
@@ -702,12 +734,12 @@ pub enum Difference {
         /// The version in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// The `date` of an `Artifact` or an `Event` (SACM 2.3 §12.7, §12.9,
-    /// [`SacmElement::date`](crate::model::SacmElement::date)) differs on
-    /// each side; `None` is no date.
+    /// The `date` of an `Artifact` or an `Event` (SACM 2.3 §12.7, §12.9)
+    /// differs on each side; `None` is no date.
     ///
     /// Dates are held as written (D-DATE) and compared exactly: `2024-03-01`
-    /// and `2024-03-01 ` differ, and so do no date and `""`.
+    /// and `2024-03-01 ` differ, and so do no date and `""`. See
+    /// [`SacmElement::date`](crate::model::SacmElement::date).
     Date {
         /// The element's id.
         id: ElementId,
@@ -716,10 +748,11 @@ pub enum Difference {
         /// The date in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// The `location` of a `Resource` (SACM 2.3 §12.10,
-    /// [`SacmElement::location`](crate::model::SacmElement::location))
-    /// differs on each side; `None` is no location. Compared as
-    /// [`Content`](Self::Content) is.
+    /// The `location` of a `Resource` (SACM 2.3 §12.10) differs on each side;
+    /// `None` is no location.
+    ///
+    /// Compared as [`Content`](Self::Content) is. See
+    /// [`SacmElement::location`](crate::model::SacmElement::location).
     Location {
         /// The element's id.
         id: ElementId,
@@ -728,9 +761,10 @@ pub enum Difference {
         /// The location in the right document, or `None` when it has none.
         right: Option<MultiLangString>,
     },
-    /// The `xmi:id` of the element's `location`
-    /// ([`SacmElement::location_id`](crate::model::SacmElement::location_id))
-    /// differs on each side; `None` is a location without an id, or none.
+    /// The `xmi:id` of the element's `location` differs on each side; `None`
+    /// is a location without an id, or none.
+    ///
+    /// See [`SacmElement::location_id`](crate::model::SacmElement::location_id).
     LocationId {
         /// The element's id.
         id: ElementId,
@@ -739,10 +773,11 @@ pub enum Difference {
         /// The location's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// The `xmi:id`s of the values of the element's `location`
-    /// ([`SacmElement::location_value_ids`](crate::model::SacmElement::location_value_ids)),
-    /// by position, differ on each side. Compared as
-    /// [`ContentValueIds`](Self::ContentValueIds) are.
+    /// The `xmi:id`s of the values of the element's `location`, by position,
+    /// differ on each side.
+    ///
+    /// Compared as [`ContentValueIds`](Self::ContentValueIds) are. See
+    /// [`SacmElement::location_value_ids`](crate::model::SacmElement::location_value_ids).
     LocationValueIds {
         /// The element's id.
         id: ElementId,
@@ -751,10 +786,11 @@ pub enum Difference {
         /// The value ids in the right document: one per value.
         right: Vec<Option<ElementId>>,
     },
-    /// The `startTime` of an `Activity` (SACM 2.3 §12.11,
-    /// [`SacmElement::start_time`](crate::model::SacmElement::start_time))
-    /// differs on each side; `None` is none. Compared exactly, as
-    /// [`Date`](Self::Date) is.
+    /// The `startTime` of an `Activity` (SACM 2.3 §12.11) differs on each
+    /// side; `None` is none.
+    ///
+    /// Compared exactly, as [`Date`](Self::Date) is. See
+    /// [`SacmElement::start_time`](crate::model::SacmElement::start_time).
     StartTime {
         /// The element's id.
         id: ElementId,
@@ -763,10 +799,11 @@ pub enum Difference {
         /// The start time in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// The `endTime` of an `Activity` (SACM 2.3 §12.11,
-    /// [`SacmElement::end_time`](crate::model::SacmElement::end_time))
-    /// differs on each side; `None` is none. Compared exactly, as
-    /// [`Date`](Self::Date) is.
+    /// The `endTime` of an `Activity` (SACM 2.3 §12.11) differs on each side;
+    /// `None` is none.
+    ///
+    /// Compared exactly, as [`Date`](Self::Date) is. See
+    /// [`SacmElement::end_time`](crate::model::SacmElement::end_time).
     EndTime {
         /// The element's id.
         id: ElementId,
@@ -775,10 +812,11 @@ pub enum Difference {
         /// The end time in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// The `value` of a Term or an Expression (SACM 2.3 §10.9,
-    /// [`SacmElement::value`](crate::model::SacmElement::value)) differs on
-    /// each side; `None` is no value. Compared exactly, as
-    /// [`Version`](Self::Version) is.
+    /// The `value` of a Term or an Expression (SACM 2.3 §10.9) differs on
+    /// each side; `None` is no value.
+    ///
+    /// Compared exactly, as [`Version`](Self::Version) is. See
+    /// [`SacmElement::value`](crate::model::SacmElement::value).
     ///
     /// ```
     /// use sacm::compare::Difference;
@@ -802,9 +840,11 @@ pub enum Difference {
         /// The value in the right document, or `None` when it has none.
         right: Option<String>,
     },
-    /// A Term's `externalReference` (SACM 2.3 §10.11,
-    /// [`SacmElement::external_reference`](crate::model::SacmElement::external_reference))
-    /// differs on each side; `None` is none. Compared exactly.
+    /// A Term's `externalReference` (SACM 2.3 §10.11) differs on each side;
+    /// `None` is none.
+    ///
+    /// Compared exactly. See
+    /// [`SacmElement::external_reference`](crate::model::SacmElement::external_reference).
     ExternalReference {
         /// The Term's id.
         id: ElementId,
@@ -817,9 +857,8 @@ pub enum Difference {
     /// on each side.
     ///
     /// `None` means the kind on that side is not an Assertion (an Assertion
-    /// is a Claim or one of the five asserted-relationship kinds). So a
-    /// `None` side always
-    /// comes with a [`Kind`](Self::Kind) difference for the same id.
+    /// is a Claim or one of the five asserted-relationship kinds). So a `None`
+    /// side always comes with a [`Kind`](Self::Kind) difference for the same id.
     AssertionDeclaration {
         /// The element's id.
         id: ElementId,
@@ -848,52 +887,64 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The XMI metadata of the element, or of its name, texts or values,
-    /// differs, or one side holds none (SACM23-XMI-019, ADR 0042); compared
-    /// exactly and in order, as [`PreservedContent`](Self::PreservedContent)
-    /// is: `xmi:uuid`, `xmi:label`, the XSI schema locations and the
-    /// `xmi:Extension`s, with where each stands among the element's
-    /// children.
+    /// differs, or one side holds none (SACM23-XMI-019, ADR 0042).
+    ///
+    /// Compared exactly and in order, as
+    /// [`PreservedContent`](Self::PreservedContent) is: `xmi:uuid`,
+    /// `xmi:label`, the XSI schema locations and the `xmi:Extension`s, with
+    /// where each stands among the element's children.
     Metadata {
         /// The element's id.
         id: ElementId,
     },
-    /// The element's preserved content, what [`xmi::read`](crate::xmi::read)
-    /// kept as written instead of read, because it is not SACM 2.3 where it
-    /// stands or, in tolerant mode, because a strict read refuses it, differs
-    /// on each side (LIB-COMPAT-003, ADR 0033, ADR 0035), or one side holds
-    /// none.
+    /// The element's preserved content differs on each side, or one side
+    /// holds none (LIB-COMPAT-003, ADR 0033, ADR 0035).
     ///
-    /// It is compared exactly and in order: namespace URIs, prefixes, local
-    /// names, attribute values and order, text, where each child stands
-    /// among the element's children, and the class of a declared subclass,
-    /// its prefix included (LIB-COMPAT-017). Comments and processing instructions
-    /// are not held, so they never differ.
+    /// - **What it is.** What [`xmi::read`](crate::xmi::read) kept as written
+    ///   instead of read: content that is not SACM 2.3 where it stands or, in
+    ///   tolerant mode, that a strict read refuses.
+    /// - **Compared exactly and in order.** Namespace URIs, prefixes, local
+    ///   names, attribute values and order, text, and where each child stands
+    ///   among the element's children.
+    /// - **A declared subclass.** Its class is compared too, its prefix
+    ///   included (LIB-COMPAT-017).
+    /// - **Never differ.** Comments and processing instructions, which are not
+    ///   held.
     PreservedContent {
         /// The element's id.
         id: ElementId,
     },
     /// The XMI metadata outside every element differs on each side, or one
-    /// side holds none (SACM23-XMI-019, ADR 0042): the metadata attributes of
-    /// the `xmi:XMI` element, such as its `xmi:uuid`, and the XMI elements
-    /// under it, such as an `xmi:Documentation`, with where each stands
-    /// among the roots. Compared as [`Metadata`](Self::Metadata) is.
-    /// [`element_id`](Difference::element_id) is `None`: no element holds it.
+    /// side holds none (SACM23-XMI-019, ADR 0042).
+    ///
+    /// - **What it is.** The metadata attributes of the `xmi:XMI` element,
+    ///   such as its `xmi:uuid`, and the XMI elements under it, such as an
+    ///   `xmi:Documentation`, with where each stands among the roots.
+    /// - **Compared** as [`Metadata`](Self::Metadata) is.
+    /// - **No element holds it,** so [`element_id`](Difference::element_id)
+    ///   is `None`.
     DocumentMetadata,
     /// The preserved content outside every element differs on each side, or
-    /// one side holds none (ADR 0035 D3): what [`xmi::read`](crate::xmi::read)
-    /// kept of the `xmi:XMI` element besides its roots and its XMI metadata,
-    /// such as a vendor attribute on it.
+    /// one side holds none (ADR 0035 D3).
     ///
-    /// It is compared as [`PreservedContent`](Self::PreservedContent) is,
-    /// with where each child stands among the roots.
-    /// [`element_id`](Difference::element_id) is `None`: no element holds it.
+    /// - **What it is.** What [`xmi::read`](crate::xmi::read) kept of the
+    ///   `xmi:XMI` element besides its roots and its XMI metadata, such as a
+    ///   vendor attribute on it.
+    /// - **Compared** as [`PreservedContent`](Self::PreservedContent) is, with
+    ///   where each child stands among the roots.
+    /// - **No element holds it,** so [`element_id`](Difference::element_id)
+    ///   is `None`.
     DocumentPreservedContent,
 }
 
 impl Difference {
     /// The element the difference is about: the parent for
-    /// [`ChildOrder`](Self::ChildOrder), and `None` for
-    /// [`RootOrder`](Self::RootOrder), which is about the document.
+    /// [`ChildOrder`](Self::ChildOrder).
+    ///
+    /// `None` for the three about the document:
+    /// [`RootOrder`](Self::RootOrder),
+    /// [`DocumentMetadata`](Self::DocumentMetadata) and
+    /// [`DocumentPreservedContent`](Self::DocumentPreservedContent).
     ///
     /// ```
     /// use sacm::compare::Difference;
@@ -1437,24 +1488,25 @@ impl fmt::Display for Declaration {
 /// Every difference in SACM content between `left` and `right`, in a fixed
 /// order; an empty result means the documents are equal.
 ///
-/// Elements are matched by id across the whole document. For an element both
-/// documents hold, its kind, parent, `gid`, `isCitation`, `isAbstract`,
-/// `isCounter`, `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
-/// `source`, `target`, `structure`, `referencedArtifactElement`, an
-/// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
-/// `artifactElement`, name, its name's `xmi:id`, its
-/// `content` and `key` with their ids, `version`, `date`, `location` with its
-/// ids, `startTime`, `endTime`, `assertionDeclaration`, the
-/// relative order of its children and its preserved content, exactly
-/// (ADR 0033), are compared, even when its kind differs.
-/// The relative order of the roots is compared too. The per-kind counters
-/// that generate ids are not compared.
+/// - **Matched by id.** Elements are matched across the whole document.
+/// - **What is compared.** The [module docs](crate::compare#what-is-compared)
+///   list it. Every feature of an element both documents hold is compared,
+///   exactly, even when its kind differs.
+/// - **Not compared.** The per-kind counters that generate ids.
+/// - **Swapping the arguments** gives the same differences with left and
+///   right swapped, though possibly in another order.
+/// - **Safe on deep documents.** The comparison does not recurse, and takes
+///   time linear in the number of elements.
+///
+/// # Comparing without order
 ///
 /// Order is compared because equal documents must write equal bytes, though
-/// SACM 2.3 orders no composition and no reference end. To compare without
-/// order, drop the two order variants, and compare the multi-valued ends
-/// sorted (the [module example](crate::compare)
-/// shows two documents that differ only in order):
+/// SACM 2.3 orders no composition and no reference end.
+///
+/// To compare without it, drop the two order variants, and compare the
+/// multi-valued ends sorted. The
+/// [module example](crate::compare#comparing-without-order) shows two
+/// documents that differ only in order.
 ///
 /// ```
 /// # use sacm::compare::{Difference, semantic_compare};
@@ -1480,55 +1532,33 @@ impl fmt::Display for Declaration {
 /// # assert!(same_ignoring_order);
 /// ```
 ///
-/// The order of the result:
-/// 1. [`Difference::RootOrder`], then [`Difference::DocumentMetadata`],
-///    then [`Difference::DocumentPreservedContent`];
-/// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
-///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
-///    [`Gid`](Difference::Gid), [`IsCitation`](Difference::IsCitation),
-///    [`IsAbstract`](Difference::IsAbstract),
-///    [`IsCounter`](Difference::IsCounter),
-///    [`CitedElement`](Difference::CitedElement),
-///    [`AbstractForm`](Difference::AbstractForm),
-///    [`MetaClaims`](Difference::MetaClaims),
-///    [`Reasoning`](Difference::Reasoning), [`Sources`](Difference::Sources),
-///    [`Target`](Difference::Target), [`Structure`](Difference::Structure),
-///    [`ReferencedArtifactElements`](Difference::ReferencedArtifactElements),
-///    [`GroupMembers`](Difference::GroupMembers),
-///    [`ArtifactGroupMembers`](Difference::ArtifactGroupMembers),
-///    [`ArtifactSources`](Difference::ArtifactSources),
-///    [`ArtifactTargets`](Difference::ArtifactTargets),
-///    [`Categories`](Difference::Categories),
-///    [`ExpressionElements`](Difference::ExpressionElements),
-///    [`Origin`](Difference::Origin),
-///    [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers),
-///    [`Interfaces`](Difference::Interfaces),
-///    [`Implements`](Difference::Implements),
-///    [`ParticipantPackages`](Difference::ParticipantPackages),
-///    [`Hrefs`](Difference::Hrefs), one per end in [`ReferenceEnd::ALL`]
-///    order, [`Proxies`](Difference::Proxies), [`Name`](Difference::Name),
-///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
-///    [`ContentId`](Difference::ContentId),
-///    [`ContentValueIds`](Difference::ContentValueIds),
-///    [`Key`](Difference::Key), [`KeyId`](Difference::KeyId),
-///    [`KeyValueIds`](Difference::KeyValueIds),
-///    [`Version`](Difference::Version), [`Date`](Difference::Date),
-///    [`Location`](Difference::Location),
-///    [`LocationId`](Difference::LocationId),
-///    [`LocationValueIds`](Difference::LocationValueIds),
-///    [`StartTime`](Difference::StartTime), [`EndTime`](Difference::EndTime),
-///    [`Value`](Difference::Value),
-///    [`ExternalReference`](Difference::ExternalReference),
-///    [`AssertionDeclaration`](Difference::AssertionDeclaration),
-///    [`ChildOrder`](Difference::ChildOrder),
-///    [`Metadata`](Difference::Metadata) and
-///    [`PreservedContent`](Difference::PreservedContent), in that order;
-/// 3. [`Difference::RightOnly`] for each element only `right` holds, in
-///    `right`'s pre-order.
+/// # Order of the result
 ///
-/// Swapping the arguments gives the same differences with left and right
-/// swapped, though possibly in another order. The comparison does not recurse and takes time linear in the
-/// number of elements, so it is safe on arbitrarily deep documents.
+/// 1. **The document.** [`Difference::RootOrder`], then
+///    [`Difference::DocumentMetadata`], then
+///    [`Difference::DocumentPreservedContent`].
+/// 2. **Each element of `left`,** in pre-order. [`Difference::LeftOnly`], or
+///    else its differences in the order of the table below.
+/// 3. **Each element only `right` holds,** in `right`'s pre-order.
+///    [`Difference::RightOnly`].
+///
+/// The differences of one element, reading the rows top to bottom and each
+/// row left to right:
+///
+/// | Group | Variants, in order |
+/// |---|---|
+/// | Identity and place | [`Kind`](Difference::Kind), [`Parent`](Difference::Parent), [`Gid`](Difference::Gid) |
+/// | Flags | [`IsCitation`](Difference::IsCitation), [`IsAbstract`](Difference::IsAbstract), [`IsCounter`](Difference::IsCounter) |
+/// | `SACMElement` references | [`CitedElement`](Difference::CitedElement), [`AbstractForm`](Difference::AbstractForm) |
+/// | Argumentation references | [`MetaClaims`](Difference::MetaClaims), [`Reasoning`](Difference::Reasoning), [`Sources`](Difference::Sources), [`Target`](Difference::Target), [`Structure`](Difference::Structure), [`ReferencedArtifactElements`](Difference::ReferencedArtifactElements), [`GroupMembers`](Difference::GroupMembers) |
+/// | Artifact references | [`ArtifactGroupMembers`](Difference::ArtifactGroupMembers), [`ArtifactSources`](Difference::ArtifactSources), [`ArtifactTargets`](Difference::ArtifactTargets) |
+/// | Terminology references | [`Categories`](Difference::Categories), [`ExpressionElements`](Difference::ExpressionElements), [`Origin`](Difference::Origin), [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers) |
+/// | Package references | [`Interfaces`](Difference::Interfaces), [`Implements`](Difference::Implements), [`ParticipantPackages`](Difference::ParticipantPackages) |
+/// | Cross-document | [`Hrefs`](Difference::Hrefs), one per end in [`ReferenceEnd::ALL`] order, then [`Proxies`](Difference::Proxies) |
+/// | Name and texts | [`Name`](Difference::Name), [`NameId`](Difference::NameId), [`Content`](Difference::Content), [`ContentId`](Difference::ContentId), [`ContentValueIds`](Difference::ContentValueIds), [`Key`](Difference::Key), [`KeyId`](Difference::KeyId), [`KeyValueIds`](Difference::KeyValueIds) |
+/// | Artifact values | [`Version`](Difference::Version), [`Date`](Difference::Date), [`Location`](Difference::Location), [`LocationId`](Difference::LocationId), [`LocationValueIds`](Difference::LocationValueIds), [`StartTime`](Difference::StartTime), [`EndTime`](Difference::EndTime) |
+/// | Terminology values | [`Value`](Difference::Value), [`ExternalReference`](Difference::ExternalReference) |
+/// | Declaration, order and the rest | [`AssertionDeclaration`](Difference::AssertionDeclaration), [`ChildOrder`](Difference::ChildOrder), [`Metadata`](Difference::Metadata), [`PreservedContent`](Difference::PreservedContent) |
 ///
 /// # Examples
 ///
@@ -1563,9 +1593,11 @@ pub fn semantic_compare(left: &Document, right: &Document) -> Vec<Difference> {
     differences
 }
 
-/// The ids that differ between two documents, from [`changes`]: what a
-/// [`BatchMutation`](crate::edit::BatchMutation)'s net lists say about a
-/// batch, for any two documents, such as before and after restoring a file.
+/// The ids that differ between two documents, as [`changes`] finds them.
+///
+/// It says, for any two documents, such as before and after restoring a
+/// file, what a [`BatchMutation`](crate::edit::BatchMutation)'s net lists
+/// say about a batch.
 ///
 /// - [`created_ids`](Self::created_ids): only `after` holds the id.
 /// - [`changed_ids`](Self::changed_ids): both hold it, and
@@ -1616,9 +1648,10 @@ pub struct Changes {
 
 impl Changes {
     /// The ids only the document after holds, in its
-    /// [pre-order](Document::elements). Documents keep no creation order, so
-    /// unlike a batch's this list is not in the order the elements were
-    /// created.
+    /// [pre-order](Document::elements).
+    ///
+    /// Documents keep no creation order, so unlike a batch's this list is not
+    /// in the order the elements were created.
     #[must_use]
     pub fn created_ids(&self) -> &[ElementId] {
         &self.created_ids
@@ -1638,16 +1671,18 @@ impl Changes {
     }
 
     /// The ids only the document before holds, in its
-    /// [pre-order](Document::elements). An element written under a new id is
-    /// one deletion and one creation.
+    /// [pre-order](Document::elements).
+    ///
+    /// An element written under a new id is one deletion and one creation.
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted_ids
     }
 
     /// Whether the document itself differs: the relative order of the roots
-    /// both hold, or the XMI metadata or preserved content outside every
-    /// element. Adding or removing a root is not a change of the root order.
+    /// both hold, or the XMI metadata or preserved content outside every element.
+    ///
+    /// Adding or removing a root is not a change of the root order.
     #[must_use]
     pub fn document_changed(&self) -> bool {
         self.document_changed

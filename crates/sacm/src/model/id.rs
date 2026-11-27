@@ -3,31 +3,27 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-/// The identifier of an element, its `xmi:id` or an id generated for it,
-/// and also the type of every other `xmi:id` a document holds: XMI has one
-/// id space (XMI 2.5.1 §7.6.1).
+/// The identifier of an element: its `xmi:id`, or an id generated for it. Every other `xmi:id`
+/// a document holds has this type too: XMI has one id space (XMI 2.5.1 §7.6.1).
 ///
-/// The `xmi:id`s of an element's parts are `ElementId`s too: those of its
-/// name ([`name_id`](crate::model::SacmElement::name_id)), content
-/// ([`content_id`](crate::model::SacmElement::content_id)), key
-/// ([`key_id`](crate::model::SacmElement::key_id)) and location
-/// ([`location_id`](crate::model::SacmElement::location_id)), and of each of
-/// their values
-/// ([`content_value_ids`](crate::model::SacmElement::content_value_ids) and
-/// the like). A part is no element: [`Document::get`](crate::model::Document::get)
-/// finds none of them, while
-/// [`Document::is_id_in_use`](crate::model::Document::is_id_in_use) covers
-/// them all, so an edit never gives an element the id of a part.
-///
-/// An `ElementId` keeps its value exactly as given. It is not trimmed, case
-/// folded or otherwise normalised. An id read from a file is its `xsd:ID`
-/// value: [`xmi::read`](crate::xmi::read) trims XML white space around an
-/// `NCName` and otherwise keeps the id as written, and
-/// [`xmi::write`](crate::xmi::write) writes it back as its `xsd:ID` value.
-/// Equality, ordering and hashing are those of the
-/// string, and an `ElementId` borrows as a [`str`], so maps and sets keyed by
-/// `ElementId` can be searched with a `&str`. It compares equal to a `str`
-/// with the same value, either way round: `id == "c1"`.
+/// - **Part ids.** The `xmi:id`s of an element's parts are `ElementId`s too: those of its
+///   name ([`name_id`](crate::model::SacmElement::name_id)) and content
+///   ([`content_id`](crate::model::SacmElement::content_id)).
+/// - **Also** those of its key ([`key_id`](crate::model::SacmElement::key_id)) and location
+///   ([`location_id`](crate::model::SacmElement::location_id)).
+/// - **Value ids.** So is the `xmi:id` of each value of those parts
+///   ([`content_value_ids`](crate::model::SacmElement::content_value_ids) and the like).
+/// - **A part is no element.** [`Document::get`](crate::model::Document::get) finds none of
+///   them. [`Document::is_id_in_use`](crate::model::Document::is_id_in_use) covers them all,
+///   so an edit never gives an element the id of a part.
+/// - **As given.** The value is not trimmed, case folded or otherwise normalised.
+/// - **From a file.** An id read is its `xsd:ID` value: [`xmi::read`](crate::xmi::read) trims
+///   XML white space around an `NCName` and otherwise keeps the id as written;
+///   [`xmi::write`](crate::xmi::write) writes it back as its `xsd:ID` value.
+/// - **Borrows as a [`str`].** Equality, ordering and hashing are those of the string, so
+///   maps and sets keyed by `ElementId` can be searched with a `&str`.
+/// - **Compares with `str`.** It equals a `str` with the same value, either way round:
+///   `id == "c1"`.
 ///
 /// # Examples
 ///
