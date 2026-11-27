@@ -19,9 +19,9 @@
 //!   the `Err` of a `Result`. Diagnostics come back alongside a result that succeeded.
 //! - **Who returns them.** [`validation::validate`](crate::validation::validate) and
 //!   [`xmi::read`](crate::xmi::read), sorted by [`Diagnostic`]'s order.
-//! - **Not a write.** A strict [`xmi::write`](crate::xmi::write) never runs `validate`.
-//!   It refuses a document that holds preserved content, and output that would not be
-//!   schema-valid, with the schema errors in
+//! - **`xmi::write` returns none.** A strict [`xmi::write`](crate::xmi::write) never runs
+//!   `validate`. It refuses a document that holds preserved content, and output that would
+//!   not be schema-valid, with the schema errors in
 //!   [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
 //! - **What one carries.** Besides its code and severity: the matrix row and clause it
 //!   enforces, the ids of the affected elements, an optional [`SourceLocation`], a

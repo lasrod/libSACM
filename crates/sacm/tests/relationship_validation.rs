@@ -7,7 +7,7 @@
 //! `source`, and each with no `target`, as one SACM-MULT-001 Error per
 //! missing end: requirement SACM23-VAL-005, clause `11.13`, affected
 //! `[relationship]`, no location, the message naming the end. A strict write
-//! refuses such a relationship; a tolerant write keeps it as read.
+//! keeps such a relationship, and `validate` reports it.
 //!
 //! Documents are read from inline XMI with every `ModelElement` named, so
 //! that no other rule reports, or built through the `test-support` seam for

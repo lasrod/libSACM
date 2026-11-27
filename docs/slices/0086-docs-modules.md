@@ -38,3 +38,7 @@ decisions.md is settled policy: restructured only, every decision keeps its mean
   code or template changed, and the catalog regenerates unchanged. Five stale claims
   corrected (two said a strict write refuses a validation Error). Line counts rose where
   prose became tables. Rows `implemented`.
+- 2026-11-27 verification: LIB-DOC-013 PASS; LIB-DOC-011 FAIL on three false claims (values
+  held as written, nothing dropped, the Refusals link). Fix round: the verifier's texts, four
+  cuts in `edit` and `xmi`, two callouts in docs/sacm, a false comment in
+  relationship_validation.rs; the moves of reference detail logged for LIB-DOC-012.

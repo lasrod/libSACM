@@ -26,15 +26,18 @@ fails when it is stale.
   `{"name", "kind"}` with the kind `"text"`, `"count"` or `"prose"`, in the template's
   order, and the English with its placeholders. The English is not promised.
 
-> **Status.** The codes below are adopted from the assurance-forge C++ SACM library (same
-> author), so that the two implementations report the same finding with the same code.
-> Tool-specific wording from that project ("Assurance Forge", ODE containers) has been kept
-> where it explains the code. A row is *live* when its Meaning names the `Code::NAME`
-> constant whose text is the row's code: the crate emits that code, and the row says which
-> matrix rows emit it. A row naming no constant is *reserved*: the crate does not emit it
-> yet. Where a live row describes more than the crate emits, it says which part is emitted
-> and that the rest is reserved. A test (LIB-DIAG-002) checks that the live rows are
-> exactly the crate's `Code` constants.
+> **Status.**
+>
+> - **Adopted codes.** The codes come from the assurance-forge C++ SACM library (same
+>   author), so that the two implementations report a finding with the same code. Wording
+>   from that project ("Assurance Forge", ODE containers) is kept where it explains a code.
+> - **Live rows.** A row is *live* when its Meaning names the `Code::NAME` constant whose
+>   text is its code: the crate emits that code, and the row says which matrix rows emit it.
+> - **Reserved rows.** A row naming no constant is *reserved*: the crate does not emit it yet.
+>   A live row that describes more than the crate emits says which part is emitted and that
+>   the rest is reserved.
+> - **Checked.** A test (LIB-DIAG-002) checks that the live rows are exactly the crate's
+>   `Code` constants.
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it; then run `cargo xtask catalog`.

@@ -2,10 +2,10 @@
 //!
 //! # Entry points
 //!
-//! | Function | Takes | Returns |
-//! |---|---|---|
-//! | [`read`] | the bytes of an XMI document, and [`ReadOptions`] | a [`ReadOutput`] (the [`Document`] and its diagnostics) or a [`ReadError`] |
-//! | [`write`](fn@write) | a [`Document`], and [`WriteOptions`] | its XMI text or a [`WriteError`] |
+//! | Function | What it does |
+//! |---|---|
+//! | [`read`] | Reads the bytes of an XMI document into a [`Document`], with diagnostics of what it found. |
+//! | [`write`](fn@write) | Writes a [`Document`] as XMI text. |
 //!
 //! # Rules
 //!
@@ -13,12 +13,15 @@
 //! - **What is read and written.** The four package kinds, as roots (bare or inside an
 //!   `xmi:XMI` element) or nested, with their elements, interfaces and bindings.
 //!   [`read`] lists every role and feature.
-//! - **Nothing is dropped.** Content that is not SACM 2.3 where it stands, such as a
-//!   vendor attribute or child element, is kept as written, with SACM-XMI-003; see
-//!   [Preserved content](fn@read#preserved-content).
+//! - **No model content is dropped.** Content that is not SACM 2.3 where it stands, such
+//!   as a vendor attribute or child element, is kept as written, with SACM-XMI-003; see
+//!   [Preserved content](fn@read#preserved-content). Comments and processing
+//!   instructions are not kept.
 //! - **A reference is the id it names.** One that names no element is kept; see
 //!   [References](fn@read#references).
-//! - **Values are held as written,** the date-typed ones included (D-DATE).
+//! - **String values are held as written,** the date-typed ones included (D-DATE). A flag
+//!   or an `assertionDeclaration` is read as its value: `isCitation="1"` is written as
+//!   `isCitation="true"`.
 //! - **An id is generated** for an element with no `xmi:id`.
 //! - **Deterministic output.** `write` writes every element and the preserved content
 //!   `read` kept, in document order, in one form.
@@ -105,28 +108,6 @@
 //! let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
 //! let ids: Vec<_> = back.elements().map(|element| element.id().as_str()).collect();
 //! assert_eq!(ids, ["case", "arguments", "c1"]);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
-//!
-//! XMI metadata, such as an element's `xmi:uuid`, is read and written back
-//! as it stands (SACM23-XMI-019):
-//!
-//! ```
-//! use sacm::xmi::{self, ReadOptions, WriteOptions};
-//!
-//! let bytes = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
-//!     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" xmi:uuid="urn:uuid:1">
-//!   <name content="Arguments"/>
-//! </sacm:ArgumentPackage>"#;
-//! let doc = xmi::read(bytes, &ReadOptions::default())?.into_document();
-//! for element in doc.elements() {
-//!     if let Some(uuid) = element.uuid() {
-//!         println!("{} is {uuid}", element.id());
-//!     }
-//! }
-//! // Strict, the default: the metadata is written.
-//! let text = xmi::write(&doc, &WriteOptions::default())?;
-//! assert!(text.contains(r#"xmi:uuid="urn:uuid:1""#));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!

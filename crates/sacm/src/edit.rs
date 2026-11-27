@@ -28,8 +28,9 @@
 //!   of the document, of a kind its end admits.
 //! - **Content is not refused.** An empty name or a duplicate gid is accepted;
 //!   [`validation::validate`](crate::validation::validate) reports it (D-VAL-LAYER).
-//! - **Refusals are ordered.** The first check that fails is the result;
-//!   [Refusals](#refusals) lists the checks of each operation.
+//! - **Refusals are ordered.** The first check that fails is the result.
+//!   [Refusals](#refusals) lists the checks of each operation, and
+//!   [Moving and copying elements](#moving-and-copying-elements) those of a move and a copy.
 //!
 //! # Operations that create an element
 //!
@@ -247,8 +248,7 @@
 //! | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
 //! | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
 //!
-//! An empty list copies nothing, once the parent is found. A typed end never
-//! holds an id with white space, so a copy is never refused for one.
+//! An empty list copies nothing, once the parent is found.
 //!
 //! # Undo and redo
 //!
@@ -337,25 +337,6 @@
 //! edit::apply(&mut doc, SetName::new("p", LangString::new("Brakes")))?;
 //! history.push(before);
 //! assert!(!history.redo(&mut doc));
-//!
-//! // A limit of 2 keeps only the last two steps.
-//! let mut doc = Document::new();
-//! let mut two = History { undo: VecDeque::new(), redo: Vec::new(), limit: 2 };
-//! let mut states = Vec::new();
-//! for name in ["A", "B", "C"] {
-//!     let before = doc.clone();
-//!     edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new(name)))?;
-//!     states.push(before.clone());
-//!     two.push(before);
-//! }
-//! assert!(two.undo(&mut doc) && two.undo(&mut doc));
-//! assert!(doc == states[1]); // the first step can no longer be undone
-//! assert!(!two.undo(&mut doc));
-//!
-//! // A limit of 0 records nothing.
-//! let mut none = History { undo: VecDeque::new(), redo: Vec::new(), limit: 0 };
-//! none.push(doc.clone());
-//! assert!(!none.undo(&mut doc));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -464,13 +445,6 @@
 //!
 //! [`apply_preview`] refuses a preview taken at another revision of the
 //! document as [`EditError::PreviewExpired`] (SACM-CMD-003).
-//!
-//! # Writing and reading back
-//!
-//! A document built with [`apply`] validates with
-//! [`validation::validate`](crate::validation::validate) and writes with
-//! [`xmi::write`](crate::xmi::write). What is written reads back with
-//! [`xmi::read`](crate::xmi::read) to the same ids, kinds, names, parents and order.
 //!
 //! # Examples
 //!

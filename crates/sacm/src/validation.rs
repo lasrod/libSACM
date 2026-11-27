@@ -15,9 +15,10 @@
 //! - **With reading.** To report reading and validation together, copy
 //!   [`ReadOutput::diagnostics`](crate::xmi::ReadOutput::diagnostics) into a `Vec`,
 //!   extend it with the result and sort it again, as in the [example](#examples).
-//! - **What the reader reports itself.** An element without an `xmi:id` (SACM-XMI-004),
-//!   an `xmi:id` read trimmed (SACM-ID-004), an `xsi:type` (SACM-XMI-010) and an
-//!   `xmi:version` (SACM-XMI-011). A strict read refuses what it cannot represent.
+//! - **The reader reports its own findings,** which `validate` does not repeat, such as an
+//!   element without an `xmi:id` (SACM-XMI-004), an `xmi:id` read trimmed (SACM-ID-004), an
+//!   `xsi:type` (SACM-XMI-010) and an `xmi:version` (SACM-XMI-011); see
+//!   [Diagnostics](crate::xmi::read#diagnostics). A strict read refuses what it cannot represent.
 //!
 //! # Checked in this release
 //!
