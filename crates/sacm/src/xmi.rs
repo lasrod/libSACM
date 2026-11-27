@@ -2650,8 +2650,8 @@ impl std::error::Error for ReadError {}
 /// by any edits [`edit::apply`](crate::edit::apply) accepted.
 ///
 /// - **It writes strictly,** with the two exceptions below. No edit stores text
-///   XML 1.0 cannot represent or an id that is no `NCName`, and none makes a
-///   reference or XMI metadata name an id the document lacks (LIB-EDIT-026).
+///   XML 1.0 cannot represent, only a copy stores an id that is no `NCName`, and
+///   none makes a reference or XMI metadata name an id the document lacks (LIB-EDIT-026).
 /// - **It reads back equal.** A strict read of the output gives a document `==`
 ///   to it, under [`Limits`] that admit the output.
 /// - **Exception: no root.** Edits that delete every root leave nothing to

@@ -116,7 +116,8 @@
 //!   id the document lacks; one read from a file stays until fixed.
 //! - **Savable.** No edit stores text XML 1.0 cannot represent. A document read and
 //!   edited writes in tolerant mode while it has a root, and in strict mode too if a
-//!   strict write accepted it before ([round trip](xmi::write#round-trip)).
+//!   strict write accepted it before, but for what a copy brings
+//!   ([round trip](xmi::write#round-trip)).
 //! - **Ask first.** [`edit::check`] says whether an operation would be accepted;
 //!   [`edit::preview`] says what it would do.
 //! - **Batches.** [`edit::batch`] and [`edit::apply_all`] apply several operations as one change.

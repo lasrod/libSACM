@@ -42,3 +42,5 @@ ADR 0042 amendment 3; D-VAL-LAYER.
   (M5: a document-level `xmi:idref` naming an id in a deleted element's own metadata). One
   lint-only test edit (`end: *end` to `end`). Full gate green. LIB-DOC-015's acceptance drops
   the freed-id exception. Row `implemented`.
+- 2026-11-28 verification: FAIL. No counterexample to the guarantee (800 seeds x 40 steps), but the text-set check over-refused (an `expression` held by the text being replaced counted), and nine mutants survived (V07, V19, V20, V21, V24, V24b, V24c, V26). Fix round: the code fix with accepted and still-refused cases, the nine cases, three wording fixes. Lesson: the slice log lists each mutant, not a total.
+- 2026-11-28 fix round: `check_text` counts an `expression` of the edited element only if the set keeps it; 7 accepted and 2 still-refused cases; V07, V19, V20, V21, V24, V24b, V24c, V26 and E4 (the name's expression) each killed by an added case; the wording fixes. Full gate green.

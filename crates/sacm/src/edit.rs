@@ -2571,7 +2571,8 @@ pub enum EditError {
     ///   its XMI metadata. A strict write would refuse the dangling reference.
     /// - **Every delete policy refuses it.** The policies decide only references to
     ///   deleted elements.
-    /// - **Fix.** Remove the reference first ([`RemoveReference`], [`SetReferences`]).
+    /// - **Fix.** Remove the reference first ([`RemoveReference`], [`SetReferences`]); for
+    ///   the end `expression`, set the name or text that holds it without it.
     ///
     /// ```
     /// use sacm::edit::{self, EditError, SetContent};

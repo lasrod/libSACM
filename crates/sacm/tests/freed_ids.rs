@@ -1112,6 +1112,80 @@ fn lib_edit_026_metadata_of_the_document_an_element_a_name_a_text_and_a_value_co
             "{ROW}: metadata naming an id of c1's metadata, {delete:?}"
         );
     }
+    metadata_naming_preserved_and_edited_ids();
+}
+
+/// A delete frees the ids of preserved content too, and a text set leaves
+/// the edited element's own metadata, its name's and its other texts'.
+fn metadata_naming_preserved_and_edited_ids() {
+    // c1 holds preserved content with the id px, which the document's
+    // metadata names.
+    let input = format!(
+        "<xmi:XMI{NS} xmlns:v=\"urn:example:v\"><xmi:Extension xmi:idref=\"px\"/>\
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"P\"/>{}{}</sacm:ArgumentPackage></xmi:XMI>",
+        claim("c1", "", "<v:x xmi:id=\"px\"/>"),
+        claim("c2", "", "")
+    );
+    let start = read_in("metadata naming preserved content", Mode::Tolerant, &input);
+    assert!(
+        start.has_preserved_content(),
+        "{ROW}: setup: no preserved content"
+    );
+    for delete in every_policy("c1")
+        .into_iter()
+        .map(|delete| delete.with_package_policy(PackageDeletePolicy::DeleteRecursively))
+    {
+        assert_eq!(
+            refused(&mut start.clone(), delete.clone()),
+            meta(None, "xmi:Extension", "xmi:idref", "px"),
+            "{ROW}: metadata naming preserved content, {delete:?}"
+        );
+    }
+    // The edited element's own metadata, its name's and its other texts'
+    // stay, and name the freed value.
+    let input = in_xmi(
+        "",
+        "",
+        &claim(
+            "c1",
+            "",
+            "<description xmi:id=\"d1\"><xmi:Extension xmi:idref=\"v2\"/><content>\
+             <value xmi:id=\"v1\" content=\"a\"/><value xmi:id=\"v2\" content=\"b\"/></content>\
+             </description>\
+             <taggedValue xmi:id=\"t1\"><key><value xmi:id=\"k1\" content=\"K\"/>\
+             <value xmi:id=\"k2\" content=\"L\"/></key>\
+             <content><xmi:Extension xmi:idref=\"k2\"/><value content=\"V\"/></content></taggedValue>",
+        ),
+    )
+    .replace(
+        "</xmi:XMI>",
+        "<sacm:ArtifactPackage xmi:id=\"e\"><name content=\"E\"/>\
+         <artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r1\">\
+         <name content=\"R1\"><xmi:Extension xmi:idref=\"lw\"/></name>\
+         <location><value xmi:id=\"lv\" content=\"u\"/><value xmi:id=\"lw\" content=\"w\"/></location>\
+         </artifactElement></sacm:ArtifactPackage></xmi:XMI>",
+    );
+    let start = writable("metadata of the edited element", &input);
+    for (operation, expected) in [
+        (
+            Operation::from(SetContent::new("d1", LangString::new("x"))),
+            meta(Some("d1"), "xmi:Extension", "xmi:idref", "v2"),
+        ),
+        (
+            SetLocation::new("r1", LangString::new("x")).into(),
+            meta(Some("r1"), "xmi:Extension", "xmi:idref", "lw"),
+        ),
+        (
+            SetKey::new("t1", LangString::new("K")).into(),
+            meta(Some("t1"), "xmi:Extension", "xmi:idref", "k2"),
+        ),
+    ] {
+        assert_eq!(
+            refused(&mut start.clone(), operation.clone()),
+            expected,
+            "{ROW}: metadata of the edited element, {operation:?}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1227,6 +1301,111 @@ fn lib_edit_026_what_goes_with_the_edit_or_named_nothing_before_does_not_refuse(
         );
         still_strict(&format!("the fixture, {operation:?}"), &doc);
     }
+    expressions_that_go_with_the_text();
+}
+
+/// An `ExpressionLangString` value with the id `id`, the content `content`
+/// and the expression `expression`, as written in a text.
+fn expression_value_xmi(id: &str, content: &str, expression: &str) -> String {
+    format!(
+        "<value xmi:type=\"sacm:ExpressionLangString\" xmi:id=\"{id}\" content=\"{content}\" \
+         expression=\"{expression}\"/>"
+    )
+}
+
+/// The `expression` of a value the set removes or replaces goes with it: it
+/// refuses nothing, while one the element still holds after the set does.
+fn expressions_that_go_with_the_text() {
+    let ev = expression_value_xmi;
+    let input = in_xmi(
+        "",
+        "",
+        &(claim(
+            "c1",
+            "",
+            &format!(
+                "<description xmi:id=\"d1\"><content>{}<value xmi:id=\"v2\" content=\"b\"/></content>\
+                 </description>\
+                 <taggedValue xmi:id=\"t1\"><key>{}<value xmi:id=\"k2\" content=\"L\"/></key>\
+                 <content><value content=\"V\"/></content></taggedValue>\
+                 <taggedValue xmi:id=\"t2\"><key><value content=\"T\"/></key>\
+                 <content>{}<value xmi:id=\"c2v\" content=\"b\"/></content></taggedValue>",
+                ev("v1", "a", "v2"),
+                ev("k1", "K", "k2"),
+                ev("c1v", "a", "c2v"),
+            ),
+        )),
+    );
+    let input = input.replace(
+        "</xmi:XMI>",
+        &format!(
+            "<sacm:ArtifactPackage xmi:id=\"e\"><name content=\"E\"/>\
+             <artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r1\"><name content=\"R1\"/>\
+             <location>{}</location></artifactElement></sacm:ArtifactPackage></xmi:XMI>",
+            ev("l1", "u", "l1")
+        ),
+    );
+    let start = writable("expressions naming ids of their own texts", &input);
+    for operation in [
+        Operation::from(SetContent::remove("d1")),
+        SetContent::new("d1", MultiLangString::default()).into(),
+        SetContent::new("d1", LangString::new("x")).into(),
+        SetKey::new("t1", LangString::new("K")).into(),
+        SetTaggedValue::new("c1", "T", LangString::new("x")).into(),
+        SetLocation::remove("r1").into(),
+        SetLocation::new("r1", MultiLangString::default()).into(),
+    ] {
+        let mut doc = start.clone();
+        accepted(&mut doc, operation.clone());
+        still_strict(&format!("expressions of the text, {operation:?}"), &doc);
+    }
+    // An expression the element still holds after the set refuses it: in
+    // the new value, or in another text.
+    assert_eq!(
+        refused(
+            &mut start.clone(),
+            SetContent::new("d1", LangString::new("x").with_expression("v2"))
+        ),
+        part("d1", "expression", "v2"),
+        "{ROW}: a new value naming the freed v2"
+    );
+    let input = in_xmi(
+        "",
+        "",
+        &claim(
+            "c1",
+            "",
+            &format!(
+                "<taggedValue xmi:id=\"t1\"><key>{}</key>\
+                 <content><value xmi:id=\"tv1\" content=\"a\"/><value xmi:id=\"tv2\" content=\"b\"/>\
+                 </content></taggedValue>",
+                ev("t1k", "S", "tv2")
+            ),
+        ),
+    );
+    let start = writable("a key naming a content value", &input);
+    assert_eq!(
+        refused(
+            &mut start.clone(),
+            SetContent::new("t1", LangString::new("a"))
+        ),
+        part("t1", "expression", "tv2"),
+        "{ROW}: the key naming the freed content value tv2"
+    );
+    // The name names its own location value lv, which the remove frees.
+    let input = format!(
+        "<sacm:ArtifactPackage{NS} xmi:id=\"e\"><name content=\"E\"/>\
+         <artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r1\">\
+         <name xmi:type=\"sacm:ExpressionLangString\" content=\"R1\" expression=\"lv\"/>\
+         <location><value xmi:id=\"lv\" content=\"u\"/></location></artifactElement>\
+         </sacm:ArtifactPackage>"
+    );
+    let start = writable("a name naming its location value", &input);
+    assert_eq!(
+        refused(&mut start.clone(), SetLocation::remove("r1")),
+        part("r1", "expression", "lv"),
+        "{ROW}: the name naming the freed location value lv"
+    );
 }
 
 #[test]
@@ -1463,6 +1642,63 @@ fn lib_edit_026_a_copy_refuses_metadata_naming_an_id_the_target_lacks() {
     );
     accepted(&mut target, copy_of(&source, &["s1"], "q"));
     still_strict("s1 into a target whose name has the id s2", &target);
+    copies_count_what_they_bring();
+}
+
+/// A copy's metadata may name the ids the copy brings: its metadata's, its
+/// parts' and its preserved content's; and every token of an `IDREFS` is
+/// checked.
+fn copies_count_what_they_bring() {
+    // s1's metadata names its own metadata id x1 and its name's id s1n.
+    let source = writable(
+        "a copy source naming its own ids",
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmi:id=\"sp\"><name content=\"S\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"s1\"><name xmi:id=\"s1n\" content=\"S1\"/>\
+             <xmi:Extension xmi:id=\"x1\"/><xmi:Extension xmi:idref=\"x1\"/>\
+             <xmi:Extension xmi:idref=\"s1n\"/></argumentElement></sacm:ArgumentPackage>"
+        ),
+    );
+    let mut target = copy_target(&[]);
+    accepted(&mut target, copy_of(&source, &["s1"], "q"));
+    still_strict("s1 naming its own metadata and name ids", &target);
+    // s1 holds preserved content with the id px, which its metadata names.
+    let source = read_in(
+        "a copy source naming its preserved content",
+        Mode::Tolerant,
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmlns:v=\"urn:example:v\" xmi:id=\"sp\"><name content=\"S\"/>{}\
+             </sacm:ArgumentPackage>",
+            claim(
+                "s1",
+                "",
+                "<v:x xmi:id=\"px\"/><xmi:Extension xmi:idref=\"px\"/>"
+            )
+        ),
+    );
+    assert!(
+        source.has_preserved_content(),
+        "{ROW}: setup: no preserved content"
+    );
+    accepted(&mut copy_target(&[]), copy_of(&source, &["s1"], "q"));
+    // Every token of an IDREFS is checked, not only the first.
+    let source = writable(
+        "a copy source with an IDREFS",
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmi:id=\"sp\"><name content=\"S\"/>{}{}</sacm:ArgumentPackage>",
+            claim(
+                "s3",
+                "",
+                "<xmi:Extension><xmi:Difference target=\"s3 s2\"/></xmi:Extension>"
+            ),
+            claim("s2", "", "")
+        ),
+    );
+    assert_eq!(
+        refused(&mut copy_target(&[]), copy_of(&source, &["s3"], "q")),
+        meta(Some("s3"), "xmi:Difference", "target", "s2"),
+        "{ROW}: s3 copied alone"
+    );
 }
 
 // ---------------------------------------------------------------------------

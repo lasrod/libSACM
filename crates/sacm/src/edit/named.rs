@@ -17,7 +17,8 @@ use std::ops::ControlFlow;
 use super::EditError;
 use super::plan::{Copied, Plan, Removal, Value};
 use crate::model::{
-    CapturedElement, Document, ElementId, Preserved, ReferenceEnd, SacmElement, Text, TextRole,
+    CapturedElement, Document, ElementId, LangString, Preserved, ReferenceEnd, SacmElement, Text,
+    TextRole,
 };
 use crate::validation::{Found, tokens, walk_document, walk_fragments};
 
@@ -52,7 +53,7 @@ fn check_delete(document: &Document, removal: &Removal) -> Result<(), EditError>
         .flat_map(|element| part_ids(*element))
         .map(ElementId::as_str)
         .collect();
-    first_referrer(document, &parts, |holder| !deleted.contains(holder))?;
+    first_referrer(document, &parts, |holder, _, _| !deleted.contains(holder))?;
     let freed: BTreeSet<&str> = elements
         .iter()
         .flat_map(|&element| {
@@ -77,7 +78,10 @@ fn check_text(
     role: TextRole,
     new: Option<&Text>,
 ) -> Result<(), EditError> {
-    let Some(held) = document.get(element).and_then(|found| found.text(role)) else {
+    let Some(target) = document.get(element) else {
+        return Ok(());
+    };
+    let Some(held) = target.text(role) else {
         return Ok(());
     };
     let kept: BTreeSet<&str> = new.into_iter().flat_map(text_ids).collect();
@@ -85,7 +89,26 @@ fn check_text(
     if freed.is_empty() {
         return Ok(());
     }
-    first_referrer(document, &freed, |_| true)?;
+    // The edited element's `expression`s as the set leaves them: its name's,
+    // its other texts', and the new text's. One of the text it replaces goes
+    // with it.
+    let expressions: BTreeSet<&str> = target
+        .name()
+        .into_iter()
+        .chain(TextRole::ALL.into_iter().flat_map(|other| {
+            let text = if other == role {
+                new
+            } else {
+                target.text(other)
+            };
+            text.into_iter().flat_map(|text| text.value().values())
+        }))
+        .filter_map(LangString::expression)
+        .map(ElementId::as_str)
+        .collect();
+    first_referrer(document, &freed, |holder, end, id| {
+        holder != element || end != ReferenceEnd::Expression || expressions.contains(id)
+    })?;
     first_metadata(document, &freed, |found| {
         if found.id() != element {
             return Some(found.metadata_parts().collect());
@@ -166,13 +189,14 @@ fn text_ids(text: &Text) -> impl Iterator<Item = &str> {
         .map(ElementId::as_str)
 }
 
-/// Refuses as [`EditError::PartReference`] the first reference end, of a
-/// holder `keeps`, that names an id of `freed`: by holder in pre-order, then
-/// by end in [`ReferenceEnd::ALL`] order, then by position.
+/// Refuses as [`EditError::PartReference`] the first reference that names an
+/// id of `freed` and that `keeps` (given its holder, end and id) counts: by
+/// holder in pre-order, then by end in [`ReferenceEnd::ALL`] order, then by
+/// position.
 fn first_referrer(
     document: &Document,
     freed: &BTreeSet<&str>,
-    keeps: impl Fn(&ElementId) -> bool,
+    keeps: impl Fn(&ElementId, ReferenceEnd, &str) -> bool,
 ) -> Result<(), EditError> {
     let referrers: Vec<_> = freed
         .iter()
@@ -182,7 +206,7 @@ fn first_referrer(
                 .into_iter()
                 .map(move |referrer| (referrer, *id))
         })
-        .filter(|(referrer, _)| keeps(referrer.holder().id()))
+        .filter(|(referrer, id)| keeps(referrer.holder().id(), referrer.end(), id))
         .collect();
     if referrers.is_empty() {
         return Ok(());
