@@ -1549,8 +1549,9 @@ const GOLDEN_JSON: [&str; 2] = [
 ];
 
 /// With `serde`, each refusal serializes as its sample, which reads back
-/// equal and is the last two of `edit-errors.json`; a wrong code and a
-/// missing `position` are refused.
+/// equal, and `edit-errors.json` holds the two, in order, from its first
+/// `UnrepresentableCharacter` sample; a wrong code and a missing `position`
+/// are refused.
 #[cfg(feature = "serde")]
 fn assert_json(refusals: &[EditError; 2]) {
     for (error, sample) in refusals.iter().zip(GOLDEN_JSON) {
@@ -1593,10 +1594,17 @@ fn assert_json(refusals: &[EditError; 2]) {
         .unwrap_or_else(|failure| panic!("{ROW}: setup: read {}: {failure}", path.display()));
     let samples: Vec<EditError> = serde_json::from_str(&golden)
         .unwrap_or_else(|failure| panic!("{ROW}: edit-errors.json does not read: {failure}"));
+    // The two are no longer the last (slice 0090 appends three).
+    let Some(first) = samples
+        .iter()
+        .position(|sample| unrepresentable(sample).is_some())
+    else {
+        panic!("{ROW}: edit-errors.json holds no UnrepresentableCharacter sample");
+    };
     assert_eq!(
-        samples.get(samples.len().saturating_sub(2)..),
+        samples.get(first..first + 2),
         Some(refusals.as_slice()),
-        "{ROW}: edit-errors.json does not end with the two refusals"
+        "{ROW}: edit-errors.json does not hold the two refusals, in order"
     );
 }
 

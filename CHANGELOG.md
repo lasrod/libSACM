@@ -32,6 +32,13 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `EditError::UnrepresentableCharacter` (SACM-XML-003). Such an edit used to succeed, and every
   later `xmi::write` refused the document. Text an edit accepts can now always be
   written [LIB-EDIT-025].
+- Edits refuse to remove an id that a reference or XMI metadata still names. `DeleteElement`
+  (under every policy), `SetContent`, `SetKey`, `SetLocation` and `SetTaggedValue` refuse to
+  remove the `xmi:id` of a name or text, or of one of its values, that a reference end names,
+  as the new `EditError::PartReference`, and to leave XMI metadata such as an `xmi:idref`
+  naming a removed id, as the new `EditError::MetadataReference` (both SACM-REF-001).
+  `CopyElements` refuses copied metadata that names an id the target lacks the same way. Such
+  edits used to succeed, and a strict `xmi::write` then refused the document [LIB-EDIT-026].
 - `Href` now compares with `str` and `&str`, so the element type of an empty array or vector
   is no longer inferred: `assert_eq!(element.hrefs(end), [])` needs `[] as [Href; 0]`, or
   `.is_empty()`; `href == x.into()` and `href == s.parse()?` likewise need the target type

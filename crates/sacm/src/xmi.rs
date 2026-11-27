@@ -2649,24 +2649,21 @@ impl std::error::Error for ReadError {}
 /// Take a document from a strict [`read`] that a strict `write` accepts, changed
 /// by any edits [`edit::apply`](crate::edit::apply) accepted.
 ///
-/// - **It writes strictly,** with the three exceptions below. No edit stores text
-///   XML 1.0 cannot represent, and only a copy stores preserved content or an id
-///   that is no `NCName`.
+/// - **It writes strictly,** with the two exceptions below. No edit stores text
+///   XML 1.0 cannot represent, only a copy stores an id that is no `NCName`, and
+///   none makes a reference or XMI metadata name an id the document lacks (LIB-EDIT-026).
 /// - **It reads back equal.** A strict read of the output gives a document `==`
 ///   to it, under [`Limits`] that admit the output.
 /// - **Exception: no root.** Edits that delete every root leave nothing to
 ///   write ([`WriteError::NoRoot`]).
-/// - **Exception: a freed id that is still named.** An edit can free an id that
-///   XMI metadata names, by deleting the element, or the `xmi:id` of a name or
-///   text that a reference names, by replacing it ([`WriteError::Invalid`]).
 /// - **Exception: what a copy brings.** [`CopyElements`](crate::edit::CopyElements)
 ///   copies its source's preserved content and XMI metadata as they are.
 /// - **So the target is refused** for a copied element that holds preserved
 ///   content ([`WriteError::PreservedContent`]), or XMI metadata whose `xmi:id` is
 ///   no `NCName` ([`WriteError::Invalid`]), as the source would be.
 /// - **Outside the guarantee:** a document that holds preserved content or a
-///   schema error as read, which a tolerant read in particular may give. A
-///   strict write refuses it.
+///   schema error as read, which a tolerant read in particular may give, and what
+///   a copy brings from one. A strict write refuses it.
 ///
 /// ```
 /// use sacm::edit::{self, CreateClaim, SetName};

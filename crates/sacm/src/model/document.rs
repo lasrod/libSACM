@@ -2496,7 +2496,7 @@ impl<'s> CapturedElement<'s> {
     /// Every XMI metadata it holds, which a copy keeps but for the
     /// `xmi:uuid`s (ADR 0042 D6): its own, its name's, then that of its texts
     /// and their values.
-    fn metadata(self) -> impl Iterator<Item = &'s Preserved> {
+    pub(crate) fn metadata(self) -> impl Iterator<Item = &'s Preserved> {
         let captured = self.captured;
         captured
             .metadata

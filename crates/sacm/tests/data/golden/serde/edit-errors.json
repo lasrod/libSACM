@@ -303,5 +303,28 @@
     "character": "\u0004",
     "attribute": "ContentValueContent",
     "position": 1
+  },
+  {
+    "type": "PartReference",
+    "code": "SACM-REF-001",
+    "holder": "c2",
+    "end": "citedElement",
+    "id": "d1v"
+  },
+  {
+    "type": "MetadataReference",
+    "code": "SACM-REF-001",
+    "holder": null,
+    "element": "xmi:XMI",
+    "attribute": "xmi:idref",
+    "id": "c1"
+  },
+  {
+    "type": "MetadataReference",
+    "code": "SACM-REF-001",
+    "holder": "c2",
+    "element": "xmi:Extension",
+    "attribute": "xmi:idref",
+    "id": "t1v"
   }
 ]

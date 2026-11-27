@@ -378,7 +378,9 @@ impl SetAssertionDeclaration {
 /// - **Ids are kept by position.** A replaced content keeps the `xmi:id` of its
 ///   `content` element, and each value keeps the id of the value at its position.
 /// - **Freed ids.** The ids of values beyond the new length are freed, as are all of
-///   them on a removal (ADR 0029).
+///   them on a removal (ADR 0029). It refuses to free one that a reference end or XMI
+///   metadata names ([`EditError::PartReference`], [`EditError::MetadataReference`];
+///   LIB-EDIT-026).
 /// - **The `UtilityElement`,** not its owner, is in
 ///   [`changed_ids`](super::Mutation::changed_ids).
 /// - **Apply it** with [`edit::apply`](super::apply).
@@ -391,6 +393,7 @@ impl SetAssertionDeclaration {
 /// | a kind that is no `UtilityElement` | [`EditError::FeatureNotApplicable`] |
 /// | an `ExpressionLangString` value with no `expression` | [`EditError::TooFewReferences`] |
 /// | an `expression` the element does not already hold that holds white space, names no element, or names an element that is no `Term` or `Expression` | [`EditError::InvalidReference`], [`EditError::ReferenceNotFound`], [`EditError::WrongReferenceType`], end `expression` (SACM23-BASE-009) |
+/// | a freed id that a reference end names, then one that XMI metadata names | [`EditError::PartReference`], [`EditError::MetadataReference`] (LIB-EDIT-026) |
 /// | last, a content holding a character XML 1.0 cannot represent | [`EditError::UnrepresentableCharacter`] |
 ///
 /// # Examples
@@ -482,8 +485,11 @@ impl SetContent {
 /// - **No remove.** A key is required, so there is no form that removes it.
 /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
 ///   is no `TaggedValue` is [`EditError::FeatureNotApplicable`]. Then it checks its
-///   `ExpressionLangString` values, and last its text, as [`SetContent`] does
-///   (SACM23-BASE-009).
+///   `ExpressionLangString` values, the ids it frees, and last its text, as
+///   [`SetContent`] does (SACM23-BASE-009).
+/// - **Freed ids.** The ids of values beyond the new length are freed. It refuses to free
+///   one that a reference end or XMI metadata names ([`EditError::PartReference`],
+///   [`EditError::MetadataReference`]; LIB-EDIT-026).
 /// - **Apply it** with [`edit::apply`](super::apply).
 ///
 /// # Examples
@@ -565,6 +571,7 @@ impl SetKey {
 /// | an unknown element | [`EditError::ElementNotFound`] |
 /// | a kind that holds no tagged value (§8.6: a `UtilityElement`) | [`EditError::FeatureNotApplicable`], naming `taggedValue` |
 /// | the content's `ExpressionLangString`s, as [`SetContent`] checks them; on the set path, an `expression` the tagged value already holds is kept | as [`SetContent`] |
+/// | on the set path, the ids of values beyond the new length that a reference end, then XMI metadata, names | [`EditError::PartReference`], [`EditError::MetadataReference`] (LIB-EDIT-026) |
 /// | last, a key or content holding a character XML 1.0 cannot represent | [`EditError::UnrepresentableCharacter`], naming the tagged value |
 ///
 /// # Examples
@@ -1015,7 +1022,8 @@ string_set! {
 /// - **Ids are kept by position.** A replaced location keeps the `xmi:id` of its
 ///   `location` element, and each value keeps the id of the value at its position.
 /// - **Freed ids.** The ids of values beyond the new length are freed, as are all of
-///   them on a removal.
+///   them on a removal. It refuses to free one that a reference end or XMI metadata names
+///   ([`EditError::PartReference`], [`EditError::MetadataReference`]; LIB-EDIT-026).
 /// - **Refusals.** An unknown element is [`EditError::ElementNotFound`]; then a kind that
 ///   is no `Resource` is [`EditError::FeatureNotApplicable`], naming `location`. Then it
 ///   checks its `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).

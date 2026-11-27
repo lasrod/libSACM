@@ -19,6 +19,10 @@ use crate::model::{
 /// - **Ask first.** [`edit::preview`](super::preview) shows what it would do;
 ///   [`edit::apply_preview`](super::apply_preview) applies that preview.
 /// - **Refusals.** [`apply`](super::apply#deletes) lists the checks, in order.
+/// - **Names that stay.** Then, under every policy, it refuses a reference end of a
+///   remaining element that names the `xmi:id` of a deleted name or text
+///   ([`EditError::PartReference`]), and XMI metadata outside the deleted elements that
+///   names an id they held ([`EditError::MetadataReference`]) (LIB-EDIT-026).
 ///
 /// | Policy | Decides | Refusal (default) |
 /// |---|---|---|
