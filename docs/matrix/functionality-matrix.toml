@@ -7820,7 +7820,7 @@ title = "API additions from docs reviews"
 requirement = "Additive public API that docs reviews and Assurance Forge (lasrod/libSACM#113 A1, A2, A4, A5, A7-A9) asked for: a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use` that covers the ids of names, contents and keys; `MultiLangString` lookup by language that returns the value's index, with a documented fallback order, and a way to replace one value in place; `From<&str>` for `MultiLangString`; `PartialEq<str>` and `PartialEq<&str>` for `ElementId`; lookup of a tagged value by a plain key, with a documented rule for which of the key's values it matches; `Mutation::created_id() -> Option<&ElementId>`; `BatchMutation::is_empty()`; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. `Operation::parent()` was dropped: no consumer asked for it. `ReadError` variants that name an id-less element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) name it by the id a tolerant read gives it, which no `xmi:id` of the input has, with its location; no field is added (decided in slice 0082, pinned by its test)."
 source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051); lasrod/libSACM#113 A1, A2, A4, A5, A7-A9; SACM 2.3 §8.3 \"lang:String[0..1]\", §8.5 \"value:LangString[1..*] ... bear the same meaning but in different languages\", §8.12 \"key:MultiLangString[1]\"; ADR 0011 amendment 4; ADR 0030 amendment 7"
 kind = "api"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-012", "LIB-API-006", "SACM23-XMI-020"]
 acceptance = [
   "`Diagnostic::specification()` is `Some(Sacm23)` or `Some(Xmi251)` exactly when `clause()` is `Some`, for every diagnostic the crate makes; XMI clauses (7.3.3, 7.5.3, 7.6.1, 7.8.6, 7.10.1, 7.10.2, 9.5.2) name XMI 2.5.1; it orders last, is not in `Display`, and is JSON `specification` after `clause`, optional on input.",
@@ -7878,6 +7878,7 @@ tests = [
   "crates/sacm/tests/api_additions.rs::lib_api_013_a_write_error_outside_a_value_has_no_position",
   "crates/sacm/tests/api_additions.rs::lib_api_013_a_read_error_names_an_id_less_element_by_the_id_a_tolerant_read_gives_it",
 ]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-API-014"
@@ -8886,7 +8887,7 @@ title = "Ancestors and descendants"
 requirement = "An element's ancestors (nearest first, up to its root) and descendants (depth-first, in document order, each with its depth) can be listed without walking the tree by hand."
 source = "lasrod/libSACM#113 A3"
 kind = "api"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-012"]
 acceptance = [
   "`SacmElement::ancestors()` lists the parent, its parent, ... the root, never the element itself.",
@@ -8903,6 +8904,7 @@ tests = [
   "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_a_ten_thousand_deep_chain_is_walked_without_recursion",
   "crates/sacm/tests/ancestors_descendants.rs::lib_api_021_the_views_outlive_the_element_they_came_from",
 ]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-EDIT-023"
@@ -8912,7 +8914,7 @@ title = "Set a tagged value by key"
 requirement = "One operation sets the content of an element's tagged value with a given plain key, and creates the tagged value if there is none. It is atomic and has JSON as for the other operations."
 source = "lasrod/libSACM#113 A2; SACM 2.3 §8.6 \"taggedValue: TaggedValue [0..*] (composition)\", §8.12 \"key:MultiLangString[1] (composition) - the key of the TaggedValue\", §8.7, §8.5; ADR 0029 amendment 2; ADR 0030 amendment 7"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-013"]
 acceptance = [
   "`SetTaggedValue::new(element, key, content)` sets the content of the first tagged value that `tagged_value(key)` finds (changed), or creates one as the element's last child with key `[key]` (created); setting the content held changes nothing; content ids are kept by position.",
@@ -8943,6 +8945,7 @@ tests = [
   "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_in_a_batch_a_second_set_sees_the_first",
   "crates/sacm/tests/set_tagged_value.rs::lib_edit_023_json_matches_the_golden_sample",
 ]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-EDIT-024"
@@ -8952,7 +8955,7 @@ title = "Preview a batch"
 requirement = "A batch can be previewed: the caller gets the `BatchMutation` it would produce, the full delete cascade included, and the document is unchanged."
 source = "lasrod/libSACM#113 A6; D-PREVIEW; ADR 0032 amendment 1"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-014", "LIB-EDIT-004"]
 acceptance = [
   "`edit::preview_batch(&doc, f)` returns what `batch(&mut doc.clone(), f)` returns, the full delete cascade included, and the closure's error unchanged; `edit::preview_all` returns what `apply_all` on a copy returns.",
@@ -8974,6 +8977,7 @@ tests = [
   "crates/sacm/tests/preview_batch.rs::lib_edit_024_an_empty_preview_is_empty",
   "crates/sacm/tests/preview_batch.rs::lib_edit_024_a_preview_of_a_changed_document_may_differ",
 ]
+verification = "docs/verification/0082-af-api.md"
 
 [[row]]
 id = "LIB-RT-005"

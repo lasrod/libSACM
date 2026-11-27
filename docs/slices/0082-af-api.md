@@ -1,8 +1,8 @@
 ---
 slice: 0082
 name: af-api
-state: in-progress
-step: design
+state: done
+step: close
 rows: [LIB-API-013, LIB-API-021, LIB-EDIT-023, LIB-EDIT-024]
 mode: pr
 ---
@@ -47,3 +47,5 @@ follows SACM 2.3 §8.5 (TaggedValue) and ADR 0030 for its JSON.
 - 2026-11-27 verification: FAIL on LIB-API-013 (three test gaps: specification at ten emit
   sites, `is_empty` per list, a lang's position). LIB-API-021, LIB-EDIT-023, LIB-EDIT-024
   PASS. Fix round: the tests to the builder; CHANGELOG wording with the verifier's text.
+- 2026-11-27 verification: re-verify PASS on all four rows (341d5f3). Record
+  `docs/verification/0082-af-api.md`. Rows `verified`.
