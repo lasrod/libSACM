@@ -7527,7 +7527,7 @@ title = "User guide"
 requirement = "A user guide walks through loading, inspecting, validating, editing and saving assurance cases, strict vs tolerant mode and diagnostics, with tested code. It includes editing one language's value of a name, description or tagged value in place, an expression value included. It follows the LIB-DOC-009 style guide."
 source = "Project goal (easy to use); lasrod/libSACM#113 D7"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
 acceptance = [
   "crates/sacm/GUIDE.md walks through reading, inspecting, validating, editing and saving an assurance case, strict and tolerant mode, and diagnostics, each step with a code block that runs as a doctest.",
@@ -7546,6 +7546,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_003_the_crate_root_links_the_guide_and_primer",
   "xtask/tests/docs_style.rs::lib_doc_003_the_doctest_and_link_readers_find_what_they_look_for",
 ]
+verification = "docs/verification/0091-guide-primer-examples.md"
 
 [[row]]
 id = "LIB-DOC-004"
@@ -7555,7 +7556,7 @@ title = "Runnable examples"
 requirement = "`crates/sacm/examples/` contains runnable programs for the common tasks, built in CI."
 source = "Project goal (easy to use)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-001"]
 acceptance = [
   "crates/sacm/examples/ holds runnable programs for the common tasks (read and validate a file; build and save a case; edit and save in place; translate diagnostics with the catalog), each with a short doc comment saying what it shows.",
@@ -7575,6 +7576,7 @@ tests = [
   "crates/sacm/tests/examples.rs::lib_doc_004_the_examples_are_the_four_common_tasks",
   "crates/sacm/tests/examples.rs::lib_doc_004_each_example_runs_without_arguments_and_exits_zero",
 ]
+verification = "docs/verification/0091-guide-primer-examples.md"
 
 [[row]]
 id = "LIB-DOC-005"
@@ -7584,7 +7586,7 @@ title = "SACM primer for users"
 requirement = "A primer explains SACM's concepts — claims, asserted relationships, evidence, citations, modularity — for readers who have not read the specification, linked from the crate root."
 source = "Project goal (well documented)"
 kind = "docs"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-DOC-003"]
 acceptance = [
   "crates/sacm/PRIMER.md explains SACM's concepts for a reader who has not read the specification: packages, claims and asserted relationships, evidence and artifacts, terminology, citations and abstract forms, and modularity (interfaces and bindings), each in a few lines with the clause number.",
@@ -7598,6 +7600,7 @@ tests = [
   "xtask/tests/docs_style.rs::lib_doc_005_no_paragraph_or_list_item_in_the_primer_runs_over_four_lines",
   "xtask/tests/docs_style.rs::lib_doc_005_the_primer_runs_as_doctests_and_ships_with_the_crate",
 ]
+verification = "docs/verification/0091-guide-primer-examples.md"
 
 [[row]]
 id = "LIB-EDIT-011"

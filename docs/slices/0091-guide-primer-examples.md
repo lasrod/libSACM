@@ -1,8 +1,8 @@
 ---
 slice: 0091
 name: guide-primer-examples
-state: in-progress
-step: tests
+state: done
+step: close
 rows: [LIB-DOC-003, LIB-DOC-005, LIB-DOC-004]
 mode: pr
 ---
@@ -44,3 +44,6 @@ the way the README's do, and the crate root links them.
   findings (the guide said `validate` reports an empty name; its language example gave a
   Claim two descriptions). Fix round: both fixed and twelve wording items applied with the
   verifier's text.
+- 2026-11-28 re-verification: PASS for all three rows. Record
+  `docs/verification/0091-guide-primer-examples.md`. Rows `verified`.
+
