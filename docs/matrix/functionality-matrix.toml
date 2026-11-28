@@ -6656,12 +6656,12 @@ requirement = "Two cargo-fuzz targets, `xmi_read` (both modes) and `serde_record
 source = "Robustness policy"
 kind = "security"
 status = "implemented"
-depends_on = ["LIB-SEC-003"]
+depends_on = ["LIB-SEC-003", "LIB-COMPAT-022"]
 acceptance = [
   "fuzz/ holds the two targets outside the workspace (ADR 0046 D2); each calls the oracle in crates/sacm/tests/common/oracle_xmi.rs or oracle_serde.rs.",
   "The XMI oracle reads, formats every diagnostic, validates, writes in the same mode and reads back equal; a tolerant read always writes tolerantly. The serde oracle round-trips each record type and applies a decoded `Operation`.",
   "crates/sacm/tests/fuzz_regressions.rs replays every regression input and every fixture, and mutates fixtures and serde goldens with fixed seeds, on stable and MSRV.",
-  "ci.yml runs a `fuzz (smoke)` job on pull requests; fuzz.yml runs weekly and on dispatch; a dispatched run on the slice branch ends without a crash, timeout or out-of-memory, and its URL is in the verification record.",
+  "ci.yml runs a `fuzz (smoke)` job on pull requests; fuzz.yml runs weekly and on dispatch. The slice PR's `fuzz (smoke)` run ends without a crash, timeout or out-of-memory, and its URL is in the verification record; GitHub dispatches only workflows on the default branch, so the first full fuzz.yml run is dispatched on main after the merge, before the release.",
 ]
 code = [
   "fuzz/Cargo.toml",
@@ -6688,7 +6688,7 @@ id = "LIB-QA-004"
 area = "QA"
 milestone = "M7"
 title = "Coverage reporting"
-requirement = "CI measures line coverage of the sacm crate with cargo-llvm-cov on pull requests and pushes to main that change code, and publishes it in the job summary and as the `coverage-sacm` artifact (lcov, HTML). It fails below `COVERAGE_MIN_LINES` in ci.yml once the maintainer sets one after a first measurement; until then it reports only."
+requirement = "CI measures line coverage of the sacm crate with cargo-llvm-cov on pull requests and pushes to main that change code, and publishes it in the job summary and as the `coverage-sacm` artifact (lcov, HTML). It fails below `COVERAGE_MIN_LINES` in ci.yml, which the maintainer set to 98 (percent) after the first measurement (98.78%, 2026-11-28); empty means report only."
 source = "Project policy"
 kind = "quality"
 status = "implemented"
@@ -6696,7 +6696,7 @@ depends_on = ["LIB-QA-001"]
 acceptance = [
   "ci.yml has a `coverage` job (not required) with cargo-llvm-cov 0.9.2 over `--package sacm --all-features`, an lcov and HTML report, the summary table in the job summary, and the `coverage-sacm` artifact.",
   "The threshold is read from `COVERAGE_MIN_LINES`; empty means report only. A repo check pins the commands.",
-  "The slice PR's coverage run gives the first measurement to the maintainer.",
+  "The slice PR's coverage run gives the first measurement to the maintainer; `COVERAGE_MIN_LINES` is then set to the maintainer's threshold (98), and the job passes at it.",
 ]
 code = [
   ".github/workflows/ci.yml",
@@ -6788,6 +6788,9 @@ tests = [
   "xtask/tests/semver.rs::lib_qa_006_semver_checks_sacm_with_the_serde_feature_only",
   "xtask/tests/semver.rs::lib_qa_006_errors_name_what_is_missing",
   "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_help_lists_the_semver_command",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_reports_a_declared_break_in_the_job_summary",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_names_the_check_that_failed",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_says_when_cargo_semver_checks_is_missing",
   "xtask/tests/repo_checks.rs::lib_qa_006_ci_runs_cargo_xtask_semver",
 ]
 
@@ -9135,6 +9138,18 @@ source = "LIB-COMPAT-002 (paths in reference ends only); slice 0075a follow-up; 
 kind = "xmi"
 status = "candidate"
 notes = "No corpus file needs it; was a follow-up of slice 0075a."
+
+[[row]]
+id = "LIB-COMPAT-022"
+area = "COMPAT"
+milestone = "M7"
+title = "A tolerant write of a renamed xmi prefix reads back equal"
+requirement = "A document a tolerant read accepts, written tolerantly and read again in tolerant mode, is equal (`==`) to the first read, also when the file binds the `xmi` prefix to another namespace. Today the writer declares a fresh prefix (`ns1`) on the root for the renamed attribute, and the outermost preserved child then records that binding on the second read, so the two documents differ in preserved content."
+source = "Found by the fuzz smoke run of slice 0092 (CI run 46107833317, crash-1aa1ae6a); D-RT; LIB-COMPAT-003; minimal input `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"urn:x\" xmi:id=\"p\"><argumentElement xmi:type=\"sacm:Claim\"/></sacm:ArgumentPackage>`"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-003"]
+notes = "Fixed with the crash input as a regression input under crates/sacm/tests/data/fuzz/xmi/ (no `.xmi` extension); LIB-SEC-004 waits for it."
 
 # ---------------------------------------------------------------------------
 # M7 additions, 2026-11-26: Assurance Forge feedback (lasrod/libSACM#113) and

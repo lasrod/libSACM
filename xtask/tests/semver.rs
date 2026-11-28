@@ -3,8 +3,11 @@
 //! The command checks `sacm`'s public API against the newest release with
 //! cargo-semver-checks. What it runs is decided by a pure function,
 //! [`semver_plan`], from the CHANGELOG, the workspace version and the release
-//! tags, and [`semver_args`] gives the exact arguments. These tests drive
-//! both with literal inputs; nothing here runs cargo-semver-checks or git.
+//! tags, and [`semver_args`] gives the exact arguments. Most tests drive both
+//! with literal inputs. The last three run the xtask binary on a scratch git
+//! repository, with a stub in place of cargo, so that what the command reads,
+//! runs, reports and writes to the job summary is checked too; nothing here
+//! runs cargo-semver-checks.
 //!
 //! The rules under test:
 //!
@@ -378,5 +381,398 @@ fn lib_qa_006_cargo_xtask_help_lists_the_semver_command() {
             == "  semver                  check sacm's public API against the last release \
                 (cargo-semver-checks)"),
         "LIB-QA-006: the usage lists `semver`:\n{usage}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `cargo xtask semver` end to end, with a stub for cargo
+// ---------------------------------------------------------------------------
+//
+// The xtask binary runs on a scratch git repository (`XTASK_ROOT`) with its
+// own CHANGELOG.md, Cargo.toml and tags. `CARGO` names a stub script that
+// records the arguments of each call in `STUB_LOG`. It answers
+// `semver-checks --version` with `STUB_VERSION_STATUS`; any other call prints
+// `STUB_REPORT` and exits with `STUB_MINOR_STATUS` when its last argument is
+// `minor`, else with `STUB_STATUS`. `GITHUB_STEP_SUMMARY` names a scratch
+// file. The stub is a batch file on Windows and a POSIX shell script
+// elsewhere.
+
+/// What the stub prints for a check.
+const STUB_REPORT: &str = "stub: a break was found";
+
+/// The stub for cargo on Windows.
+#[cfg(windows)]
+const STUB: (&str, &str) = (
+    "cargo-stub.cmd",
+    "@echo off\r\n\
+     >>\"%STUB_LOG%\" echo %*\r\n\
+     if \"%~2\"==\"--version\" exit /b %STUB_VERSION_STATUS%\r\n\
+     echo stub: a break was found\r\n\
+     set \"last=\"\r\n\
+     :next\r\n\
+     if \"%~1\"==\"\" goto done\r\n\
+     set \"last=%~1\"\r\n\
+     shift\r\n\
+     goto next\r\n\
+     :done\r\n\
+     if \"%last%\"==\"minor\" exit /b %STUB_MINOR_STATUS%\r\n\
+     exit /b %STUB_STATUS%\r\n",
+);
+
+/// The stub for cargo elsewhere.
+#[cfg(not(windows))]
+const STUB: (&str, &str) = (
+    "cargo-stub",
+    "#!/bin/sh\n\
+     echo \"$*\" >> \"$STUB_LOG\"\n\
+     if [ \"$2\" = \"--version\" ]; then exit \"$STUB_VERSION_STATUS\"; fi\n\
+     echo \"stub: a break was found\"\n\
+     last=\n\
+     for last; do :; done\n\
+     if [ \"$last\" = minor ]; then exit \"$STUB_MINOR_STATUS\"; fi\n\
+     exit \"$STUB_STATUS\"\n",
+);
+
+/// The exit statuses the stub gives: `semver-checks --version`, a check at
+/// `minor`, and any other check.
+#[derive(Clone, Copy)]
+struct Statuses {
+    version: u8,
+    minor: u8,
+    other: u8,
+}
+
+/// Every call succeeds.
+const ALL_PASS: Statuses = Statuses {
+    version: 0,
+    minor: 0,
+    other: 0,
+};
+
+/// A scratch repository and the stub, removed on drop.
+struct Scratch {
+    dir: std::path::PathBuf,
+}
+
+impl Scratch {
+    /// A git repository with `changelog`, a workspace at `version` and one
+    /// commit carrying `tags`.
+    fn new(test: &str, changelog: &str, version: &str, tags: &[&str]) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let dir = std::env::temp_dir().join(format!("xtask-{test}-{}-{nanos}", std::process::id()));
+        let scratch = Self { dir };
+        let repo = scratch.repo();
+        write(&repo.join("CHANGELOG.md"), changelog);
+        write(
+            &repo.join("Cargo.toml"),
+            &format!("[workspace]\nmembers = []\n\n[workspace.package]\nversion = \"{version}\"\n"),
+        );
+        git(&repo, &["init", "--quiet"]);
+        git(
+            &repo,
+            &["commit", "--allow-empty", "--quiet", "-m", "release"],
+        );
+        for tag in tags {
+            git(&repo, &["tag", tag]);
+        }
+        let stub = scratch.stub();
+        write(&stub, STUB.1);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755))
+                .unwrap_or_else(|e| panic!("LIB-QA-006: chmod {}: {e}", stub.display()));
+        }
+        scratch
+    }
+
+    fn repo(&self) -> std::path::PathBuf {
+        self.dir.join("repo")
+    }
+
+    fn stub(&self) -> std::path::PathBuf {
+        self.dir.join(STUB.0)
+    }
+
+    fn summary(&self) -> std::path::PathBuf {
+        self.dir.join("summary.md")
+    }
+
+    fn log(&self) -> std::path::PathBuf {
+        self.dir.join("calls.log")
+    }
+
+    /// Run `xtask semver` on the repository with the stub as cargo.
+    fn run(&self, statuses: Statuses) -> Run {
+        self.run_with_cargo(&self.stub(), statuses)
+    }
+
+    /// Run `xtask semver` on the repository with `cargo` as cargo.
+    fn run_with_cargo(&self, cargo: &Path, statuses: Statuses) -> Run {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .arg("semver")
+            .env("XTASK_ROOT", self.repo())
+            .env("CARGO", cargo)
+            .env("GITHUB_STEP_SUMMARY", self.summary())
+            .env("STUB_LOG", self.log())
+            .env("STUB_VERSION_STATUS", statuses.version.to_string())
+            .env("STUB_MINOR_STATUS", statuses.minor.to_string())
+            .env("STUB_STATUS", statuses.other.to_string())
+            .output()
+            .expect("LIB-QA-006: the xtask binary can be started");
+        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).replace("\r\n", "\n");
+        Run {
+            success: output.status.success(),
+            stdout: text(&output.stdout),
+            stderr: text(&output.stderr),
+            calls: std::fs::read_to_string(self.log())
+                .unwrap_or_default()
+                .lines()
+                .map(|line| line.trim().to_owned())
+                .filter(|line| !line.is_empty())
+                .collect(),
+            summary: std::fs::read_to_string(self.summary())
+                .unwrap_or_default()
+                .replace("\r\n", "\n"),
+        }
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// What a run of `xtask semver` did.
+#[derive(Debug)]
+struct Run {
+    success: bool,
+    stdout: String,
+    stderr: String,
+    /// The arguments of each call of the stub, in order.
+    calls: Vec<String>,
+    /// The job summary, empty when nothing was written.
+    summary: String,
+}
+
+fn write(path: &Path, text: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("LIB-QA-006: create {}: {e}", parent.display()));
+    }
+    std::fs::write(path, text)
+        .unwrap_or_else(|e| panic!("LIB-QA-006: write {}: {e}", path.display()));
+}
+
+/// Run git in `repo`, with an identity and without signing.
+fn git(repo: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=xtask",
+            "-c",
+            "user.email=xtask@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "tag.gpgsign=false",
+            "-c",
+            "init.defaultBranch=main",
+        ])
+        .args(args)
+        .current_dir(repo)
+        .status()
+        .unwrap_or_else(|e| panic!("LIB-QA-006: run git {args:?}: {e}"));
+    assert!(status.success(), "LIB-QA-006: git {args:?}: {status}");
+}
+
+/// The stub's record of a check of `sacm` against `baseline`.
+fn check_call(baseline: &str, release_type: Option<ReleaseType>) -> String {
+    semver_args(baseline, release_type).join(" ")
+}
+
+/// The stub's record of `cargo semver-checks --version`.
+const VERSION_CALL: &str = "semver-checks --version";
+
+/// The plan line `cargo xtask semver` writes first.
+fn plan_line(version: &str, baseline: &str, release_type: &str) -> String {
+    format!(
+        "semver: sacm {version} against {baseline} (crates.io), features: serde only, \
+         release type: {release_type}"
+    )
+}
+
+#[test]
+fn lib_qa_006_cargo_xtask_semver_reports_a_declared_break_in_the_job_summary() {
+    let scratch = Scratch::new(
+        "lib-qa-006-declared",
+        &changelog(DECLARED),
+        "0.4.0",
+        &["v0.3.0", "v0.4.0", "v0.10.0-rc.1"],
+    );
+    // The check at `minor` fails: the declared break is there.
+    let run = scratch.run(Statuses {
+        minor: 1,
+        ..ALL_PASS
+    });
+
+    assert!(
+        run.success,
+        "LIB-QA-006: a declared break before 1.0 passes at `major`, and the reporting run's \
+         status is ignored: {run:#?}"
+    );
+    assert_eq!(
+        run.stdout.lines().next(),
+        Some(plan_line("0.4.0", "0.4.0", "major").as_str()),
+        "LIB-QA-006: the plan line names the workspace version from Cargo.toml and the \
+         newest release tag: {run:#?}"
+    );
+    assert_eq!(
+        run.calls,
+        [
+            VERSION_CALL.to_owned(),
+            check_call("0.4.0", Some(ReleaseType::Major)),
+            check_call("0.4.0", Some(ReleaseType::Minor)),
+        ],
+        "LIB-QA-006: the tool is looked for, the check runs at `major`, then again at \
+         `minor` to list the breaks: {run:#?}"
+    );
+    let heading = "### Breaking changes against 0.4.0 (declared; LIB-QA-006)";
+    assert!(
+        run.stdout.contains(&format!("{heading}\n{STUB_REPORT}\n")),
+        "LIB-QA-006: the breaks found at `minor` are written under their heading: {run:#?}"
+    );
+    assert_eq!(
+        run.summary,
+        format!("{heading}\n\n```text\n{STUB_REPORT}\n```\n"),
+        "LIB-QA-006: the declared breaks are appended to the job summary in a text block"
+    );
+}
+
+#[test]
+fn lib_qa_006_cargo_xtask_semver_names_the_check_that_failed() {
+    let failing = Statuses {
+        minor: 1,
+        other: 1,
+        ..ALL_PASS
+    };
+    for (what, unreleased, version, tags, release_type, error) in [
+        (
+            "an undeclared break before 1.0",
+            UNDECLARED,
+            "0.4.0",
+            &["v0.3.0", "v0.4.0"][..],
+            "minor",
+            "a breaking change CHANGELOG.md does not list under [Unreleased] ### Breaking",
+        ),
+        (
+            "an undeclared break from 1.0",
+            UNDECLARED,
+            "1.0.0",
+            &["v0.4.0", "v1.0.0"][..],
+            "minor",
+            AFTER_1_0,
+        ),
+        (
+            "a break larger than the version bump",
+            UNDECLARED,
+            "0.5.0",
+            &["v0.4.0"][..],
+            "from the versions",
+            "the change needs a larger version bump than 0.4.0 → 0.5.0",
+        ),
+        (
+            "a failed check at `major`",
+            DECLARED,
+            "0.4.0",
+            &["v0.4.0"][..],
+            "major",
+            "cargo semver-checks exit",
+        ),
+    ] {
+        let scratch = Scratch::new("lib-qa-006-failed", &changelog(unreleased), version, tags);
+        let run = scratch.run(failing);
+        let baseline = tags[tags.len() - 1].trim_start_matches('v');
+        assert!(
+            !run.success,
+            "LIB-QA-006: {what} fails the command: {run:#?}"
+        );
+        assert_eq!(
+            run.stdout.lines().next(),
+            Some(plan_line(version, baseline, release_type).as_str()),
+            "LIB-QA-006: {what}: the plan line: {run:#?}"
+        );
+        let first = run.stderr.lines().next().unwrap_or_default();
+        assert!(
+            first.starts_with("xtask: ") && first.contains(error),
+            "LIB-QA-006: {what} is reported as `{error}`: {run:#?}"
+        );
+        if error == AFTER_1_0 {
+            assert_eq!(
+                first,
+                format!("xtask: {AFTER_1_0}"),
+                "LIB-QA-006: {what}: the whole message"
+            );
+        }
+        let release_type = match release_type {
+            "minor" => Some(ReleaseType::Minor),
+            "major" => Some(ReleaseType::Major),
+            _ => None,
+        };
+        assert_eq!(
+            run.calls,
+            [VERSION_CALL.to_owned(), check_call(baseline, release_type)],
+            "LIB-QA-006: {what}: a failed check is not run again to report: {run:#?}"
+        );
+        assert_eq!(
+            run.summary, "",
+            "LIB-QA-006: {what}: nothing is written to the job summary"
+        );
+    }
+}
+
+#[test]
+fn lib_qa_006_cargo_xtask_semver_says_when_cargo_semver_checks_is_missing() {
+    let scratch = Scratch::new(
+        "lib-qa-006-missing",
+        &changelog(DECLARED),
+        "0.4.0",
+        &["v0.4.0"],
+    );
+
+    let run = scratch.run(Statuses {
+        version: 101,
+        ..ALL_PASS
+    });
+    assert!(
+        !run.success
+            && run.stderr.lines().next()
+                == Some(
+                    "xtask: cargo-semver-checks is not installed: `cargo semver-checks --version` \
+                     failed"
+                ),
+        "LIB-QA-006: cargo without cargo-semver-checks is reported as such, not as a break: \
+         {run:#?}"
+    );
+    assert_eq!(
+        run.calls,
+        [VERSION_CALL],
+        "LIB-QA-006: no check runs without the tool"
+    );
+
+    let run = scratch.run_with_cargo(&scratch.dir.join("no-such-cargo"), ALL_PASS);
+    assert!(
+        !run.success
+            && run.stderr.starts_with(
+                "xtask: could not run cargo semver-checks (is cargo-semver-checks installed?): "
+            ),
+        "LIB-QA-006: a cargo that cannot be started is reported: {run:#?}"
+    );
+    assert_eq!(
+        run.summary, "",
+        "LIB-QA-006: nothing is written to the job summary"
     );
 }

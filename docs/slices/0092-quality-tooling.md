@@ -43,4 +43,20 @@ triage.
   `edit_atomic` override (ADR 0009 amendment 2), reviewed by LIB-QA-012's check (a missing
   value is a problem). The fuzz input `unclosed-root` has no `.xmi` extension, so the 0.1.0
   message golden does not read it. Rows `implemented`.
+- 2026-11-28 lead: LIB-SEC-004's documented run is the PR's `fuzz (smoke)` run, since GitHub
+  refuses `workflow_dispatch` of a workflow not on the default branch (HTTP 404); the first
+  full fuzz.yml run is dispatched on main after the merge, as a release gate.
+- 2026-11-28 verification: LIB-QA-004 and LIB-TOOL-012 PASS; LIB-RT-004, LIB-SEC-004 and
+  LIB-QA-006 FAIL. The PR's `fuzz (smoke)` run found a library defect (a tolerant write of a
+  renamed `xmi` prefix does not read back equal): filed as LIB-COMPAT-022, which LIB-SEC-004
+  now depends on; both go to the next slice with the regression input. Fix round: the
+  property generator reaches every operation (LIB-RT-004); a subprocess test of `cargo xtask
+  semver` and triage rows for the I/O shell (LIB-QA-006); the fetch.rs module doc. The lead
+  made `semver checks` a required check on main (the maintainer's decision of 2026-11-27).
 
+- 2026-11-28 lead: the maintainer set the coverage threshold to 98% (the first measurement
+  was 98.78%); `COVERAGE_MIN_LINES: "98"` in ci.yml, and LIB-QA-004 says so. Fix round done:
+  each property that edits records how often each of the 59 operations was tried and
+  accepted, and fails at setup if one is never accepted (skipped when `PROPTEST_CASES` lowers
+  the case count); three subprocess tests of `cargo xtask semver` (job summary, failing check,
+  missing cargo-semver-checks) are cited in LIB-QA-006.

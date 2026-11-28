@@ -1,13 +1,15 @@
 //! Acceptance tests for hash-pinned fetching of the SACM 2.3 sources
 //! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021),
-//! XML Schema Part 2 (LIB-TOOL-022), XML Schema Part 1 (LIB-TOOL-024) and the
-//! W3C XML Conformance Test Suite (LIB-SEC-006).
+//! XML Schema Part 2 (LIB-TOOL-022), XML Schema Part 1 (LIB-TOOL-024), the
+//! W3C XML Conformance Test Suite (LIB-SEC-006) and the redirects and HTTP
+//! errors of the download (LIB-TOOL-012).
 //!
 //! `fetch_into` and `fetch_suite` are driven with fake downloaders (and fake
 //! extractors), so no test touches the network. `curl_download` is driven
-//! with the real `curl` on `file://` URLs only, and `tar_extract` with the
-//! real `tar` on local files. Every test works in its own directory under
-//! the system temporary directory and removes it afterwards.
+//! with the real `curl` on `file://` URLs and on a local HTTP server on
+//! 127.0.0.1, and `tar_extract` with the real `tar` on local files. Every test
+//! works in its own directory under the system temporary directory and removes
+//! it afterwards.
 
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};

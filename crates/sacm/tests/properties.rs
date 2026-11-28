@@ -169,7 +169,7 @@ struct Step {
     /// The name's content, and every other text.
     text: String,
     /// The language, root or child, set or remove, flag, declaration, end,
-    /// policies and href, each by modulo; and, from 64, a biased step
+    /// policies and href, each by modulo; and, from 32, a biased step
     /// ([`is_biased`]).
     choice: u8,
     /// The caller id `x{n}` of a create, or a generated id.
@@ -259,6 +259,10 @@ fn pick(ids: &[ElementId], n: u16) -> ElementId {
 enum Kinds {
     /// The kinds that may contain an element of this kind: a parent.
     ParentOf(ElementKind),
+    /// This kind or a kind that specializes it, such as a package's interface.
+    KindOf(ElementKind),
+    /// This kind only.
+    Exactly(ElementKind),
     /// The kinds this test accepts.
     Where(fn(ElementKind) -> bool),
     /// The kinds the first test accepts, or, when the document holds none,
@@ -287,6 +291,8 @@ fn among_where(
 fn among(elements: &[(ElementId, ElementKind)], n: u16, kinds: Kinds) -> Option<ElementId> {
     match kinds {
         Kinds::ParentOf(child) => among_where(elements, n, |kind| kind.may_contain(child)),
+        Kinds::KindOf(class) => among_where(elements, n, |kind| kind.is_kind_of(class)),
+        Kinds::Exactly(only) => among_where(elements, n, |kind| kind == only),
         Kinds::Where(test) => among_where(elements, n, test),
         Kinds::Preferring(first, then) => {
             among_where(elements, n, first).or_else(|| among_where(elements, n, then))
@@ -294,21 +300,35 @@ fn among(elements: &[(ElementId, ElementKind)], n: u16, kinds: Kinds) -> Option<
     }
 }
 
-/// Whether `step` draws its ids among the kinds its operation admits, three
-/// steps in four, rather than among every id: so creates find a parent, and
-/// asserted relationships find sources and a target of their kinds.
+/// Whether `step` draws its ids among the kinds its operation admits, seven
+/// steps in eight, rather than among every id: so creates find a parent, sets
+/// find an element that has the feature, and references find their kinds.
 fn is_biased(step: &Step) -> bool {
-    step.choice >= 64
+    step.choice >= 32
+}
+
+/// The element kind named `name`.
+fn kind_named(name: &str) -> Option<ElementKind> {
+    ElementKind::ALL
+        .iter()
+        .copied()
+        .find(|kind| kind.name() == name)
 }
 
 /// The kind of element the operation at `index` creates: the name of its
 /// `Create*` struct is the kind's name.
 fn created_kind(index: usize) -> Option<ElementKind> {
-    let name = OPERATIONS.get(index)?.strip_prefix("Create")?;
-    ElementKind::ALL
-        .iter()
-        .copied()
-        .find(|kind| kind.name() == name)
+    kind_named(OPERATIONS.get(index)?.strip_prefix("Create")?)
+}
+
+/// The package kind of the interface or binding the operation at `index`
+/// creates: an `ArgumentPackage` for an `ArgumentPackageBinding`.
+fn package_family(index: usize) -> Option<ElementKind> {
+    let kind = OPERATIONS.get(index)?.strip_prefix("Create")?;
+    kind_named(
+        kind.strip_suffix("Interface")
+            .or_else(|| kind.strip_suffix("Binding"))?,
+    )
 }
 
 /// Whether `kind` is an `ArgumentAsset`: an assertion, an
@@ -321,17 +341,14 @@ fn is_artifact_reference(kind: ElementKind) -> bool {
     kind == ElementKind::ArtifactReference
 }
 
-fn is_argument_reasoning(kind: ElementKind) -> bool {
-    kind == ElementKind::ArgumentReasoning
-}
-
-fn is_asserted_relationship(kind: ElementKind) -> bool {
-    kind.is_a(AbstractClass::AssertedRelationship)
-}
+/// The ends of a biased step: what its element, its sources and its target
+/// are drawn among, each `None` for every id.
+type Ends = (Option<Kinds>, Option<Kinds>, Option<Kinds>);
 
 /// What a biased step of the operation at `index` draws among: its element
-/// (the parent of a create, or the element a reference edit edits), its
-/// sources (each id of a list) and its target (the other id).
+/// (the parent of a create, or the element a set or reference edit edits),
+/// its sources (each id of a list) and its target (the other id). `end` and
+/// `flag` are the step's.
 ///
 /// - **A create** draws its parent among the elements that may contain the
 ///   kind it creates.
@@ -340,37 +357,100 @@ fn is_asserted_relationship(kind: ElementKind) -> bool {
 ///   for the sources of an `AssertedEvidence` and both ends of an
 ///   `AssertedArtifactSupport` or `AssertedArtifactContext` (any
 ///   `ArgumentAsset` while the document holds no `ArtifactReference`).
+/// - **An `ArtifactAssetRelationship`** (§12.14) relates `ArtifactAsset`s.
+/// - **An interface** implements a package of its family, and **a binding**
+///   binds packages of its family, interfaces included.
+/// - **A set** edits an element that has the feature: a `ModelElement` for a
+///   name or a tagged value, an Assertion for a declaration, a
+///   `UtilityElement` for a content, a `TaggedValue` for a key, an `Artifact`
+///   for a version, an `Artifact` or `Event` for a date, a `Resource` for a
+///   location, an `Activity` for a start or end time, a `Term` or
+///   `Expression` for a value, a `Term` for an external reference, and an
+///   asserted relationship for `isCounter`.
 /// - **A reference edit** of the `source`, `target` or `reasoning` end edits an
-///   asserted relationship, with ids of the kinds the end admits.
-fn biased_kinds(index: usize, end: ReferenceEnd) -> (Option<Kinds>, Option<Kinds>, Option<Kinds>) {
-    let asset = Kinds::Where(is_argument_asset);
+///   asserted relationship, with ids of the kinds the end admits;
+///   [`held_reference`] gives a remove a reference the document holds.
+fn biased_kinds(index: usize, end: ReferenceEnd, flag: Flag) -> Ends {
+    let parent = created_kind(index).map(Kinds::ParentOf);
+    let asset = Some(Kinds::Where(is_argument_asset));
     // A create accepts any `ArgumentAsset` where §11.15, §11.17 and §11.18
     // name an `ArtifactReference`, so one stands in while there is none.
-    let reference = Kinds::Preferring(is_artifact_reference, is_argument_asset);
-    let relationship = Kinds::Where(is_asserted_relationship);
-    let reasoning = Kinds::Where(is_argument_reasoning);
-    let ends = match OPERATIONS.get(index).copied() {
-        Some("CreateAssertedInference" | "CreateAssertedContext") => Some((asset, asset)),
-        Some("CreateAssertedEvidence") => Some((reference, asset)),
-        Some("CreateAssertedArtifactSupport" | "CreateAssertedArtifactContext") => {
-            Some((reference, reference))
+    let reference = Some(Kinds::Preferring(is_artifact_reference, is_argument_asset));
+    let relationship = Some(Kinds::Where(|kind| {
+        kind.is_a(AbstractClass::AssertedRelationship)
+    }));
+    let element = |test: fn(ElementKind) -> bool| (Some(Kinds::Where(test)), None, None);
+    let operation = OPERATIONS.get(index).copied().unwrap_or_default();
+    match operation {
+        "CreateAssertedInference" | "CreateAssertedContext" => (parent, asset, asset),
+        "CreateAssertedEvidence" => (parent, reference, asset),
+        "CreateAssertedArtifactSupport" | "CreateAssertedArtifactContext" => {
+            (parent, reference, reference)
         }
-        Some("SetReferences" | "AddReference" | "RemoveReference") => {
-            return match end {
-                ReferenceEnd::Source | ReferenceEnd::Target => {
-                    (Some(relationship), Some(asset), Some(asset))
-                }
-                ReferenceEnd::Reasoning => (Some(relationship), Some(reasoning), Some(reasoning)),
-                _ => (None, None, None),
-            };
+        "CreateArtifactAssetRelationship" => {
+            let artifact_asset = Some(Kinds::Where(|kind| kind.is_a(AbstractClass::ArtifactAsset)));
+            (parent, artifact_asset, artifact_asset)
         }
-        _ => None,
-    };
-    let parent = created_kind(index).map(Kinds::ParentOf);
-    match ends {
-        Some((sources, target)) => (parent, Some(sources), Some(target)),
-        None => (parent, None, None),
+        _ if operation.ends_with("Interface") => {
+            (parent, None, package_family(index).map(Kinds::Exactly))
+        }
+        _ if operation.ends_with("Binding") => {
+            (parent, package_family(index).map(Kinds::KindOf), None)
+        }
+        "SetName" | "SetTaggedValue" => element(|kind| kind.is_a(AbstractClass::ModelElement)),
+        "SetGid" => element(|kind| kind.is_a(AbstractClass::SACMElement)),
+        "SetFlag" if flag == Flag::IsCounter => (relationship, None, None),
+        "SetFlag" => element(|kind| kind.is_a(AbstractClass::SACMElement)),
+        "SetAssertionDeclaration" => element(|kind| kind.is_a(AbstractClass::Assertion)),
+        "SetContent" => element(|kind| kind.is_a(AbstractClass::UtilityElement)),
+        "SetKey" => element(|kind| kind == ElementKind::TaggedValue),
+        "SetVersion" => element(|kind| kind == ElementKind::Artifact),
+        "SetDate" => element(|kind| matches!(kind, ElementKind::Artifact | ElementKind::Event)),
+        "SetLocation" => element(|kind| kind == ElementKind::Resource),
+        "SetStartTime" | "SetEndTime" => element(|kind| kind == ElementKind::Activity),
+        "SetValue" => element(|kind| matches!(kind, ElementKind::Term | ElementKind::Expression)),
+        "SetExternalReference" => element(|kind| kind == ElementKind::Term),
+        "SetReferences" | "AddReference" | "RemoveReference" => match end {
+            ReferenceEnd::Source | ReferenceEnd::Target => (relationship, asset, asset),
+            ReferenceEnd::Reasoning => {
+                let reasoning = Some(Kinds::Exactly(ElementKind::ArgumentReasoning));
+                (relationship, reasoning, reasoning)
+            }
+            _ => (None, None, None),
+        },
+        _ => (parent, None, None),
     }
+}
+
+/// A `RemoveReference` of a reference `doc` holds: the `n`-th of every id
+/// (or, for `to_href`, every href) that an end of an element holds above
+/// the end's lower bound, or `None` when there is none.
+fn held_reference(doc: &Document, n: u16, to_href: bool) -> Option<Operation> {
+    let mut held: Vec<Operation> = Vec::new();
+    for element in doc.elements() {
+        for &end in ReferenceEnd::ALL {
+            // Only an end that holds more than its lower bound: removing from
+            // a required end, such as a relationship's target, is refused.
+            let count = element.references(end).len() + element.hrefs(end).len();
+            if end
+                .bounds(element.kind())
+                .is_none_or(|(lower, _)| count <= lower)
+            {
+                continue;
+            }
+            if to_href {
+                for href in element.hrefs(end) {
+                    held.push(RemoveReference::new_href(element.id(), end, href.clone()).into());
+                }
+            } else {
+                for id in element.references(end) {
+                    held.push(RemoveReference::new(element.id(), end, id).into());
+                }
+            }
+        }
+    }
+    let at = usize::from(n).checked_rem(held.len())?;
+    held.into_iter().nth(at)
 }
 
 fn href() -> Href {
@@ -391,8 +471,9 @@ fn operation(doc: &Document, step: &Step) -> Result<Operation, EditError> {
     let ids: Vec<ElementId> = elements.iter().map(|(id, _)| id.clone()).collect();
     let index = usize::from(step.op) % OPERATIONS.len();
     let end = ReferenceEnd::ALL[usize::from(step.choice) % ReferenceEnd::ALL.len()];
+    let flag = Flag::ALL[usize::from(step.choice) % Flag::ALL.len()];
     let (element_kinds, source_kinds, target_kinds) = if is_biased(step) {
-        biased_kinds(index, end)
+        biased_kinds(index, end, flag)
     } else {
         (None, None, None)
     };
@@ -402,10 +483,14 @@ fn operation(doc: &Document, step: &Step) -> Result<Operation, EditError> {
     };
     let target = draw(step.a, element_kinds);
     let other = draw(step.b, target_kinds);
-    let list: Vec<ElementId> = if step.picks.is_empty() {
-        vec![other.clone()]
-    } else {
-        step.picks.iter().map(|&n| draw(n, source_kinds)).collect()
+    let list: Vec<ElementId> = match source_kinds {
+        // A binding's participants: two or three of its family, consecutive
+        // from the `b`-th, so distinct when the document holds that many.
+        Some(family @ Kinds::KindOf(_)) => (0..2 + u16::from(step.picks.len() > 2))
+            .filter_map(|i| among(&elements, step.b.wrapping_add(i), family))
+            .collect(),
+        _ if step.picks.is_empty() => vec![other.clone()],
+        _ => step.picks.iter().map(|&n| draw(n, source_kinds)).collect(),
     };
     let text = step.text.as_str();
     let name = match step.choice % 3 {
@@ -517,10 +602,7 @@ fn operation(doc: &Document, step: &Step) -> Result<Operation, EditError> {
         37 => child!(CreateTerminologyGroup),
         38 => SetName::new(&target, name).into(),
         39 => value!(SetGid),
-        40 => {
-            let flag = Flag::ALL[usize::from(step.choice) % Flag::ALL.len()];
-            SetFlag::new(&target, flag, step.choice % 2 == 1).into()
-        }
+        40 => SetFlag::new(&target, flag, step.choice % 2 == 1).into(),
         41 => {
             let all = AssertionDeclaration::ALL;
             SetAssertionDeclaration::new(&target, all[usize::from(step.choice) % all.len()]).into()
@@ -555,13 +637,14 @@ fn operation(doc: &Document, step: &Step) -> Result<Operation, EditError> {
                 AddReference::new(&target, end, &other).into()
             }
         }
-        54 => {
-            if to_href {
-                RemoveReference::new_href(&target, end, href()).into()
-            } else {
-                RemoveReference::new(&target, end, &other).into()
-            }
-        }
+        54 => match is_biased(step)
+            .then(|| held_reference(doc, step.a, to_href))
+            .flatten()
+        {
+            Some(held) => held,
+            None if to_href => RemoveReference::new_href(&target, end, href()).into(),
+            None => RemoveReference::new(&target, end, &other).into(),
+        },
         55 => {
             if even {
                 ReorderElements::roots(&list).into()
@@ -695,11 +778,14 @@ static START: LazyLock<Document> = LazyLock::new(|| {
         &mut doc,
         CreateTerminologyPackage::new("acp", "T").with_id("t"),
     );
+    applied(&mut doc, CreateTerm::new("t", "Term", "v").with_id("term"));
     doc
 });
 
 /// The `AssuranceCasePackage` `acp` holding the `ArgumentPackage` `p`, the
-/// `ArtifactPackage` `a` and the `TerminologyPackage` `t`.
+/// `ArtifactPackage` `a` and the `TerminologyPackage` `t`, which holds the
+/// `Term` `term`: the only kind whose sets (`value`, `externalReference`)
+/// a sequence rarely reaches when it must create the element first.
 fn start() -> Document {
     START.clone()
 }
@@ -788,12 +874,58 @@ fn next_generated_ids(doc: &Document) -> Vec<ElementId> {
     ids
 }
 
+/// How often each operation of [`OPERATIONS`] was tried and accepted over a
+/// property's run, shrinking included.
+struct Tally {
+    tried: [AtomicUsize; OPERATIONS.len()],
+    accepted: [AtomicUsize; OPERATIONS.len()],
+}
+
+impl Tally {
+    fn new() -> Self {
+        Self {
+            tried: [const { AtomicUsize::new(0) }; OPERATIONS.len()],
+            accepted: [const { AtomicUsize::new(0) }; OPERATIONS.len()],
+        }
+    }
+
+    fn record(&self, name: &str, accepted: bool) {
+        if let Some(index) = OPERATIONS.iter().position(|known| *known == name) {
+            self.tried[index].fetch_add(1, Ordering::Relaxed);
+            if accepted {
+                self.accepted[index].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// The run accepted every operation at least once: the generator reaches
+    /// each. Not checked when `PROPTEST_CASES` sets fewer cases.
+    fn assert_every_operation_accepted(&self, property: &str) {
+        if std::env::var_os("PROPTEST_CASES").is_some() {
+            return;
+        }
+        let never: Vec<String> = OPERATIONS
+            .iter()
+            .zip(self.tried.iter().zip(&self.accepted))
+            .filter(|(_, (_, accepted))| accepted.load(Ordering::Relaxed) == 0)
+            .map(|(name, (tried, _))| format!("{name} (0 of {})", tried.load(Ordering::Relaxed)))
+            .collect();
+        assert!(
+            never.is_empty(),
+            "{RT_004}: setup: {property} never accepts {}",
+            never.join(", ")
+        );
+    }
+}
+
 /// Applies `steps` to `doc` one by one, each decoded against the document so
-/// far, ignoring refusals.
-fn apply_steps(doc: &mut Document, steps: &[Step]) {
+/// far, ignoring refusals, and records each in `tally`.
+fn apply_steps(doc: &mut Document, steps: &[Step], tally: &Tally) {
     for step in steps {
         if let Ok(operation) = operation(doc, step) {
-            let _ = edit::apply(doc, operation);
+            let name = operation.operation_name();
+            let accepted = edit::apply(doc, operation).is_ok();
+            tally.record(name, accepted);
         }
     }
 }
@@ -867,9 +999,10 @@ fn assert_writes_and_reads_back(doc: &Document, mode: Mode) -> Result<(), TestCa
 #[test]
 fn lib_rt_004_a_built_document_writes_and_reads_back_equal_in_both_modes() {
     assert_the_decoder_covers_every_operation();
+    let tally = Tally::new();
     run(256, 40_401, &steps(), |steps| {
         let mut doc = start();
-        apply_steps(&mut doc, &steps);
+        apply_steps(&mut doc, &steps, &tally);
         if doc.roots().next().is_none() {
             for mode in MODES {
                 prop_assert_eq!(
@@ -887,6 +1020,7 @@ fn lib_rt_004_a_built_document_writes_and_reads_back_equal_in_both_modes() {
         }
         Ok(())
     });
+    tally.assert_every_operation_accepted("property 1");
 }
 
 /// Property 2 (D-ATOMIC): a refused edit leaves the document `==`, with the
@@ -1173,13 +1307,14 @@ static STRICT_DOCUMENTS: LazyLock<Vec<Document>> = LazyLock::new(|| {
 #[test]
 fn lib_rt_004_a_strict_read_document_after_accepted_edits_writes_strictly_and_reads_back_equal() {
     let documents = &*STRICT_DOCUMENTS;
+    let tally = Tally::new();
     run(
         64,
         40_406,
         &(0..documents.len(), steps()),
         |(index, steps)| {
             let mut doc = documents[index].clone();
-            apply_steps(&mut doc, &steps);
+            apply_steps(&mut doc, &steps, &tally);
             let written = xmi::write(&doc, &write_options(Mode::Strict));
             // A delete of the last root is accepted; the write then refuses
             // with `NoRoot`, as LIB-EDIT-026 states.
@@ -1226,4 +1361,5 @@ fn lib_rt_004_a_strict_read_document_after_accepted_edits_writes_strictly_and_re
             Ok(())
         },
     );
+    tally.assert_every_operation_accepted("property 6");
 }

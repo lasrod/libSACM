@@ -320,9 +320,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      # The line coverage, in percent, below which the job fails. Empty: report only,
-      # until the maintainer sets it after a first measurement.
-      COVERAGE_MIN_LINES: ""
+      # The line coverage, in percent, below which the job fails. Empty: report only.
+      # The maintainer set 98 on 2026-11-28 after the first measurement (98.78%).
+      COVERAGE_MIN_LINES: "98"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
