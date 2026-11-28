@@ -21,6 +21,8 @@
         "crates/*/examples/**",
         "crates/*/Cargo.toml",
         "crates/*/README.md",
+        "crates/sacm/GUIDE.md",
+        "crates/sacm/PRIMER.md",
         "xtask/src/**",
         "xtask/Cargo.toml",
         "Cargo.toml",

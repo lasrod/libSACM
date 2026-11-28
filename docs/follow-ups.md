@@ -30,3 +30,4 @@ Cleared at M5's close (slice 0071): every earlier item was done, decided, or mov
 | Slice 0088 verification | `cargo xtask` help | It says fetch-spec downloads "the pinned OMG SACM 2.3 and XMI 2.5.1 references"; it also fetches XML Schema Parts 1 and 2 and the W3C XML conformance suite. |
 | Slice 0088 verification (LIB-EDIT-025) | `unrepresentable_text.rs`, the guarantee test | Its random sequences delete only with `DeleteReferencingRelationships`; `ScrubReferences` is not exercised there (LIB-EDIT-019 keeps its bounds). |
 | Slice 0089 verification (LIB-DOC-002) | `xtask/tests/docs_style.rs` | The fallible-function finder has no control for a `pub const fn` (mutant M10 survives); no such function exists today. |
+| Slice 0091 (LIB-DOC-004) | `diagnostic` message templates | No public function fills a template with a diagnostic's arguments, so `translate_diagnostics.rs` carries its own 25-line renderer for the placeholder rules; a translating tool needs one. |

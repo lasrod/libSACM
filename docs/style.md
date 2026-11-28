@@ -42,7 +42,7 @@ Good: each fact is one bullet that opens with its key word.
 | Module and item rustdoc | A one-line summary of what it is for, then only what the signature does not say. |
 | `README.md` and the two crate READMEs | Short: what it is, how to start, and a link to the crate root. The crate README shows the crate root's example (LIB-DOC-001). |
 | [architecture.md](architecture.md) and [sacm/](sacm/) | Generated tables stay as generated. |
-| The user guide and the SACM primer | Planned; they follow this guide when written. |
+| The [user guide](../crates/sacm/GUIDE.md) and the [SACM primer](../crates/sacm/PRIMER.md) | Every code block runs as a doctest. The primer gives the clause for each concept. |
 
 Exempt, because they are history and stay as written:
 

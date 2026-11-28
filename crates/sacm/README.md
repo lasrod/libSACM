@@ -30,8 +30,14 @@ the OMG standard for exchanging assurance cases between tools as XMI files.
 - **Atomic edits.** A refused operation changes nothing.
 - **Safe on input.** No `unsafe`, no panics on input, bounded reads.
 
-Planned for 1.0: a user guide, a SACM primer, runnable examples, property-based tests,
-fuzzing and semver checks.
+- **Learn it.** The [user guide](https://github.com/lasrod/libSACM/blob/main/crates/sacm/GUIDE.md)
+  walks through each step with tested code, and the
+  [SACM primer](https://github.com/lasrod/libSACM/blob/main/crates/sacm/PRIMER.md)
+  explains the concepts.
+- **Run it.** Four [example programs](https://github.com/lasrod/libSACM/tree/main/crates/sacm/examples):
+  `cargo run -p sacm --example read_and_validate`, from a checkout of the repository.
+
+Planned for 1.0: property-based tests, fuzzing and semver checks.
 
 ## Usage
 

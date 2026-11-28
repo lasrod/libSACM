@@ -20,6 +20,10 @@
 //! - **Examples.** Every public type and fallible public function written
 //!   out in the library has a runnable example, and clippy pedantic
 //!   enforces `# Errors` and `# Panics` (LIB-DOC-002).
+//! - **The guide and the primer.** `crates/sacm/GUIDE.md` (LIB-DOC-003) and
+//!   `PRIMER.md` (LIB-DOC-005) keep the four-line rule, run as doctests,
+//!   ship with the crate and are linked from the crate root; the guide or
+//!   the crate README names each example (LIB-DOC-004).
 //!
 //! The paragraph classifier is a function over a document's lines; its rules
 //! are pinned by synthetic snippets. Nothing on disk is changed.
@@ -2647,5 +2651,332 @@ fn lib_doc_006_the_crate_root_and_readmes_link_the_matrix() {
         missing.is_empty(),
         "LIB-DOC-006: the crate root and each README must link the functionality matrix \
          ({MATRIX}) for current status; missing in {missing:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-003, LIB-DOC-005, LIB-DOC-004: the guide, the primer and the examples
+// ---------------------------------------------------------------------------
+
+/// The user guide (LIB-DOC-003), shipped with the crate.
+const GUIDE: &str = "crates/sacm/GUIDE.md";
+
+/// The SACM primer (LIB-DOC-005), shipped with the crate.
+const PRIMER: &str = "crates/sacm/PRIMER.md";
+
+/// The crate README, which may list the examples instead of the guide.
+const SACM_README: &str = "crates/sacm/README.md";
+
+/// The manifest of the `sacm` crate.
+const SACM_MANIFEST: &str = "crates/sacm/Cargo.toml";
+
+/// The example programs of `crates/sacm/examples/` (LIB-DOC-004), by name.
+const EXAMPLES: [&str; 4] = [
+    "read_and_validate",
+    "build_and_save",
+    "edit_in_place",
+    "translate_diagnostics",
+];
+
+/// The info strings of the code fences of the Markdown `text`, each with the
+/// 1-based line number of its opening fence.
+fn fence_infos(text: &str) -> Vec<(usize, String)> {
+    let mut infos = Vec::new();
+    let mut open: Option<(char, usize)> = None;
+    for (number, line) in markdown_lines(text) {
+        let trimmed = line.trim();
+        if let Some(fence_open) = open {
+            if closes(trimmed, fence_open) {
+                open = None;
+            }
+            continue;
+        }
+        if let Some(opened) = fence(trimmed) {
+            open = Some(opened);
+            infos.push((
+                number,
+                trimmed.trim_start_matches(opened.0).trim().to_owned(),
+            ));
+        }
+    }
+    infos
+}
+
+/// Whether a fence's info string keeps rustdoc from running it: an `ignore`
+/// token (`ignore` or `ignore-<target>`) or `no_run`.
+fn is_not_run(info: &str) -> bool {
+    info.split(|c: char| c == ',' || c.is_whitespace())
+        .any(|token| token.starts_with("ignore") || token == "no_run")
+}
+
+/// Whether the Rust `source` has a `#[cfg(doctest)]` item whose docs are
+/// `#[doc = include_str!("../<file>")]`, the attribute and the `cfg` among
+/// the same item's attributes and `///` lines.
+fn includes_as_doctests(source: &str, file: &str) -> bool {
+    let squeezed: Vec<String> = source
+        .lines()
+        .map(|line| line.chars().filter(|c| !c.is_whitespace()).collect())
+        .collect();
+    let include = format!("#[doc=include_str!(\"../{file}\")]");
+    let of_item = |line: &&String| line.starts_with("#[") || line.starts_with("///");
+    squeezed.iter().enumerate().any(|(i, line)| {
+        *line == include
+            && squeezed[..i]
+                .iter()
+                .rev()
+                .take_while(of_item)
+                .chain(squeezed[i + 1..].iter().take_while(of_item))
+                .any(|line| line == "#[cfg(doctest)]")
+    })
+}
+
+/// Whether the manifest `manifest` lists `file` in `package.include`.
+fn manifest_includes(manifest: &str, file: &str) -> bool {
+    manifest
+        .parse::<toml::Table>()
+        .ok()
+        .and_then(|table| {
+            table
+                .get("package")
+                .and_then(|package| package.get("include"))
+                .and_then(toml::Value::as_array)
+                .map(|include| include.iter().any(|entry| entry.as_str() == Some(file)))
+        })
+        .unwrap_or(false)
+}
+
+/// Whether the Markdown `text` links a file named `file` by a URL: rustdoc
+/// resolves a relative link against the rendered page, not the repository.
+fn links_by_url_to_file(text: &str, file: &str) -> bool {
+    link_destinations(text).iter().any(|dest| {
+        let path = without_fragment(dest);
+        path.contains("://") && path.rsplit('/').next() == Some(file)
+    })
+}
+
+/// The problems of the document `rel` against the four-line rule, or that it
+/// is missing or holds next to nothing.
+fn short_prose_problems(rel: &str) -> Vec<String> {
+    match read_optional(rel) {
+        None => vec![format!("{rel}: missing")],
+        Some(text) => {
+            let lines = markdown_lines(&text);
+            let mut problems = long_block_problems(rel, &lines);
+            if lines.len() <= 10 {
+                problems.push(format!("{rel}: {} lines, next to nothing", lines.len()));
+            }
+            problems
+        }
+    }
+}
+
+/// The problems of running the Markdown document `rel`, named `file` beside
+/// the manifest, as doctests and shipping it: the crate root's
+/// `#[cfg(doctest)]` include, the manifest's `include`, no fence rustdoc
+/// does not run and, if `needs_rust`, at least one runnable Rust fence.
+fn doctest_problems(rel: &str, file: &str, needs_rust: bool) -> Vec<String> {
+    let mut problems = Vec::new();
+    if !includes_as_doctests(&read(CRATE_ROOT), file) {
+        problems.push(format!(
+            "{CRATE_ROOT}: no `#[cfg(doctest)]` item with `#[doc = include_str!(\"../{file}\")]`"
+        ));
+    }
+    if !manifest_includes(&read(SACM_MANIFEST), file) {
+        problems.push(format!(
+            "{SACM_MANIFEST}: `package.include` does not list `{file}`"
+        ));
+    }
+    match read_optional(rel) {
+        None => problems.push(format!("{rel}: missing")),
+        Some(text) => {
+            let infos = fence_infos(&text);
+            for (line, info) in &infos {
+                if is_not_run(info) {
+                    problems.push(format!("{rel}:{line}: fence `{info}` is not run"));
+                }
+            }
+            if needs_rust && !infos.iter().any(|(_, info)| is_runnable_info(info)) {
+                problems.push(format!("{rel}: no runnable Rust code fence"));
+            }
+        }
+    }
+    problems
+}
+
+#[test]
+fn lib_doc_003_the_doctest_and_link_readers_find_what_they_look_for() {
+    // Controls for the readers the guide and primer checks use.
+    let markdown = "\
+```rust
+let a = 1;
+```
+
+- item
+
+  ```rust,no_run
+  ```
+
+````text
+```ignore
+````
+
+~~~
+~~~
+";
+    let infos = fence_infos(markdown);
+    assert_eq!(
+        infos,
+        vec![
+            (1, "rust".to_owned()),
+            (7, "rust,no_run".to_owned()),
+            (10, "text".to_owned()),
+            (14, String::new()),
+        ],
+        "LIB-DOC-003: the fence reader must find each fence's info string, not a fence \
+         inside another"
+    );
+    for info in ["ignore", "rust,ignore", "ignore-wasm32", "rust,no_run"] {
+        assert!(
+            is_not_run(info),
+            "LIB-DOC-003: a fence `{info}` is not run, but was taken as run"
+        );
+    }
+    for info in ["", "rust", "text", "rust,should_panic"] {
+        assert!(
+            !is_not_run(info),
+            "LIB-DOC-003: a fence `{info}` is run (or is not Rust), but was taken as not run"
+        );
+    }
+
+    let source = "\
+/// The guide.
+#[cfg(doctest)]
+#[doc = include_str!(\"../GUIDE.md\")]
+struct GuideDoctests;
+
+#[doc = include_str!(\"../PRIMER.md\")]
+struct Primer;
+";
+    assert!(
+        includes_as_doctests(source, "GUIDE.md"),
+        "LIB-DOC-003: a `#[cfg(doctest)]` include of the guide must be found"
+    );
+    assert!(
+        !includes_as_doctests(source, "PRIMER.md"),
+        "LIB-DOC-005: an include without `#[cfg(doctest)]` on its item is not the doctest item"
+    );
+    assert!(
+        !includes_as_doctests(
+            "#[cfg(doctest)]\nstruct A;\n#[doc = include_str!(\"../GUIDE.md\")]\nstruct B;\n",
+            "GUIDE.md"
+        ),
+        "LIB-DOC-003: a `#[cfg(doctest)]` on another item does not count"
+    );
+
+    assert!(
+        manifest_includes(
+            "[package]\ninclude = [\"src/**\", \"GUIDE.md\"]\n",
+            "GUIDE.md"
+        ),
+        "LIB-DOC-003: a listed file must be found in `package.include`"
+    );
+    assert!(
+        !manifest_includes("[package]\ninclude = [\"src/**\"]\n", "GUIDE.md"),
+        "LIB-DOC-003: an unlisted file was found in `package.include`"
+    );
+
+    for text in [
+        "[g](https://github.com/lasrod/libSACM/blob/main/crates/sacm/GUIDE.md)",
+        "[g]\n\n[g]: https://docs.rs/crate/sacm/latest/source/GUIDE.md#editing",
+    ] {
+        assert!(
+            links_by_url_to_file(text, "GUIDE.md"),
+            "LIB-DOC-003: `{text}` links the guide, but was not found"
+        );
+    }
+    for text in [
+        "[g](GUIDE.md)",
+        "`https://github.com/lasrod/libSACM/blob/main/crates/sacm/GUIDE.md`",
+        "[g](https://github.com/lasrod/libSACM/blob/main/crates/sacm/MYGUIDE.md)",
+    ] {
+        assert!(
+            !links_by_url_to_file(text, "GUIDE.md"),
+            "LIB-DOC-003: `{text}` does not link the guide from rustdoc, but was found"
+        );
+    }
+}
+
+#[test]
+fn lib_doc_003_no_paragraph_or_list_item_in_the_guide_runs_over_four_lines() {
+    let problems = short_prose_problems(GUIDE);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-003: {GUIDE} must exist, and no prose paragraph or list item in it may run \
+         over {MAX_LINES} display lines of {DISPLAY_WIDTH} characters (docs/style.md). \
+         Found: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_doc_005_no_paragraph_or_list_item_in_the_primer_runs_over_four_lines() {
+    let problems = short_prose_problems(PRIMER);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-005: {PRIMER} must exist, and no prose paragraph or list item in it may run \
+         over {MAX_LINES} display lines of {DISPLAY_WIDTH} characters (docs/style.md). \
+         Found: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_doc_003_the_guide_runs_as_doctests_and_ships_with_the_crate() {
+    let problems = doctest_problems(GUIDE, "GUIDE.md", true);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-003: the guide's code must run as doctests (a `#[cfg(doctest)]` include in \
+         the crate root, runnable Rust fences, none `ignore` or `no_run`) and the guide must \
+         ship with the crate. Found: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_doc_005_the_primer_runs_as_doctests_and_ships_with_the_crate() {
+    let problems = doctest_problems(PRIMER, "PRIMER.md", false);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-005: the primer's code, if any, must run as doctests (a `#[cfg(doctest)]` \
+         include in the crate root, no fence `ignore` or `no_run`) and the primer must ship \
+         with the crate. Found: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_doc_003_the_crate_root_links_the_guide_and_primer() {
+    let crate_root = joined(&inner_doc_lines(&read(CRATE_ROOT)));
+    let missing: Vec<&str> = ["GUIDE.md", "PRIMER.md"]
+        .into_iter()
+        .filter(|file| !links_by_url_to_file(&crate_root, file))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "LIB-DOC-003: the crate root's `//!` docs must link the guide and the primer by URL \
+         (rustdoc resolves a relative link against the rendered page); missing {missing:?}"
+    );
+}
+
+#[test]
+fn lib_doc_004_the_guide_or_readme_lists_every_example() {
+    let texts: Vec<String> = [GUIDE, SACM_README]
+        .into_iter()
+        .filter_map(read_optional)
+        .collect();
+    let missing: Vec<&str> = EXAMPLES
+        .into_iter()
+        .filter(|name| !texts.iter().any(|text| text.contains(name)))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "LIB-DOC-004: {GUIDE} or {SACM_README} must name each example of \
+         crates/sacm/examples/; not named: {missing:?}"
     );
 }

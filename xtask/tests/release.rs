@@ -6,6 +6,8 @@
 //! - each package that is published (`sacm`, `sacm-cli`) holds its
 //!   `Cargo.toml`, `README.md`, `LICENSE` and its `src/`, plus the files
 //!   cargo adds, and no tests, benches or examples (`cargo package --list`);
+//!   `sacm` alone may also hold its user guide and SACM primer, `GUIDE.md`
+//!   and `PRIMER.md` (slice 0091);
 //! - each package's `LICENSE` is the repository's, byte for byte, and each
 //!   manifest's `license` is `MIT`;
 //! - the workspace version, the version of its `sacm` dependency and the
@@ -25,6 +27,10 @@ const PUBLISHED: [&str; 2] = ["sacm", "sacm-cli"];
 
 /// The files every published package must hold, besides its `src/`.
 const REQUIRED: [&str; 3] = ["Cargo.toml", "README.md", "LICENSE"];
+
+/// The documents the `sacm` package alone may hold besides: the user guide
+/// (LIB-DOC-003) and the SACM primer (LIB-DOC-005), which ship with the crate.
+const SACM_DOCUMENTS: [&str; 2] = ["GUIDE.md", "PRIMER.md"];
 
 /// The files `cargo package` adds to a package by itself.
 const CARGO_ADDED: [&str; 3] = ["Cargo.toml.orig", "Cargo.lock", ".cargo_vcs_info.json"];
@@ -98,7 +104,8 @@ fn package_list(package: &str) -> Vec<String> {
 }
 
 /// What is wrong with the package `package`, given the paths it holds: one
-/// line per missing required file and per entry that does not belong.
+/// line per missing required file and per entry that does not belong. The
+/// `sacm` package may hold `GUIDE.md` and `PRIMER.md`; no other package may.
 fn package_problems(package: &str, paths: &[String]) -> Vec<String> {
     let mut problems = Vec::new();
     for required in REQUIRED {
@@ -118,6 +125,8 @@ fn package_problems(package: &str, paths: &[String]) -> Vec<String> {
             problems.push(format!(
                 "LIB-QA-005: package `{package}` holds `{path}`, which is under `{dir}`"
             ));
+        } else if package == "sacm" && SACM_DOCUMENTS.contains(&path.as_str()) {
+            // The guide and the primer ship with the `sacm` package.
         } else if !path.starts_with("src/")
             && !REQUIRED.contains(&path.as_str())
             && !CARGO_ADDED.contains(&path.as_str())
@@ -131,6 +140,8 @@ fn package_problems(package: &str, paths: &[String]) -> Vec<String> {
     problems
 }
 
+/// Each published package holds its sources, README and LICENSE only; the
+/// `sacm` package may also hold its user guide and SACM primer.
 #[test]
 fn lib_qa_005_each_package_holds_its_sources_readme_and_license_only() {
     let mut problems = Vec::new();
@@ -403,6 +414,32 @@ fn lib_qa_005_the_package_check_reports_each_offending_path() {
         problems.len(),
         5,
         "LIB-QA-005: one problem per offending path: {problems:#?}"
+    );
+
+    // The guide and the primer belong to the `sacm` package only.
+    let mut documented = good.clone();
+    documented.extend(["GUIDE.md", "PRIMER.md"].map(str::to_owned));
+    assert_eq!(
+        package_problems("sacm", &documented),
+        Vec::<String>::new(),
+        "LIB-QA-005: the `sacm` package may hold its user guide and SACM primer"
+    );
+    let problems = package_problems("sacm-cli", &documented);
+    for offending in [
+        "`GUIDE.md`, which is neither",
+        "`PRIMER.md`, which is neither",
+    ] {
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("`sacm-cli`") && p.contains(offending)),
+            "LIB-QA-005: no problem names `sacm-cli` and {offending}: {problems:#?}"
+        );
+    }
+    assert_eq!(
+        problems.len(),
+        2,
+        "LIB-QA-005: `sacm-cli` may hold neither the guide nor the primer: {problems:#?}"
     );
 }
 
