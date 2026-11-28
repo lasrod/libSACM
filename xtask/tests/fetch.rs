@@ -1,13 +1,15 @@
 //! Acceptance tests for hash-pinned fetching of the SACM 2.3 sources
 //! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021),
-//! XML Schema Part 2 (LIB-TOOL-022), XML Schema Part 1 (LIB-TOOL-024) and the
-//! W3C XML Conformance Test Suite (LIB-SEC-006).
+//! XML Schema Part 2 (LIB-TOOL-022), XML Schema Part 1 (LIB-TOOL-024), the
+//! W3C XML Conformance Test Suite (LIB-SEC-006) and the redirects and HTTP
+//! errors of the download (LIB-TOOL-012).
 //!
 //! `fetch_into` and `fetch_suite` are driven with fake downloaders (and fake
 //! extractors), so no test touches the network. `curl_download` is driven
-//! with the real `curl` on `file://` URLs only, and `tar_extract` with the
-//! real `tar` on local files. Every test works in its own directory under
-//! the system temporary directory and removes it afterwards.
+//! with the real `curl` on `file://` URLs and on a local HTTP server on
+//! 127.0.0.1, and `tar_extract` with the real `tar` on local files. Every test
+//! works in its own directory under the system temporary directory and removes
+//! it afterwards.
 
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -1420,5 +1422,276 @@ fn lib_compat_015_fetch_each_names_the_file_on_a_hash_mismatch_and_leaves_no_par
         out.is_empty(),
         "LIB-COMPAT-015: a refused file has no line, wrote {:?}",
         String::from_utf8_lossy(&out)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-012: curl_download against a local HTTP server
+// ---------------------------------------------------------------------------
+//
+// A std-only HTTP/1.1 server on 127.0.0.1 answers each request with
+// `Connection: close` and records the path of each request, in order. The
+// real `curl` talks to it, so `--location` and `--fail` are exercised as
+// `cargo xtask fetch-spec` uses them.
+//
+// When `http_proxy` is set, whether curl sends a request for 127.0.0.1 to the
+// proxy depends on its version and on `no_proxy`; CI sets no proxy.
+
+use std::io::{BufRead as _, BufReader, ErrorKind, Write as _};
+use std::net::{Shutdown, TcpListener, TcpStream};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+/// The body the server answers `/file` with.
+const PINNED_BYTES: &[u8] = b"the pinned bytes\n";
+
+/// The body of the server's error answers, which must never be saved.
+const ERROR_PAGE: &[u8] = b"<html>error page</html>\n";
+
+/// How long the server waits for its requests before it stops.
+const SERVER_DEADLINE: Duration = Duration::from_secs(30);
+
+/// A local HTTP server that answers a fixed number of requests.
+struct Server {
+    base: String,
+    handle: JoinHandle<Vec<String>>,
+}
+
+impl Server {
+    /// Start a server that stops after `requests` requests or after
+    /// [`SERVER_DEADLINE`], whichever comes first.
+    fn start(requests: usize) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .unwrap_or_else(|e| panic!("LIB-TOOL-012: bind 127.0.0.1:0: {e}"));
+        let address = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("LIB-TOOL-012: the server's address: {e}"));
+        listener
+            .set_nonblocking(true)
+            .unwrap_or_else(|e| panic!("LIB-TOOL-012: a non-blocking listener: {e}"));
+        let handle = thread::spawn(move || serve(&listener, requests));
+        Self {
+            base: format!("http://{address}"),
+            handle,
+        }
+    }
+
+    /// The URL of `path` on this server.
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.base)
+    }
+
+    /// Wait for the server to stop, and return the paths it was asked for.
+    fn paths(self) -> Vec<String> {
+        self.handle
+            .join()
+            .unwrap_or_else(|_| panic!("LIB-TOOL-012: the server thread panicked"))
+    }
+}
+
+/// Answer up to `requests` requests on `listener`, and return their paths.
+fn serve(listener: &TcpListener, requests: usize) -> Vec<String> {
+    let deadline = Instant::now() + SERVER_DEADLINE;
+    let mut paths = Vec::new();
+    while paths.len() < requests && Instant::now() < deadline {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Some(path) = answer(stream) {
+                    paths.push(path);
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => break,
+        }
+    }
+    paths
+}
+
+/// The status line, `Location` and body the server answers `path` with.
+fn route(path: &str) -> (&'static str, Option<&'static str>, &'static [u8]) {
+    match path {
+        "/file" => ("200 OK", None, PINNED_BYTES),
+        "/moved" => ("302 Found", Some("/file"), b""),
+        "/moved-to-missing" => ("301 Moved Permanently", Some("/missing"), b""),
+        "/broken" => ("500 Internal Server Error", None, ERROR_PAGE),
+        _ => ("404 Not Found", None, ERROR_PAGE),
+    }
+}
+
+/// Read one request from `stream`, answer it, and return its path.
+fn answer(mut stream: TcpStream) -> Option<String> {
+    // An accepted socket may inherit the listener's non-blocking mode.
+    stream.set_nonblocking(false).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .ok()?;
+    let mut reader = BufReader::new(stream.try_clone().ok()?);
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line).ok()?;
+    // The headers, up to the blank line.
+    loop {
+        let mut header = String::new();
+        let read = reader.read_line(&mut header).ok()?;
+        if read == 0 || header.trim_end().is_empty() {
+            break;
+        }
+    }
+    let path = request_line.split_whitespace().nth(1)?.to_owned();
+    let (status, location, body) = route(&path);
+    let location = location.map_or_else(String::new, |to| format!("Location: {to}\r\n"));
+    let head = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html\r\nContent-Length: {}\r\n{location}\
+         Connection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(head.as_bytes()).ok()?;
+    stream.write_all(body).ok()?;
+    stream.flush().ok()?;
+    let _ = stream.shutdown(Shutdown::Write);
+    Some(path)
+}
+
+/// Whether `out` is absent or empty: no error page was saved.
+fn nothing_saved(out: &Path) -> bool {
+    fs::read(out).map_or(true, |bytes| bytes.is_empty())
+}
+
+#[test]
+fn lib_tool_012_curl_download_follows_a_redirect() {
+    let dir = TempDir::new("lib-tool-012-redirect");
+    let out = dir.file("out.bin");
+    let server = Server::start(2);
+
+    let result = curl_download(&server.url("/moved"), &out);
+    let paths = server.paths();
+
+    assert_eq!(
+        result,
+        Ok(()),
+        "LIB-TOOL-012: a download through a 302 redirect succeeds"
+    );
+    assert_eq!(
+        fs::read(&out).ok().as_deref(),
+        Some(PINNED_BYTES),
+        "LIB-TOOL-012: the bytes at the redirect's target are saved"
+    );
+    assert_eq!(
+        paths,
+        ["/moved", "/file"],
+        "LIB-TOOL-012: curl followed the redirect (`--location`)"
+    );
+}
+
+#[test]
+fn lib_tool_012_curl_download_fails_on_an_http_error_status() {
+    let dir = TempDir::new("lib-tool-012-error-status");
+    let server = Server::start(2);
+
+    for (path, status) in [("/missing", 404), ("/broken", 500)] {
+        let out = dir.file(&format!("out{status}.bin"));
+        let result = curl_download(&server.url(path), &out);
+        let Err(message) = result else {
+            panic!("LIB-TOOL-012: a download answered with {status} must fail, got Ok");
+        };
+        assert!(
+            message.starts_with("curl "),
+            "LIB-TOOL-012: a {status} is an error naming curl's exit status (not \"could not \
+             run curl\", which means curl is missing), got {message:?}"
+        );
+        let saved = fs::read(&out).unwrap_or_default();
+        assert!(
+            saved.is_empty(),
+            "LIB-TOOL-012: the {status} error page is not saved (`--fail`), {} holds {:?}",
+            out.display(),
+            String::from_utf8_lossy(&saved)
+        );
+    }
+    assert_eq!(
+        server.paths(),
+        ["/missing", "/broken"],
+        "LIB-TOOL-012: each download asked the server once"
+    );
+}
+
+#[test]
+fn lib_tool_012_curl_download_fails_when_a_redirect_ends_in_an_error() {
+    let dir = TempDir::new("lib-tool-012-redirect-error");
+    let out = dir.file("out.bin");
+    let server = Server::start(2);
+
+    let result = curl_download(&server.url("/moved-to-missing"), &out);
+    let paths = server.paths();
+
+    assert_eq!(
+        paths,
+        ["/moved-to-missing", "/missing"],
+        "LIB-TOOL-012: curl followed the 301 to the missing file"
+    );
+    let Err(message) = result else {
+        panic!("LIB-TOOL-012: a redirect to a 404 must fail, got Ok");
+    };
+    assert!(
+        message.starts_with("curl "),
+        "LIB-TOOL-012: a redirect to a 404 is an error naming curl's exit status, got \
+         {message:?}"
+    );
+    assert!(
+        nothing_saved(&out),
+        "LIB-TOOL-012: the error page behind the redirect is not saved"
+    );
+}
+
+/// An artifact at `url` pinned to `sha256`, leaked so that it is `'static`
+/// as [`Artifact`] requires.
+fn served_artifact(file_name: &'static str, url: String, sha256: String) -> Artifact {
+    Artifact {
+        file_name,
+        url: Box::leak(url.into_boxed_str()),
+        sha256: Box::leak(sha256.into_boxed_str()),
+        what: "LIB-TOOL-012 served artifact",
+    }
+}
+
+#[test]
+fn lib_tool_012_fetch_into_with_curl_keeps_no_error_page() {
+    let dir = TempDir::new("lib-tool-012-fetch-into");
+    let server = Server::start(3);
+    let pin = sha256_hex(PINNED_BYTES);
+
+    let missing = served_artifact("missing.bin", server.url("/missing"), pin.clone());
+    let refused = fetch_into(dir.path(), &[missing], &mut curl_download);
+    assert!(
+        refused.is_err(),
+        "LIB-TOOL-012: fetch_into of a 404 fails, got {refused:?}"
+    );
+    assert!(
+        !dir.file("missing.bin").exists() && !dir.file("missing.bin.part").exists(),
+        "LIB-TOOL-012: neither a file nor a partial file is left for a 404: {:?}",
+        dir.entries()
+    );
+
+    let moved = served_artifact("moved.bin", server.url("/moved"), pin);
+    let fetched = fetch_into(dir.path(), &[moved], &mut curl_download);
+    assert_eq!(
+        fetched,
+        Ok(vec![Outcome::Fetched]),
+        "LIB-TOOL-012: the pinned bytes behind a redirect are fetched"
+    );
+    assert_eq!(
+        fs::read(dir.file("moved.bin")).ok().as_deref(),
+        Some(PINNED_BYTES),
+        "LIB-TOOL-012: the destination holds the pinned bytes"
+    );
+    assert_eq!(
+        dir.entries(),
+        ["moved.bin"],
+        "LIB-TOOL-012: only the fetched file is in the directory"
+    );
+    assert_eq!(
+        server.paths(),
+        ["/missing", "/moved", "/file"],
+        "LIB-TOOL-012: the server was asked for the 404, then the redirect and its target"
     );
 }

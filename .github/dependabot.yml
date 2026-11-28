@@ -7,6 +7,18 @@ updates:
     groups:
       cargo-minor:
         update-types: [minor, patch]
+    ignore:
+      # proptest 1.12 needs Rust 1.88; the MSRV is 1.85 (ADR 0007, ADR 0046 D1).
+      - dependency-name: proptest
+        versions: [">= 1.12"]
+  # The fuzz crate has its own workspace and Cargo.lock (LIB-SEC-004, ADR 0046 D2).
+  - package-ecosystem: cargo
+    directory: /fuzz
+    schedule:
+      interval: weekly
+    groups:
+      fuzz-cargo-minor:
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:

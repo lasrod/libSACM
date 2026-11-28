@@ -1033,6 +1033,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_012_the_version_requirement_is_compared_as_numbers",
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_profile_keys_are_named",
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_top_level_nextest_keys_are_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_mutants_timeouts_are_exactly_the_reviewed_ones",
 ]
 verification = "docs/verification/0012-m0-simplify.md"
 
@@ -1132,9 +1133,22 @@ title = "Spec download follows redirects and fails on HTTP errors"
 requirement = "`curl_download` is tested against a local HTTP server: a redirect is followed (`--location`) and an HTTP error status fails the download (`--fail`) instead of saving the error page."
 source = "Verification 0003 follow-up (curl_download tested only with file:// URLs)"
 kind = "tooling"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0092-quality-tooling.md"
 depends_on = ["LIB-TOOL-002"]
 notes = "Moved from M0 to M7 on 2026-11-09 (slice 0012): useful, not foundational."
+acceptance = [
+  "xtask/tests/fetch.rs runs a std-only local HTTP server: a redirect is followed, a 404 and a 500 fail without saving the error page, a redirect to an error fails, and `fetch_into` keeps no error page and accepts the pinned bytes after a redirect.",
+]
+code = [
+  "xtask/src/fetch.rs",
+]
+tests = [
+  "xtask/tests/fetch.rs::lib_tool_012_curl_download_follows_a_redirect",
+  "xtask/tests/fetch.rs::lib_tool_012_curl_download_fails_on_an_http_error_status",
+  "xtask/tests/fetch.rs::lib_tool_012_curl_download_fails_when_a_redirect_ends_in_an_error",
+  "xtask/tests/fetch.rs::lib_tool_012_fetch_into_with_curl_keeps_no_error_page",
+]
 
 [[row]]
 id = "LIB-QA-008"
@@ -6609,33 +6623,90 @@ id = "LIB-RT-004"
 area = "RT"
 milestone = "M7"
 title = "Property-based round-trip and atomicity tests"
-requirement = "Property tests generate arbitrary valid documents and edit sequences through the public API and assert that save → load is lossless, output is deterministic, and failed edits leave the document unchanged. They include the guarantee the `xmi::write` docs then state: a document from a strict read, after any accepted edits, writes strictly and reads back equal (`==`)."
+requirement = "Property tests generate arbitrary valid documents and edit sequences through the public API and assert that save → load is lossless, output is deterministic, and failed edits leave the document unchanged. They include the guarantee the `xmi::write` docs then state: a document from a strict read, after any accepted edits, writes strictly and reads back equal (`==`) while it has a root (the `xmi::write` exceptions)."
 source = "D-RT, D-ATOMIC; lasrod/libSACM#113 D5"
 kind = "quality"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0092-quality-tooling.md"
 depends_on = ["LIB-RT-003", "LIB-EDIT-009", "LIB-EDIT-026"]
+acceptance = [
+  "crates/sacm/tests/properties.rs holds six proptest properties with fixed seeds and case counts: a built document writes and reads back equal in both modes and writes the same bytes twice; a refused edit changes nothing (document, revision, next generated ids) and `edit::check` gives the same error; `apply_all` is all or nothing; a batch that returns an error changes nothing; a batch's net ids equal `changes`; a strict-read document after accepted edits writes strictly and reads back equal.",
+  "Generated text covers every XML 1.0 Char range and some characters it cannot represent, so LIB-EDIT-025 refusals are exercised; each found failure becomes a named regression test.",
+  "The test job runs it within 60 s on ubuntu (90 s on Windows); mutation runs use 16 cases; a weekly run uses 4096 cases with a new seed (ADR 0046 D1).",
+]
+code = [
+  "crates/sacm/Cargo.toml",
+  ".github/workflows/fuzz.yml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/mutants.yml",
+]
+tests = [
+  "crates/sacm/tests/properties.rs::lib_rt_004_a_built_document_writes_and_reads_back_equal_in_both_modes",
+  "crates/sacm/tests/properties.rs::lib_rt_004_a_refused_edit_changes_nothing",
+  "crates/sacm/tests/properties.rs::lib_rt_004_apply_all_is_all_or_nothing",
+  "crates/sacm/tests/properties.rs::lib_rt_004_a_batch_that_returns_an_error_changes_nothing",
+  "crates/sacm/tests/properties.rs::lib_rt_004_batch_net_ids_equal_compare_changes",
+  "crates/sacm/tests/properties.rs::lib_rt_004_a_strict_read_document_after_accepted_edits_writes_strictly_and_reads_back_equal",
+]
 
 [[row]]
 id = "LIB-SEC-004"
 area = "SEC"
 milestone = "M7"
 title = "Fuzzing"
-requirement = "A cargo-fuzz target feeds arbitrary bytes to the XMI reader; a documented run finds no panic, hang or limit violation, and found crashers become regression tests."
+requirement = "Two cargo-fuzz targets, `xmi_read` (both modes) and `serde_records`, share the oracle of a stable replay test; CI fuzzes each PR briefly and weekly for 20 minutes per target; a documented run finds no panic, hang or limit violation; found crashers become regression inputs replayed on stable."
 source = "Robustness policy"
 kind = "security"
-status = "planned"
-depends_on = ["LIB-SEC-003"]
+status = "implemented"
+depends_on = ["LIB-SEC-003", "LIB-COMPAT-022"]
+acceptance = [
+  "fuzz/ holds the two targets outside the workspace (ADR 0046 D2); each calls the oracle in crates/sacm/tests/common/oracle_xmi.rs or oracle_serde.rs.",
+  "The XMI oracle reads, formats every diagnostic, validates, writes in the same mode and reads back equal; a tolerant read always writes tolerantly. The serde oracle round-trips each record type and applies a decoded `Operation`.",
+  "crates/sacm/tests/fuzz_regressions.rs replays every regression input and every fixture, and mutates fixtures and serde goldens with fixed seeds, on stable and MSRV.",
+  "ci.yml runs a `fuzz (smoke)` job on pull requests; fuzz.yml runs weekly and on dispatch. The slice PR's `fuzz (smoke)` run ends without a crash, timeout or out-of-memory, and its URL is in the verification record; GitHub dispatches only workflows on the default branch, so the first full fuzz.yml run is dispatched on main after the merge, before the release.",
+]
+code = [
+  "fuzz/Cargo.toml",
+  "fuzz/fuzz_targets/xmi_read.rs",
+  "fuzz/fuzz_targets/serde_records.rs",
+  "fuzz/xmi.dict",
+  "crates/sacm/tests/common/oracle_xmi.rs",
+  "crates/sacm/tests/common/oracle_serde.rs",
+  ".github/workflows/ci.yml",
+  ".github/workflows/fuzz.yml",
+]
+tests = [
+  "crates/sacm/tests/fuzz_regressions.rs::lib_sec_004_every_regression_input_passes_the_oracles",
+  "crates/sacm/tests/fuzz_regressions.rs::lib_sec_004_every_fixture_passes_the_xmi_oracle",
+  "crates/sacm/tests/fuzz_regressions.rs::lib_sec_004_arbitrary_bytes_pass_the_xmi_oracle",
+  "crates/sacm/tests/fuzz_regressions.rs::lib_sec_004_mutated_fixtures_pass_the_xmi_oracle",
+  "crates/sacm/tests/fuzz_regressions.rs::lib_sec_004_mutated_serde_goldens_pass_the_serde_oracle",
+  "xtask/tests/repo_checks.rs::lib_sec_004_ci_runs_a_fuzz_smoke_on_pull_requests",
+  "xtask/tests/repo_checks.rs::lib_sec_004_the_weekly_workflow_fuzzes_both_targets",
+]
 
 [[row]]
 id = "LIB-QA-004"
 area = "QA"
 milestone = "M7"
 title = "Coverage reporting"
-requirement = "CI measures line coverage of the sacm crate with cargo-llvm-cov, publishes it, and fails below an agreed threshold."
+requirement = "CI measures line coverage of the sacm crate with cargo-llvm-cov on pull requests and pushes to main that change code, and publishes it in the job summary and as the `coverage-sacm` artifact (lcov, HTML). It fails below `COVERAGE_MIN_LINES` in ci.yml, which the maintainer set to 98 (percent) after the first measurement (98.78%, 2026-11-28); empty means report only."
 source = "Project policy"
 kind = "quality"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0092-quality-tooling.md"
 depends_on = ["LIB-QA-001"]
+acceptance = [
+  "ci.yml has a `coverage` job (not required) with cargo-llvm-cov 0.9.2 over `--package sacm --all-features`, an lcov and HTML report, the summary table in the job summary, and the `coverage-sacm` artifact.",
+  "The threshold is read from `COVERAGE_MIN_LINES`; empty means report only. A repo check pins the commands.",
+  "The slice PR's coverage run gives the first measurement to the maintainer; `COVERAGE_MIN_LINES` is then set to the maintainer's threshold (98), and the job passes at it.",
+]
+code = [
+  ".github/workflows/ci.yml",
+]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_004_ci_measures_the_line_coverage_of_sacm",
+]
 
 [[row]]
 id = "LIB-QA-019"
@@ -6694,11 +6765,38 @@ id = "LIB-QA-006"
 area = "QA"
 milestone = "M7"
 title = "Semver checks"
-requirement = "cargo-semver-checks runs on pull requests against the last published version and fails on an undeclared breaking change."
+requirement = "cargo-semver-checks runs on every pull request against the newest release tag, with the `serde` feature only, through `cargo xtask semver`; before 1.0 a break must be listed under `[Unreleased] ### Breaking` in CHANGELOG.md, and from 1.0 it needs the major version bump. The job is a required check."
 source = "rust-library-craft skill (MSRV and semver)"
 kind = "quality"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0092-quality-tooling.md"
 depends_on = ["LIB-QA-005"]
+acceptance = [
+  "`cargo xtask semver` picks the baseline (the highest `vX.Y.Z` tag), the release type from the CHANGELOG and the workspace version, and runs cargo-semver-checks with `--only-explicit-features --features serde`; its plan is a tested pure function.",
+  "Its errors name what is missing; a declared break before 1.0 is reported in the job summary.",
+  "ci.yml's `semver checks` job runs it with full history; it passes on the slice PR and lists the known breaks; docs/releasing.md names it.",
+]
+code = [
+  "xtask/src/semver.rs",
+  "xtask/src/lib.rs",
+  ".github/workflows/ci.yml",
+  "docs/releasing.md",
+]
+tests = [
+  "xtask/tests/semver.rs::lib_qa_006_the_baseline_is_the_newest_release_tag",
+  "xtask/tests/semver.rs::lib_qa_006_before_1_0_a_declared_break_runs_at_major_and_is_reported",
+  "xtask/tests/semver.rs::lib_qa_006_before_1_0_an_undeclared_break_fails_at_minor",
+  "xtask/tests/semver.rs::lib_qa_006_a_breaking_heading_with_no_entry_declares_nothing",
+  "xtask/tests/semver.rs::lib_qa_006_a_version_bump_lets_the_versions_decide",
+  "xtask/tests/semver.rs::lib_qa_006_from_1_0_a_declared_break_needs_the_major_bump",
+  "xtask/tests/semver.rs::lib_qa_006_semver_checks_sacm_with_the_serde_feature_only",
+  "xtask/tests/semver.rs::lib_qa_006_errors_name_what_is_missing",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_help_lists_the_semver_command",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_reports_a_declared_break_in_the_job_summary",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_names_the_check_that_failed",
+  "xtask/tests/semver.rs::lib_qa_006_cargo_xtask_semver_says_when_cargo_semver_checks_is_missing",
+  "xtask/tests/repo_checks.rs::lib_qa_006_ci_runs_cargo_xtask_semver",
+]
 
 [[row]]
 id = "LIB-API-008"
@@ -9044,6 +9142,18 @@ source = "LIB-COMPAT-002 (paths in reference ends only); slice 0075a follow-up; 
 kind = "xmi"
 status = "candidate"
 notes = "No corpus file needs it; was a follow-up of slice 0075a."
+
+[[row]]
+id = "LIB-COMPAT-022"
+area = "COMPAT"
+milestone = "M7"
+title = "A tolerant write of a renamed xmi prefix reads back equal"
+requirement = "A document a tolerant read accepts, written tolerantly and read again in tolerant mode, is equal (`==`) to the first read, also when the file binds the `xmi` prefix to another namespace. Today the writer declares a fresh prefix (`ns1`) on the root for the renamed attribute, and the outermost preserved child then records that binding on the second read, so the two documents differ in preserved content."
+source = "Found by the fuzz smoke run of slice 0092 (CI run 46107833317, crash-1aa1ae6a); D-RT; LIB-COMPAT-003; minimal input `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"urn:x\" xmi:id=\"p\"><argumentElement xmi:type=\"sacm:Claim\"/></sacm:ArgumentPackage>`"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-003"]
+notes = "Fixed with the crash input as a regression input under crates/sacm/tests/data/fuzz/xmi/ (no `.xmi` extension); LIB-SEC-004 waits for it."
 
 # ---------------------------------------------------------------------------
 # M7 additions, 2026-11-26: Assurance Forge feedback (lasrod/libSACM#113) and

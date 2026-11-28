@@ -37,6 +37,39 @@ cargo deny check
 python -m unittest discover -s .claude/hooks -p "test_*.py"
 ```
 
+## Semver checks
+
+`semver checks`, a required check, runs `cargo xtask semver`: it compares `sacm`'s public
+API, with the `serde` feature only, against the newest release tag, using
+[cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks). Before 1.0, a
+breaking change must be listed under `### Breaking` in CHANGELOG.md's `[Unreleased]`
+section; from 1.0, it needs the major version bump. To run it locally:
+
+```sh
+cargo install cargo-semver-checks --locked --version 0.51.0
+cargo xtask semver
+```
+
+## Property tests, fuzzing and coverage
+
+- **Property tests** (`crates/sacm/tests/properties.rs`) run in every `cargo test` with
+  fixed seeds and case counts. `PROPTEST_CASES` and `PROPTEST_RNG_SEED` widen a run. A
+  failure proptest finds becomes a named regression test.
+- **Fuzzing:** two cargo-fuzz targets live in [`fuzz/`](fuzz/README.md), outside the
+  workspace. CI fuzzes each pull request briefly (`fuzz (smoke)`) and each target for 20
+  minutes weekly (`fuzz.yml`). A crashing input becomes a file under
+  `crates/sacm/tests/data/fuzz/`, which `cargo test` replays on stable.
+- **Coverage:** the `coverage` job measures the line coverage of `sacm`'s tests with
+  [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov), in the job summary and the
+  `coverage-sacm` artifact. Locally:
+
+  ```sh
+  cargo install cargo-llvm-cov --locked --version 0.9.2
+  cargo llvm-cov --package sacm --all-features --html
+  ```
+
+Neither the fuzz run nor coverage is a required check.
+
 ## Mutation testing
 
 CI runs [cargo-mutants](https://mutants.rs) on each pull request's diff, in parallel and
@@ -63,6 +96,8 @@ cargo mutants --workspace --in-diff mutants.diff
   failure ([ADR 0009](docs/adr/0009-nextest-for-mutation-testing.md)).
 - **Doctests:** they do not run under mutation, so kill a mutant with a unit or
   integration test.
+- **Property tests** run 16 cases each under mutation (`PROPTEST_CASES=16` in CI); set
+  it locally too, or a run takes much longer.
 - **The authoritative run is Linux.** Some sacm-cli tests are Linux-only.
 - **Results** go to the git-ignored `mutants.out/`.
 - **Exclusions:** every exclusion in `.cargo/mutants.toml` needs a row in

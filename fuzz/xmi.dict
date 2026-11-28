@@ -1,0 +1,15 @@
+# libFuzzer dictionary for the `xmi_read` target (LIB-SEC-004): XML markup and the
+# XMI 2.5.1 and SACM 2.3 tokens the reader decides on. The stable replay in
+# crates/sacm/tests/fuzz_regressions.rs inserts the same 12 tokens (TOKENS).
+"<"
+">"
+"/>"
+"\""
+"&"
+"xmi:id=\""
+"xmi:type=\"sacm:Claim\""
+"href=\"#"
+"xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\""
+"<xmi:Extension>"
+"<xmi:Difference><target "
+"<!DOCTYPE x>"

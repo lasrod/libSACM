@@ -12,3 +12,16 @@ fail-fast = { max-fail = 1, terminate = "immediate" }
 # The nested `cargo run` of each example is slow per mutant and tests no
 # library logic (LIB-DOC-004); the normal test runs keep it.
 default-filter = "not test(lib_doc_004_each_example_runs_without_arguments_and_exits_zero)"
+# A test still running after 2 x 60 s fails, so a mutant that makes a test loop
+# is caught in about two minutes, not after cargo-mutants' own timeout (5 x the
+# baseline, about 55 minutes on CI). On CI every sacm and xtask test but the
+# three edit_atomic sweeps ends within 12 s (full run 45995064802; ADR 0009
+# amendment 2).
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# The edit_atomic sweeps take 470 to 650 s on CI. Their binary starts last, so a
+# mutant another test kills is caught before they start; they may run 20 minutes.
+[[profile.mutants.overrides]]
+filter = "binary(edit_atomic)"
+priority = -100
+slow-timeout = { period = "300s", terminate-after = 4 }

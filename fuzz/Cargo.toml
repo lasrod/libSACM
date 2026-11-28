@@ -1,0 +1,44 @@
+# The cargo-fuzz targets of LIB-SEC-004 (ADR 0046 D2). Outside the workspace and never
+# published: libfuzzer-sys carries the NCSA licence, which deny.toml does not allow in
+# distributed code. Run with the pinned nightly, see README.md.
+[package]
+name = "sacm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace, so the root workspace neither builds nor licence-checks it.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+sacm = { path = "../crates/sacm", features = ["serde"] }
+serde = "1.0.200"
+serde_json = "1.0.128"
+
+# The root clippy.toml disallows platform APIs for sacm's wasm build (LIB-QA-017); as in
+# the workspace's other crates, the harness may use them (libFuzzer reads files).
+[lints.clippy]
+disallowed_methods = "allow"
+disallowed_types = "allow"
+
+[[bin]]
+name = "xmi_read"
+path = "fuzz_targets/xmi_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "serde_records"
+path = "fuzz_targets/serde_records.rs"
+test = false
+doc = false
+bench = false
+
+# Line tables for symbolized crash stacks.
+[profile.release]
+debug = 1

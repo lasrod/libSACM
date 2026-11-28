@@ -193,8 +193,10 @@ class RealScopesTests(unittest.TestCase):
                         self.assert_denied(role, path, tool)
 
     def test_lib_tool_003_real_scopes_confine_builder_to_its_scope(self) -> None:
-        # The builder (ADR 0006 amendment 5) writes tests, code, docs and its scratch
-        # copies, and nothing else: not the guard, its scopes or the settings.
+        # The builder (ADR 0006 amendment 5) writes tests, code, docs, the CI workflows,
+        # dependabot.yml, CONTRIBUTING.md (maintainer, 2026-11-28, slice 0092) and its
+        # scratch copies, and nothing else: not the guard, its scopes, the settings, nor
+        # the other repository policy files beside CI (CODEOWNERS, deny.toml).
         role = "sacm-builder"
         for path in (
             "crates/sacm/tests/x.rs",
@@ -204,6 +206,11 @@ class RealScopesTests(unittest.TestCase):
             "crates/sacm/src/lib.rs",
             "xtask/src/lib.rs",
             "docs/guide.md",
+            "crates/sacm/GUIDE.md",
+            "crates/sacm/PRIMER.md",
+            ".github/workflows/ci.yml",
+            ".github/dependabot.yml",
+            "CONTRIBUTING.md",
             "target/scratch/b/crates/sacm/src/lib.rs",
         ):
             with self.subTest(path=path):
@@ -211,7 +218,7 @@ class RealScopesTests(unittest.TestCase):
         for path in (
             *GUARD_FILES,
             ".claude/agents/sacm-builder.md",
-            ".github/workflows/ci.yml",
+            ".github/CODEOWNERS",
             "deny.toml",
             "target/te/x.rs",
             "docs/matrix/functionality-matrix.toml",

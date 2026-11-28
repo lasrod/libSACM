@@ -43,6 +43,8 @@ serde = { version = "1.0.200", optional = true, default-features = false, featur
 sacm = { path = ".", features = ["test-support"] }
 # The serde tests' JSON format (ADR 0030); already in the lock through xtask.
 serde_json = "1.0.128"
+# Property tests with shrinking (LIB-RT-004, ADR 0046 D1). 1.12 needs Rust 1.88; MSRV is 1.85.
+proptest = { version = "1.11", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true

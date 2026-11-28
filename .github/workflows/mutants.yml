@@ -22,6 +22,12 @@ env:
   # Rebuilding each mutant is most of the time; debug info only slows it.
   CARGO_PROFILE_DEV_DEBUG: 0
   CARGO_PROFILE_TEST_DEBUG: 0
+  # LIB-RT-004 (ADR 0046 D1): 16 cases per property keep each mutant's test run short.
+  PROPTEST_CASES: "16"
+  # The pinned OMG references (LIB-TOOL-002), for the xtask tests that read them
+  # (LIB-TOOL-004, LIB-TOOL-023). Set, a missing file fails those tests instead of
+  # skipping them, so their mutants cannot show as missed (full run 45995064802).
+  SACM_SPEC_DIR: ${{ github.workspace }}/third_party/sacm-2.3
 
 jobs:
   mutants:
@@ -49,12 +55,17 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache the OMG references (LIB-TOOL-002)
+        uses: actions/cache@v6
+        with:
+          path: third_party/sacm-2.3
+          key: sacm-spec-${{ hashFiles('xtask/src/fetch.rs') }}
       - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
         uses: actions/cache@v6
         with:
           path: third_party/xmlconf
           key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
-      - run: cargo xtask fetch-spec --only xmlconf
+      - run: cargo xtask fetch-spec
       - run: cargo install cargo-mutants --locked --version 27.1.0
       - run: cargo install cargo-nextest --locked --version 0.9.151
       - run: cargo mutants --workspace --shard ${{ matrix.shard }}/32 --sharding round-robin
