@@ -10,10 +10,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-# The published package holds the sources, the README, the MIT LICENSE and this manifest
-# only. Tests and test data stay in the repository: they are megabytes no user builds
+# The published package holds the sources, the README, the user guide, the SACM primer,
+# the MIT LICENSE and this manifest only. Tests and test data stay in the repository: they are megabytes no user builds
 # (LIB-QA-005).
-include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
+include = ["src/**", "README.md", "GUIDE.md", "PRIMER.md", "LICENSE", "Cargo.toml"]
 
 [features]
 # Makes `Document::insert`, `InsertError`, `Document::set_assertion_declaration`,

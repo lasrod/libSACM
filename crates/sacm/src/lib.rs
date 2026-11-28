@@ -210,6 +210,10 @@
 //!
 //! # More
 //!
+//! - **How to use it.** The [user guide][guide] walks through reading, inspecting,
+//!   validating, editing and saving, step by step.
+//! - **What SACM is.** The [SACM primer][primer] explains the concepts, for readers who
+//!   have not read the specification.
 //! - **What is built.** The [functionality matrix][matrix] is the full inventory: every
 //!   requirement, its status and the tests behind it.
 //! - **What is claimed.** The [conformance statement][compliance] covers the four
@@ -219,6 +223,8 @@
 //!   silent or unclear.
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
+//! [guide]: https://github.com/lasrod/libSACM/blob/main/crates/sacm/GUIDE.md
+//! [primer]: https://github.com/lasrod/libSACM/blob/main/crates/sacm/PRIMER.md
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 //! [compliance]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/compliance-points.md
 //! [diagnostics]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
@@ -240,6 +246,16 @@ pub mod xmi;
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
+
+/// The user guide's examples, compiled and run as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../GUIDE.md")]
+struct GuideDoctests;
+
+/// The SACM primer's examples, if it has any, compiled and run as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../PRIMER.md")]
+struct PrimerDoctests;
 
 /// The version of this crate, as published.
 ///

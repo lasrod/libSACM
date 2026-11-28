@@ -5222,7 +5222,9 @@ fn lib_qa_007_mutants_output_is_git_ignored() {
 //   `fail-fast` table (`[nextest-fail-fast]`), `max-fail = 1`
 //   (`[nextest-max-fail]`) and `terminate = "immediate"`
 //   (`[nextest-terminate]`); and no `fail-fast` in the `default` profile
-//   (`[nextest-default-fail-fast]`). Every other key is
+//   (`[nextest-default-fail-fast]`). The `mutants` profile may also set
+//   `default-filter`, to exactly [`NEXTEST_MUTANTS_DEFAULT_FILTER`]; any
+//   other value is `[nextest-default-filter]`. Every other key is
 //   `[nextest-unreviewed-key]`: every profile inherits the `default` one, so
 //   a key such as `default-filter`, `retries`, `slow-timeout` or `overrides`
 //   there, or in the `mutants` profile, changes which tests run or what
@@ -5243,6 +5245,13 @@ type Version = (u64, u64, u64);
 
 /// ADR 0009: the first nextest with `terminate = "immediate"`.
 const NEXTEST_MINIMUM: Version = (0, 9, 111);
+
+/// The one reviewed `default-filter` of the `mutants` profile: it leaves out
+/// the test that runs each example with a nested `cargo run`, which is slow
+/// per mutant and tests no library logic (slice 0091). Any other filter could
+/// hide tests from cargo-mutants.
+const NEXTEST_MUTANTS_DEFAULT_FILTER: &str =
+    "not test(lib_doc_004_each_example_runs_without_arguments_and_exits_zero)";
 
 /// The keys `.config/nextest.toml` may have at its top level.
 const NEXTEST_TOP_KEYS: [&str; 2] = ["nextest-version", "profile"];
@@ -5349,9 +5358,21 @@ fn nextest_version_problems(value: Option<&toml::Value>, problems: &mut Vec<Stri
 }
 
 /// Item 2: the `mutants` profile sets exactly `fail-fast = { max-fail = 1,
-/// terminate = "immediate" }`.
+/// terminate = "immediate" }`, and no other key but a `default-filter` that
+/// is exactly [`NEXTEST_MUTANTS_DEFAULT_FILTER`].
 fn mutants_profile_problems(profile: &toml::Table, problems: &mut Vec<String>) {
-    for key in profile.keys().filter(|key| key.as_str() != "fail-fast") {
+    match profile.get("default-filter") {
+        None => {}
+        Some(value) if value.as_str() == Some(NEXTEST_MUTANTS_DEFAULT_FILTER) => {}
+        Some(value) => problems.push(problem(
+            "nextest-default-filter",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` may set `default-filter` only to \"{NEXTEST_MUTANTS_DEFAULT_FILTER}\", found `default-filter = {value}`, which could hide tests from cargo-mutants"),
+        )),
+    }
+    for key in profile
+        .keys()
+        .filter(|key| !["fail-fast", "default-filter"].contains(&key.as_str()))
+    {
         problems.push(problem(
             "nextest-unreviewed-key",
             format!("{NEXTEST_CONFIG}'s `[profile.mutants]` has the key `{key}`, which has not been reviewed"),
@@ -5509,6 +5530,7 @@ const QA12_MAX_FAIL: &[&str] = &["nextest-max-fail"];
 const QA12_TERMINATE: &[&str] = &["nextest-terminate"];
 const QA12_DEFAULT_FAIL_FAST: &[&str] = &["nextest-default-fail-fast"];
 const QA12_UNREVIEWED: &[&str] = &["nextest-unreviewed-key"];
+const QA12_DEFAULT_FILTER: &[&str] = &["nextest-default-filter"];
 const QA12_VERSION: &[&str] = &["nextest-version"];
 const QA12_CONFIG_MISSING: &[&str] = &["nextest-config-missing"];
 const QA12_CONFIG_PARSE: &[&str] = &["nextest-config-parse"];
@@ -5811,6 +5833,8 @@ fn lib_qa_012_the_default_profile_changing_fail_fast_is_named() {
 
 /// Item 2: any other key that the `mutants` profile sees (its own, or the
 /// `default` profile's, which it inherits) is `[nextest-unreviewed-key]`.
+/// The `mutants` profile's own `default-filter` is accepted with exactly its
+/// reviewed value, and `[nextest-default-filter]` with any other.
 #[test]
 fn lib_qa_012_unreviewed_profile_keys_are_named() {
     let in_mutants = |line: &str| {
@@ -5858,9 +5882,33 @@ fn lib_qa_012_unreviewed_profile_keys_are_named() {
             QA12_UNREVIEWED,
         ),
         control(
+            "[profile.mutants] the reviewed default-filter",
+            in_mutants(&format!(
+                "default-filter = \"{NEXTEST_MUTANTS_DEFAULT_FILTER}\""
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
             "[profile.mutants] default-filter",
             in_mutants("default-filter = \"not test(lib_)\""),
-            QA12_UNREVIEWED,
+            QA12_DEFAULT_FILTER,
+        ),
+        control(
+            "[profile.mutants] another default-filter",
+            in_mutants("default-filter = \"not test(foo)\""),
+            QA12_DEFAULT_FILTER,
+        ),
+        control(
+            "[profile.mutants] the reviewed default-filter with a space added",
+            in_mutants(&format!(
+                "default-filter = \"{NEXTEST_MUTANTS_DEFAULT_FILTER} \""
+            )),
+            QA12_DEFAULT_FILTER,
+        ),
+        control(
+            "[profile.mutants] default-filter not a string",
+            in_mutants("default-filter = true"),
+            QA12_DEFAULT_FILTER,
         ),
         control(
             "[profile.mutants] slow-timeout",

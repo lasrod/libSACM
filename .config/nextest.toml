@@ -9,3 +9,6 @@ nextest-version = { required = "0.9.111" }
 # Stop at the first failing test and kill every test still running, so a slow
 # test cannot turn a killed mutant into a timeout.
 fail-fast = { max-fail = 1, terminate = "immediate" }
+# The nested `cargo run` of each example is slow per mutant and tests no
+# library logic (LIB-DOC-004); the normal test runs keep it.
+default-filter = "not test(lib_doc_004_each_example_runs_without_arguments_and_exits_zero)"
