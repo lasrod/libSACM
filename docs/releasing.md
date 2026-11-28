@@ -63,6 +63,10 @@ test data that is not packaged. The dry run warns `ignoring test … as
 … is not included in the published package` once for each integration test. That is
 expected: the tests stay in the repository.
 
+The public API check (LIB-QA-006, the required `semver checks` job):
+
+- `cargo xtask semver` passes; on the release commit the version bump decides.
+
 ### 4. Merge the release commit
 
 Commit the bump and the CHANGELOG as `chore: release X.Y.Z`. Merge it to `main` through a

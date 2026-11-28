@@ -30,6 +30,9 @@
         "docs/**",
         "README.md",
         "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        ".github/workflows/**",
+        ".github/dependabot.yml",
         "target/scratch/**"
       ],
       "deny": [

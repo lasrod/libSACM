@@ -59,3 +59,17 @@ In slice 0012 (ADR 0006 amendment 2):
 - `cargo xtask mutants exclusions` was removed.
 - LIB-QA-012's check now reads only `.cargo/mutants.toml` and `.config/nextest.toml`. The install steps in the workflows are reviewed, not pinned by tests.
 - The decision itself is unchanged.
+
+## Amendment 2 (2026-11-28): test timeouts and the slow sweeps
+
+The full run 45995064802 lost three shards to the 180-minute limit. Three `edit_atomic`
+sweeps take 470 to 650 s on CI and held three of four threads, so caught mutants waited
+about 300 s behind them; each looping mutant waited out cargo-mutants' own limit of about
+55 minutes.
+
+- **`slow-timeout`:** in the `mutants` profile a test still running after 2 x 60 s fails,
+  so a loop is caught in about two minutes. Every other test ends within 12 s on CI.
+- **One override:** the `edit_atomic` binary runs last (`priority = -100`) with 4 x 300 s.
+- **Reviewed values:** the LIB-QA-012 check accepts these exact values only, as it does
+  the `default-filter` that skips the nested example run (LIB-DOC-004); any other value is
+  reported, because it could hide a test or let a hang cost an hour.

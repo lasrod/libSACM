@@ -5,8 +5,10 @@
 //! mutation outcomes independent of test order (LIB-QA-012, ADR 0009), the
 //! git-ignore rules (LIB-TOOL-002, LIB-QA-007), the ADR index and the
 //! links to ADRs (LIB-DOC-008), the wasm32 build and the platform-API
-//! lint (LIB-QA-017), and the CI gates that let a documentation-only push
-//! skip the code-only jobs (LIB-QA-018).
+//! lint (LIB-QA-017), the CI gates that let a documentation-only push
+//! skip the code-only jobs (LIB-QA-018), and the quality jobs: the semver
+//! check (LIB-QA-006), coverage (LIB-QA-004) and fuzzing in `ci.yml` and the
+//! weekly `fuzz.yml` (LIB-SEC-004).
 //!
 //! Workflow YAML structure is otherwise not pinned here: branch protection
 //! on `main` and review guard it (slice 0012). The LIB-QA-018 gates are
@@ -842,8 +844,18 @@ const MUTANTS_ENV: [&str; 3] = [
     "CODE: ${{ needs.changes.outputs.code }}",
 ];
 
-/// The jobs that may read `changes`; every other job always runs.
-const CHANGES_JOBS: [&str; 5] = ["changes", "test", "msrv", "mutants-shard", "mutants"];
+/// The jobs that may read `changes`; every other job always runs. The
+/// `coverage` job (LIB-QA-004) is gated as `msrv` is, and `fuzz-smoke`
+/// (LIB-SEC-004) as `mutants-shard` is.
+const CHANGES_JOBS: [&str; 7] = [
+    "changes",
+    "test",
+    "msrv",
+    "mutants-shard",
+    "mutants",
+    "coverage",
+    "fuzz-smoke",
+];
 
 /// The jobs of a workflow, in order: each key two spaces deep under `jobs:`,
 /// with the lines of its body. Comment lines are dropped; blank lines kept.
@@ -1113,6 +1125,8 @@ fn docs_only_ci_problems(ci: &str) -> Vec<String> {
     for (name, gate, code) in [
         ("msrv", MSRV_GATE, "msrv-gate"),
         ("mutants-shard", MUTANTS_SHARD_GATE, "mutants-shard-gate"),
+        ("coverage", MSRV_GATE, "coverage-gate"),
+        ("fuzz-smoke", MUTANTS_SHARD_GATE, "fuzz-smoke-gate"),
     ] {
         let body = job(&jobs, name);
         require(
@@ -1182,6 +1196,37 @@ fn edit_nth_line(text: &str, target: &str, n: usize, replacement: Option<&str>) 
                 continue;
             }
         }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// `ci` with `edit` applied to the job `name` alone: the lines from its
+/// `  <name>:` line up to the next non-blank line two spaces deep or less.
+/// The gates of several jobs are the same line, so a mutation of one job's
+/// gate must not depend on the order of the jobs. Panics if there is no such
+/// job.
+fn in_job(ci: &str, name: &str, edit: impl FnOnce(&str) -> String) -> String {
+    let header = format!("  {name}:");
+    let lines: Vec<&str> = ci.lines().collect();
+    let start = lines
+        .iter()
+        .position(|line| *line == header)
+        .unwrap_or_else(|| panic!("mutation target: ci.yml has no job `{name}`"));
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| !line.trim().is_empty() && indent(line) <= 2)
+        .map_or(lines.len(), |at| start + 1 + at);
+    let mut out = String::new();
+    for line in &lines[..start] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    let mut body = lines[start..end].join("\n");
+    body.push('\n');
+    out.push_str(&edit(&body));
+    for line in &lines[end..] {
         out.push_str(line);
         out.push('\n');
     }
@@ -1410,7 +1455,7 @@ fn test_job_mutations(ci: &str) -> Vec<Mutation> {
         ),
         (
             "the `test` job's `needs: changes` removed".to_owned(),
-            edit_nth_line(ci, "needs: changes", 0, None),
+            in_job(ci, "test", |job| delete_line(job, "needs: changes")),
             "test-job-gate",
         ),
         (
@@ -1445,58 +1490,63 @@ fn test_job_mutations(ci: &str) -> Vec<Mutation> {
     mutations
 }
 
-/// Mutations of the `msrv`, `mutants-shard` and `mutants` gates, and a
-/// gate on a job that must always run.
+/// The jobs `changes` gates as a whole, each with its gate and the problem
+/// code a broken gate gives.
+const GATED_JOBS: [(&str, &str, &str); 4] = [
+    ("msrv", MSRV_GATE, "msrv-gate"),
+    ("mutants-shard", MUTANTS_SHARD_GATE, "mutants-shard-gate"),
+    ("coverage", MSRV_GATE, "coverage-gate"),
+    ("fuzz-smoke", MUTANTS_SHARD_GATE, "fuzz-smoke-gate"),
+];
+
+/// Mutations of the gates of [`GATED_JOBS`], each made in its own job, since
+/// `msrv` and `coverage` share a gate line, as do `mutants-shard` and
+/// `fuzz-smoke`.
+fn gated_job_mutations(ci: &str) -> Vec<Mutation> {
+    let mut mutations: Vec<Mutation> = Vec::new();
+    for (name, gate, code) in GATED_JOBS {
+        let inverted = gate.replace("!= 'false'", "== 'true'");
+        let fail_closed = gate.replace("!cancelled() && ", "");
+        for (what, mutated) in [
+            ("removed", in_job(ci, name, |job| delete_line(job, gate))),
+            (
+                "inverted to `== 'true'`",
+                in_job(ci, name, |job| replace_line(job, gate, &inverted)),
+            ),
+            (
+                "without `!cancelled()` (fail closed)",
+                in_job(ci, name, |job| replace_line(job, gate, &fail_closed)),
+            ),
+            (
+                "without the job's `needs: changes`",
+                in_job(ci, name, |job| delete_line(job, "needs: changes")),
+            ),
+        ] {
+            mutations.push((format!("the `{name}` gate {what}"), mutated, code));
+        }
+    }
+    // The pull-request-only jobs run on a push too.
+    let on_push = MUTANTS_SHARD_GATE.replace("github.event_name == 'pull_request' && ", "");
+    for (name, code) in [
+        ("mutants-shard", "mutants-shard-gate"),
+        ("fuzz-smoke", "fuzz-smoke-gate"),
+    ] {
+        mutations.push((
+            format!("the `{name}` gate without `pull_request`"),
+            in_job(ci, name, |job| {
+                replace_line(job, MUTANTS_SHARD_GATE, &on_push)
+            }),
+            code,
+        ));
+    }
+    mutations
+}
+
+/// Mutations of the [`GATED_JOBS`] and `mutants` gates, and a gate on a job
+/// that must always run.
 fn other_job_mutations(ci: &str) -> Vec<Mutation> {
-    vec![
-        // MSRV and the mutant shards.
-        (
-            "the `msrv` gate removed".to_owned(),
-            delete_line(ci, MSRV_GATE),
-            "msrv-gate",
-        ),
-        (
-            "the `msrv` gate inverted to `== 'true'`".to_owned(),
-            replace_line(
-                ci,
-                MSRV_GATE,
-                "if: ${{ !cancelled() && needs.changes.outputs.code == 'true' }}",
-            ),
-            "msrv-gate",
-        ),
-        (
-            "the `msrv` gate without `!cancelled()` (fail closed)".to_owned(),
-            replace_line(
-                ci,
-                MSRV_GATE,
-                "if: ${{ needs.changes.outputs.code != 'false' }}",
-            ),
-            "msrv-gate",
-        ),
-        (
-            "the `msrv` job's `needs: changes` removed".to_owned(),
-            edit_nth_line(ci, "needs: changes", 1, None),
-            "msrv-gate",
-        ),
-        (
-            "the `mutants-shard` gate removed".to_owned(),
-            delete_line(ci, MUTANTS_SHARD_GATE),
-            "mutants-shard-gate",
-        ),
-        (
-            "the `mutants-shard` gate inverted to `== 'true'`".to_owned(),
-            replace_line(
-                ci,
-                MUTANTS_SHARD_GATE,
-                "if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.code == 'true' }}",
-            ),
-            "mutants-shard-gate",
-        ),
-        (
-            "the `mutants-shard` job's `needs: changes` removed".to_owned(),
-            edit_nth_line(ci, "needs: changes", 2, None),
-            "mutants-shard-gate",
-        ),
+    let mut mutations = gated_job_mutations(ci);
+    mutations.extend([
         // The aggregator.
         (
             "the aggregator passing any skipped shard".to_owned(),
@@ -1536,7 +1586,13 @@ fn other_job_mutations(ci: &str) -> Vec<Mutation> {
             ),
             "other-job-gated",
         ),
-    ]
+        (
+            "the required `semver checks` job gated (LIB-QA-006)".to_owned(),
+            insert_after(ci, "name: semver checks", 0, &["needs: changes", MSRV_GATE]),
+            "other-job-gated",
+        ),
+    ]);
+    mutations
 }
 
 #[test]
@@ -2324,6 +2380,389 @@ fn lib_qa_018_mutants_check_passes_only_when_every_shard_passed_or_docs_only_ski
              {changes} and code {code:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-006, LIB-QA-004 and LIB-SEC-004: semver checks, coverage, fuzzing
+// ---------------------------------------------------------------------------
+
+/// The pinned nightly the fuzz jobs run cargo-fuzz with (ADR 0046 D2).
+const FUZZ_NIGHTLY: &str = "nightly-2026-11-25";
+
+/// How the fuzz jobs install cargo-fuzz.
+const FUZZ_INSTALL: &str = "cargo +nightly-2026-11-25 install cargo-fuzz --locked --version 0.13.2";
+
+/// The smoke run of the `xmi_read` target on a pull request.
+const FUZZ_SMOKE_XMI: &str = "cargo +nightly-2026-11-25 fuzz run xmi_read ${{ github.workspace }}/fuzz/corpus/xmi_read ${{ github.workspace }}/crates/sacm/tests/data ${{ github.workspace }}/crates/sacm-cli/tests/data -- -dict=${{ github.workspace }}/fuzz/xmi.dict -max_total_time=60 -max_len=65536 -timeout=10 -rss_limit_mb=2048";
+
+/// The smoke run of the `serde_records` target on a pull request.
+const FUZZ_SMOKE_SERDE: &str = "cargo +nightly-2026-11-25 fuzz run serde_records ${{ github.workspace }}/fuzz/corpus/serde_records ${{ github.workspace }}/crates/sacm/tests/data/golden/serde -- -max_total_time=30 -max_len=16384 -timeout=10 -rss_limit_mb=2048";
+
+/// The coverage threshold, which is empty (report only) until the
+/// maintainer sets one; the report fails below it once set.
+const COVERAGE_THRESHOLD: &str =
+    "${COVERAGE_MIN_LINES:+--fail-under-lines \"$COVERAGE_MIN_LINES\"}";
+
+/// The coverage job's commands, each a whole command.
+const COVERAGE_COMMANDS: [&str; 4] = [
+    "cargo llvm-cov clean --workspace",
+    "cargo llvm-cov --no-report --package sacm --all-features",
+    "cargo llvm-cov report --lcov --output-path target/llvm-cov/lcov.info",
+    "cargo llvm-cov report --html --output-dir target/llvm-cov",
+];
+
+/// Whether the job `body` runs `command`, compared whole.
+fn runs_command(body: &[&str], command: &str) -> bool {
+    body.iter().any(|line| ci_command(line) == command)
+}
+
+/// Whether the job `body` has the step line `key` (indent and `- ` dropped).
+fn has_step_line(body: &[&str], key: &str) -> bool {
+    body.iter().any(|line| step_line(line) == key)
+}
+
+/// Whether the job `body` has a step that uses `action` (`uses: <action>@…`)
+/// and has every line of `lines`.
+fn has_step_using(body: &[&str], action: &str, lines: &[&str]) -> bool {
+    let uses = format!("uses: {action}@");
+    job_steps(body).iter().any(|step| {
+        step.iter().any(|line| step_line(line).starts_with(&uses))
+            && lines.iter().all(|key| has_step_line(step, key))
+    })
+}
+
+/// LIB-QA-006: what is missing from `ci.yml`'s `semver checks` job, and from
+/// docs/releasing.md.
+fn semver_ci_problems(ci: &str, releasing: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let jobs = workflow_jobs(ci);
+    let semver = job(&jobs, "semver");
+    require(
+        &mut problems,
+        has_job_line(semver, "name: semver checks"),
+        "semver-job",
+        "ci.yml must have a `semver` job named `semver checks` (the required check)",
+    );
+    for key in [
+        "fetch-depth: 0",
+        "tool: cargo-semver-checks@0.51.0",
+        "run: cargo xtask semver",
+    ] {
+        require(
+            &mut problems,
+            has_step_line(semver, key),
+            "semver-step",
+            &format!("the `semver` job must have the step line `{key}`"),
+        );
+    }
+    require(
+        &mut problems,
+        has_step_using(
+            semver,
+            "taiki-e/install-action",
+            &["tool: cargo-semver-checks@0.51.0"],
+        ),
+        "semver-step",
+        "the `semver` job must install cargo-semver-checks 0.51.0 with taiki-e/install-action",
+    );
+    // A required check must run on every pull request.
+    require(
+        &mut problems,
+        !semver.iter().any(|line| {
+            indent(line) == 4
+                && (line.trim().starts_with("if:") || line.trim().starts_with("needs:"))
+        }),
+        "semver-gated",
+        "the `semver` job must have no `if:` and no `needs:`: it is a required check",
+    );
+    let step_3: Vec<&str> = releasing
+        .lines()
+        .skip_while(|line| !line.starts_with("### 3."))
+        .take_while(|line| !line.starts_with("### 4."))
+        .collect();
+    require(
+        &mut problems,
+        step_3
+            .iter()
+            .any(|line| line.starts_with("- ") && line.contains("`cargo xtask semver`")),
+        "semver-releasing",
+        "docs/releasing.md step 3 must have a bullet naming `cargo xtask semver`",
+    );
+    problems
+}
+
+#[test]
+fn lib_qa_006_ci_runs_cargo_xtask_semver() {
+    let problems = semver_ci_problems(&ci_text(), &read("docs/releasing.md"));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-006: the semver check is not wired: {problems:#?}"
+    );
+}
+
+/// LIB-QA-004: what is missing from `ci.yml`'s `coverage` job.
+fn coverage_ci_problems(ci: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let jobs = workflow_jobs(ci);
+    let coverage = job(&jobs, "coverage");
+    require(
+        &mut problems,
+        !coverage.is_empty(),
+        "coverage-job",
+        "ci.yml must have a `coverage` job",
+    );
+    require(
+        &mut problems,
+        has_step_using(
+            coverage,
+            "taiki-e/install-action",
+            &["tool: cargo-llvm-cov@0.9.2"],
+        ) && has_step_line(coverage, "components: llvm-tools-preview"),
+        "coverage-tool",
+        "the `coverage` job must install `tool: cargo-llvm-cov@0.9.2` with \
+         taiki-e/install-action and `components: llvm-tools-preview`",
+    );
+    for command in COVERAGE_COMMANDS {
+        require(
+            &mut problems,
+            runs_command(coverage, command),
+            "coverage-command",
+            &format!("the `coverage` job must run `{command}`"),
+        );
+    }
+    require(
+        &mut problems,
+        coverage.iter().any(|line| {
+            let command = ci_command(line);
+            command.starts_with("cargo llvm-cov report ") && command.contains(COVERAGE_THRESHOLD)
+        }),
+        "coverage-threshold",
+        &format!("the `coverage` job must run `cargo llvm-cov report {COVERAGE_THRESHOLD}`"),
+    );
+    require(
+        &mut problems,
+        coverage
+            .iter()
+            .any(|line| step_line(line).starts_with("COVERAGE_MIN_LINES:")),
+        "coverage-threshold",
+        "the `coverage` job must set the key `COVERAGE_MIN_LINES:` (empty: report only)",
+    );
+    require(
+        &mut problems,
+        coverage
+            .iter()
+            .any(|line| line.contains("### Line coverage of `sacm` (LIB-QA-004)"))
+            && coverage
+                .iter()
+                .any(|line| line.contains("$GITHUB_STEP_SUMMARY")),
+        "coverage-summary",
+        "the `coverage` job must append `### Line coverage of `sacm` (LIB-QA-004)` and the \
+         table to `$GITHUB_STEP_SUMMARY`",
+    );
+    require(
+        &mut problems,
+        has_step_using(
+            coverage,
+            "actions/upload-artifact",
+            &["name: coverage-sacm", "path: target/llvm-cov"],
+        ),
+        "coverage-artifact",
+        "the `coverage` job must upload `target/llvm-cov` as the `coverage-sacm` artifact",
+    );
+    problems
+}
+
+#[test]
+fn lib_qa_004_ci_measures_the_line_coverage_of_sacm() {
+    let problems = coverage_ci_problems(&ci_text());
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-004: ci.yml does not measure sacm's line coverage: {problems:#?}"
+    );
+}
+
+/// LIB-SEC-004: what is missing from `ci.yml`'s `fuzz-smoke` job.
+fn fuzz_smoke_problems(ci: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let jobs = workflow_jobs(ci);
+    let smoke = job(&jobs, "fuzz-smoke");
+    require(
+        &mut problems,
+        has_job_line(smoke, "name: fuzz (smoke)") && has_job_line(smoke, MUTANTS_SHARD_GATE),
+        "fuzz-smoke-job",
+        &format!(
+            "ci.yml must have a `fuzz-smoke` job named `fuzz (smoke)` that runs on pull \
+             requests (`{MUTANTS_SHARD_GATE}`)"
+        ),
+    );
+    require(
+        &mut problems,
+        smoke.iter().any(|line| line.contains(FUZZ_NIGHTLY)) && runs_command(smoke, FUZZ_INSTALL),
+        "fuzz-smoke-tool",
+        &format!("the `fuzz-smoke` job must install {FUZZ_NIGHTLY} and run `{FUZZ_INSTALL}`"),
+    );
+    for command in [
+        "mkdir -p fuzz/corpus/xmi_read fuzz/corpus/serde_records",
+        FUZZ_SMOKE_XMI,
+        FUZZ_SMOKE_SERDE,
+    ] {
+        require(
+            &mut problems,
+            runs_command(smoke, command),
+            "fuzz-smoke-run",
+            &format!("the `fuzz-smoke` job must run `{command}`"),
+        );
+    }
+    require(
+        &mut problems,
+        has_step_using(
+            smoke,
+            "actions/upload-artifact",
+            &[
+                "if: failure()",
+                "name: fuzz-smoke-artifacts",
+                "path: fuzz/artifacts",
+            ],
+        ),
+        "fuzz-smoke-artifacts",
+        "the `fuzz-smoke` job must upload `fuzz/artifacts` as `fuzz-smoke-artifacts` on \
+         `failure()`",
+    );
+    problems
+}
+
+#[test]
+fn lib_sec_004_ci_runs_a_fuzz_smoke_on_pull_requests() {
+    let problems = fuzz_smoke_problems(&ci_text());
+    assert!(
+        problems.is_empty(),
+        "LIB-SEC-004: ci.yml does not fuzz pull requests: {problems:#?}"
+    );
+}
+
+/// LIB-SEC-004: what is missing from the weekly `fuzz.yml`.
+fn weekly_fuzz_problems(fuzz: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let lines: Vec<&str> = fuzz.lines().map(step_line).collect();
+    require(
+        &mut problems,
+        lines
+            .iter()
+            .any(|line| *line == "cron: \"0 4 * * 0\"" || *line == "cron: '0 4 * * 0'")
+            && lines.iter().any(|line| {
+                *line == "workflow_dispatch:" || line.starts_with("workflow_dispatch: ")
+            }),
+        "fuzz-weekly-trigger",
+        "fuzz.yml must run on `cron: \"0 4 * * 0\"` (Sundays 04:00 UTC) and on \
+         `workflow_dispatch`",
+    );
+    let permissions = fuzz.lines().position(|line| line == "permissions:");
+    require(
+        &mut problems,
+        permissions.is_some_and(|at| {
+            fuzz.lines()
+                .skip(at + 1)
+                .take_while(|line| line.trim().is_empty() || indent(line) > 0)
+                .any(|line| line.trim() == "contents: read")
+        }),
+        "fuzz-weekly-permissions",
+        "fuzz.yml must have the top-level `permissions:` with `contents: read`",
+    );
+    let jobs = workflow_jobs(fuzz);
+    let fuzz_job = job(&jobs, "fuzz");
+    // Every `-max_total_time=<seconds>` in the job, whether in a command or in
+    // a matrix value.
+    let total_times: BTreeSet<String> = fuzz_job
+        .iter()
+        .flat_map(|line| {
+            line.match_indices("-max_total_time=")
+                .map(move |(at, _)| &line[at..])
+        })
+        .map(|rest| {
+            let digits = rest["-max_total_time=".len()..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>();
+            format!("-max_total_time={digits}")
+        })
+        .collect();
+    require(
+        &mut problems,
+        fuzz_job
+            .iter()
+            .any(|line| ci_command(line).starts_with("cargo +nightly-2026-11-25 fuzz run "))
+            && runs_command(fuzz_job, FUZZ_INSTALL)
+            && ["xmi_read", "serde_records"]
+                .iter()
+                .all(|target| fuzz_job.iter().any(|line| line.contains(target)))
+            && fuzz_job
+                .iter()
+                .any(|line| line.contains("-dict=${{ github.workspace }}/fuzz/xmi.dict"))
+            && total_times
+                .iter()
+                .map(String::as_str)
+                .eq(["-max_total_time=1200"]),
+        "fuzz-weekly-run",
+        &format!(
+            "fuzz.yml's `fuzz` job must run `cargo +{FUZZ_NIGHTLY} fuzz run` on `xmi_read` \
+             (with fuzz/xmi.dict) and `serde_records`, each with `-max_total_time=1200` only, \
+             found {total_times:?}"
+        ),
+    );
+    for limit in ["-timeout=10", "-rss_limit_mb=2048"] {
+        require(
+            &mut problems,
+            fuzz_job.iter().any(|line| line.contains(limit)),
+            "fuzz-weekly-run",
+            &format!("fuzz.yml's `fuzz` job must run with `{limit}`"),
+        );
+    }
+    require(
+        &mut problems,
+        has_job_line(fuzz_job, "timeout-minutes: 45")
+            && fuzz_job
+                .iter()
+                .any(|line| line.contains("fuzz-corpus-") && line.contains("${{ github.run_id }}"))
+            && has_step_using(fuzz_job, "actions/upload-artifact", &["if: failure()"]),
+        "fuzz-weekly-corpus",
+        "fuzz.yml's `fuzz` job must have `timeout-minutes: 45`, save the corpus under \
+         `fuzz-corpus-<target>-${{ github.run_id }}` and upload the artifacts on `failure()`",
+    );
+    weekly_properties_problems(&jobs, &mut problems);
+    problems
+}
+
+/// LIB-SEC-004: what is missing from `fuzz.yml`'s weekly `properties` job,
+/// which widens the property tests and the fuzz regressions (ADR 0046 D1).
+fn weekly_properties_problems(jobs: &[(String, Vec<&str>)], problems: &mut Vec<String>) {
+    let properties = job(jobs, "properties");
+    require(
+        problems,
+        has_step_line(properties, "PROPTEST_CASES: \"4096\"")
+            && has_step_line(properties, "PROPTEST_RNG_SEED: ${{ github.run_number }}")
+            && runs_command(
+                properties,
+                "cargo test -p sacm --all-features --release --test properties --test \
+                 fuzz_regressions",
+            )
+            && has_job_line(properties, "timeout-minutes: 45"),
+        "fuzz-weekly-properties",
+        "fuzz.yml must have a `properties` job with `PROPTEST_CASES: \"4096\"`, \
+         `PROPTEST_RNG_SEED: ${{ github.run_number }}`, `timeout-minutes: 45` and `cargo test \
+         -p sacm --all-features --release --test properties --test fuzz_regressions`",
+    );
+}
+
+#[test]
+fn lib_sec_004_the_weekly_workflow_fuzzes_both_targets() {
+    let Some(fuzz) = read_optional(".github/workflows/fuzz.yml") else {
+        panic!("LIB-SEC-004: .github/workflows/fuzz.yml does not exist");
+    };
+    let problems = weekly_fuzz_problems(&fuzz.replace("\r\n", "\n"));
+    assert!(
+        problems.is_empty(),
+        "LIB-SEC-004: fuzz.yml does not fuzz both targets weekly: {problems:#?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -5222,14 +5661,18 @@ fn lib_qa_007_mutants_output_is_git_ignored() {
 //   `fail-fast` table (`[nextest-fail-fast]`), `max-fail = 1`
 //   (`[nextest-max-fail]`) and `terminate = "immediate"`
 //   (`[nextest-terminate]`); and no `fail-fast` in the `default` profile
-//   (`[nextest-default-fail-fast]`). The `mutants` profile may also set
-//   `default-filter`, to exactly [`NEXTEST_MUTANTS_DEFAULT_FILTER`]; any
-//   other value is `[nextest-default-filter]`. Every other key is
+//   (`[nextest-default-fail-fast]`). The `mutants` profile also sets
+//   `slow-timeout` to exactly [`NEXTEST_MUTANTS_SLOW_TIMEOUT`]
+//   (`[nextest-slow-timeout]`) and `overrides` to exactly the one entry
+//   [`NEXTEST_MUTANTS_OVERRIDES`] (`[nextest-override]`); either missing or
+//   different is its code. It may set `default-filter`, to exactly
+//   [`NEXTEST_MUTANTS_DEFAULT_FILTER`]; any other value is
+//   `[nextest-default-filter]`. Every other key is
 //   `[nextest-unreviewed-key]`: every profile inherits the `default` one, so
 //   a key such as `default-filter`, `retries`, `slow-timeout` or `overrides`
-//   there, or in the `mutants` profile, changes which tests run or what
-//   counts as a failure. Other profiles are not read: `mutants` does not
-//   inherit them.
+//   there, or any other key in the `mutants` profile, changes which tests run
+//   or what counts as a failure. Other profiles are not read: `mutants` does
+//   not inherit them.
 //
 // A file missing is `[nextest-config-missing]`, and one that does not parse
 // `[nextest-config-parse]`. Versions are compared as numbers, so 0.9.111 is
@@ -5252,6 +5695,19 @@ const NEXTEST_MINIMUM: Version = (0, 9, 111);
 /// hide tests from cargo-mutants.
 const NEXTEST_MUTANTS_DEFAULT_FILTER: &str =
     "not test(lib_doc_004_each_example_runs_without_arguments_and_exits_zero)";
+
+/// The one reviewed `slow-timeout` of the `mutants` profile, written inline
+/// (ADR 0009, amended by the lead in slice 0092): a test still running after
+/// two minutes is killed, so a mutant that hangs costs two minutes, not the
+/// hour cargo-mutants would wait. Longer, missing or any other value is
+/// `[nextest-slow-timeout]`.
+const NEXTEST_MUTANTS_SLOW_TIMEOUT: &str = "{ period = \"60s\", terminate-after = 2 }";
+
+/// The one reviewed `overrides` array of the `mutants` profile, written
+/// inline: the slow `edit_atomic` tests get 20 minutes. Any other override
+/// could hide tests or loosen a timeout, so anything else is
+/// `[nextest-override]`.
+const NEXTEST_MUTANTS_OVERRIDES: &str = "[{ filter = \"binary(edit_atomic)\", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 4 } }]";
 
 /// The keys `.config/nextest.toml` may have at its top level.
 const NEXTEST_TOP_KEYS: [&str; 2] = ["nextest-version", "profile"];
@@ -5358,8 +5814,10 @@ fn nextest_version_problems(value: Option<&toml::Value>, problems: &mut Vec<Stri
 }
 
 /// Item 2: the `mutants` profile sets exactly `fail-fast = { max-fail = 1,
-/// terminate = "immediate" }`, and no other key but a `default-filter` that
-/// is exactly [`NEXTEST_MUTANTS_DEFAULT_FILTER`].
+/// terminate = "immediate" }`, `slow-timeout` exactly
+/// [`NEXTEST_MUTANTS_SLOW_TIMEOUT`] and `overrides` exactly
+/// [`NEXTEST_MUTANTS_OVERRIDES`], and no other key but a `default-filter`
+/// that is exactly [`NEXTEST_MUTANTS_DEFAULT_FILTER`].
 fn mutants_profile_problems(profile: &toml::Table, problems: &mut Vec<String>) {
     match profile.get("default-filter") {
         None => {}
@@ -5369,10 +5827,26 @@ fn mutants_profile_problems(profile: &toml::Table, problems: &mut Vec<String>) {
             format!("{NEXTEST_CONFIG}'s `[profile.mutants]` may set `default-filter` only to \"{NEXTEST_MUTANTS_DEFAULT_FILTER}\", found `default-filter = {value}`, which could hide tests from cargo-mutants"),
         )),
     }
-    for key in profile
-        .keys()
-        .filter(|key| !["fail-fast", "default-filter"].contains(&key.as_str()))
-    {
+    let shown = |key: &str| {
+        profile
+            .get(key)
+            .map_or_else(|| format!("no `{key}`"), |v| format!("`{key} = {v}`"))
+    };
+    if profile.get("slow-timeout") != Some(&toml_value(NEXTEST_MUTANTS_SLOW_TIMEOUT)) {
+        problems.push(problem(
+            "nextest-slow-timeout",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` must set `slow-timeout = {NEXTEST_MUTANTS_SLOW_TIMEOUT}`, found {}; a longer or missing timeout lets a hanging mutant cost an hour", shown("slow-timeout")),
+        ));
+    }
+    if profile.get("overrides") != Some(&toml_value(NEXTEST_MUTANTS_OVERRIDES)) {
+        problems.push(problem(
+            "nextest-override",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` must have exactly one `[[profile.mutants.overrides]]`, `{NEXTEST_MUTANTS_OVERRIDES}`, found {}; another override could hide tests or loosen a timeout", shown("overrides")),
+        ));
+    }
+    for key in profile.keys().filter(|key| {
+        !["fail-fast", "default-filter", "slow-timeout", "overrides"].contains(&key.as_str())
+    }) {
         problems.push(problem(
             "nextest-unreviewed-key",
             format!("{NEXTEST_CONFIG}'s `[profile.mutants]` has the key `{key}`, which has not been reviewed"),
@@ -5506,14 +5980,21 @@ nextest-version = { required = \"0.9.111\" }
 # running test is killed.
 [profile.mutants]
 fail-fast = { max-fail = 1, terminate = \"immediate\" }
+slow-timeout = { period = \"60s\", terminate-after = 2 }
+overrides = [{ filter = \"binary(edit_atomic)\", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 4 } }]
 ";
 
 // Lines of `NEXTEST_CONFIG_FIXTURE` that controls edit.
 const NEXTEST_VERSION_LINE: &str = "nextest-version = { required = \"0.9.111\" }";
 const NEXTEST_PROFILE_LINE: &str = "[profile.mutants]";
 const NEXTEST_FAIL_FAST_LINE: &str = "fail-fast = { max-fail = 1, terminate = \"immediate\" }";
-const NEXTEST_PROFILE_BLOCK: &str =
-    "[profile.mutants]\nfail-fast = { max-fail = 1, terminate = \"immediate\" }\n";
+const NEXTEST_SLOW_TIMEOUT_LINE: &str = "slow-timeout = { period = \"60s\", terminate-after = 2 }";
+const NEXTEST_OVERRIDES_LINE: &str = "overrides = [{ filter = \"binary(edit_atomic)\", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 4 } }]";
+const NEXTEST_PROFILE_BLOCK: &str = "[profile.mutants]
+fail-fast = { max-fail = 1, terminate = \"immediate\" }
+slow-timeout = { period = \"60s\", terminate-after = 2 }
+overrides = [{ filter = \"binary(edit_atomic)\", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 4 } }]
+";
 
 // Lines of the reference `.cargo/mutants.toml` that controls edit.
 const TEST_TOOL_LINE: &str = "test_tool = \"nextest\"";
@@ -5531,6 +6012,8 @@ const QA12_TERMINATE: &[&str] = &["nextest-terminate"];
 const QA12_DEFAULT_FAIL_FAST: &[&str] = &["nextest-default-fail-fast"];
 const QA12_UNREVIEWED: &[&str] = &["nextest-unreviewed-key"];
 const QA12_DEFAULT_FILTER: &[&str] = &["nextest-default-filter"];
+const QA12_SLOW_TIMEOUT: &[&str] = &["nextest-slow-timeout"];
+const QA12_OVERRIDE: &[&str] = &["nextest-override"];
 const QA12_VERSION: &[&str] = &["nextest-version"];
 const QA12_CONFIG_MISSING: &[&str] = &["nextest-config-missing"];
 const QA12_CONFIG_PARSE: &[&str] = &["nextest-config-parse"];
@@ -5911,11 +6394,6 @@ fn lib_qa_012_unreviewed_profile_keys_are_named() {
             QA12_DEFAULT_FILTER,
         ),
         control(
-            "[profile.mutants] slow-timeout",
-            in_mutants("slow-timeout = { period = \"1s\", terminate-after = 1 }"),
-            QA12_UNREVIEWED,
-        ),
-        control(
             "[profile.mutants] test-threads",
             in_mutants("test-threads = 1"),
             QA12_UNREVIEWED,
@@ -5930,12 +6408,196 @@ fn lib_qa_012_unreviewed_profile_keys_are_named() {
             in_mutants("inherits = \"ci\""),
             QA12_UNREVIEWED,
         ),
-        control(
-            "[[profile.mutants.overrides]]",
-            nextest_toml_plus("[[profile.mutants.overrides]]\nfilter = \"all()\"\nretries = 3"),
-            QA12_UNREVIEWED,
-        ),
     ]);
+}
+
+/// Item 2: the `mutants` profile's `slow-timeout` is exactly
+/// [`NEXTEST_MUTANTS_SLOW_TIMEOUT`], else `[nextest-slow-timeout]`, and its
+/// `overrides` exactly the one entry [`NEXTEST_MUTANTS_OVERRIDES`], else
+/// `[nextest-override]`; `fail-fast` stays required. The array-of-tables form
+/// of the real file is accepted.
+#[test]
+fn lib_qa_012_the_mutants_timeouts_are_exactly_the_reviewed_ones() {
+    let slow_timeout = |value: &str| {
+        nextest_toml_line(
+            NEXTEST_SLOW_TIMEOUT_LINE,
+            &format!("slow-timeout = {value}"),
+        )
+    };
+    let mut controls = vec![
+        control(
+            "the reviewed override as [[profile.mutants.overrides]], as in the real file",
+            with_nextest_toml(Some(format!(
+                "{}\n[[profile.mutants.overrides]]\nfilter = \"binary(edit_atomic)\"\n\
+                 priority = -100\nslow-timeout = {{ period = \"300s\", terminate-after = 4 }}\n",
+                delete_line(NEXTEST_CONFIG_FIXTURE, NEXTEST_OVERRIDES_LINE)
+            ))),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "the reviewed values with their keys in another order",
+            nextest_toml_line(
+                NEXTEST_OVERRIDES_LINE,
+                "overrides = [{ slow-timeout = { terminate-after = 4, period = \"300s\" }, \
+                 priority = -100, filter = \"binary(edit_atomic)\" }]",
+            ),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "slow-timeout removed",
+            with_nextest_toml(Some(delete_line(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_SLOW_TIMEOUT_LINE,
+            ))),
+            QA12_SLOW_TIMEOUT,
+        ),
+        control(
+            "overrides removed",
+            with_nextest_toml(Some(delete_line(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_OVERRIDES_LINE,
+            ))),
+            QA12_OVERRIDE,
+        ),
+        control(
+            "both removed",
+            with_nextest_toml(Some(delete_line(
+                &delete_line(NEXTEST_CONFIG_FIXTURE, NEXTEST_OVERRIDES_LINE),
+                NEXTEST_SLOW_TIMEOUT_LINE,
+            ))),
+            &["nextest-slow-timeout", "nextest-override"],
+        ),
+        control(
+            "fail-fast removed, the timeouts kept",
+            with_nextest_toml(Some(delete_line(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_FAIL_FAST_LINE,
+            ))),
+            QA12_FAIL_FAST,
+        ),
+    ];
+    for value in [
+        "{ period = \"120s\", terminate-after = 2 }",
+        "{ period = \"30s\", terminate-after = 2 }",
+        "{ period = \"1m\", terminate-after = 2 }",
+        "{ period = \"60s\", terminate-after = 3 }",
+        "{ period = \"60s\", terminate-after = 1 }",
+        "{ period = \"60s\" }",
+        "{ terminate-after = 2 }",
+        "{ period = \"60s\", terminate-after = \"2\" }",
+        "{ period = \"60s\", terminate-after = 2, grace-period = \"10s\" }",
+        "{ period = \"1s\", terminate-after = 1 }",
+        "\"60s\"",
+        "{}",
+    ] {
+        controls.push(control(
+            format!("slow-timeout = {value}"),
+            slow_timeout(value),
+            QA12_SLOW_TIMEOUT,
+        ));
+    }
+    controls.extend(mutants_override_controls());
+    assert_nextest_controls(&controls);
+}
+
+/// The controls of `lib_qa_012_the_mutants_timeouts_are_exactly_the_reviewed_ones`
+/// that change the one reviewed override: each is `[nextest-override]`.
+fn mutants_override_controls() -> Vec<NextestControl> {
+    let overrides =
+        |value: &str| nextest_toml_line(NEXTEST_OVERRIDES_LINE, &format!("overrides = {value}"));
+    let entry = |filter: &str, rest: &str| format!("{{ filter = \"{filter}\"{rest} }}");
+    let reviewed_rest =
+        ", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 4 }";
+    let reviewed = entry("binary(edit_atomic)", reviewed_rest);
+    let mut controls = Vec::new();
+    for (what, value) in [
+        (
+            "only an override for all tests, with retries",
+            format!("[{}]", entry("all()", ", retries = 3")),
+        ),
+        ("no override", "[]".to_owned()),
+        (
+            "a second override",
+            format!("[{reviewed}, {}]", entry("all()", ", retries = 3")),
+        ),
+        (
+            "the reviewed override twice",
+            format!("[{reviewed}, {reviewed}]"),
+        ),
+        (
+            "a different filter",
+            format!("[{}]", entry("binary(roundtrip)", reviewed_rest)),
+        ),
+        (
+            "a wider filter",
+            format!(
+                "[{}]",
+                entry("binary(edit_atomic) | binary(roundtrip)", reviewed_rest)
+            ),
+        ),
+        (
+            "the override without priority",
+            format!(
+                "[{}]",
+                entry(
+                    "binary(edit_atomic)",
+                    ", slow-timeout = { period = \"300s\", terminate-after = 4 }"
+                )
+            ),
+        ),
+        (
+            "another priority",
+            format!(
+                "[{}]",
+                entry(
+                    "binary(edit_atomic)",
+                    ", priority = 0, slow-timeout = { period = \"300s\", terminate-after = 4 }"
+                )
+            ),
+        ),
+        (
+            "a longer override period",
+            format!(
+                "[{}]",
+                entry(
+                    "binary(edit_atomic)",
+                    ", priority = -100, slow-timeout = { period = \"600s\", terminate-after = 4 }"
+                )
+            ),
+        ),
+        (
+            "more override periods",
+            format!(
+                "[{}]",
+                entry(
+                    "binary(edit_atomic)",
+                    ", priority = -100, slow-timeout = { period = \"300s\", terminate-after = 8 }"
+                )
+            ),
+        ),
+        (
+            "the override without its slow-timeout",
+            format!("[{}]", entry("binary(edit_atomic)", ", priority = -100")),
+        ),
+        (
+            "the override with retries",
+            format!(
+                "[{}]",
+                entry(
+                    "binary(edit_atomic)",
+                    &format!("{reviewed_rest}, retries = 2")
+                )
+            ),
+        ),
+        ("not an array", reviewed.clone()),
+    ] {
+        controls.push(control(
+            format!("overrides: {what}"),
+            overrides(&value),
+            QA12_OVERRIDE,
+        ));
+    }
+    controls
 }
 
 /// Item 2: any top-level key of `.config/nextest.toml` but `nextest-version`
@@ -6155,7 +6817,10 @@ fn lib_qa_012_equivalent_forms_are_accepted() {
             with_nextest_toml(Some(replace_once(
                 NEXTEST_CONFIG_FIXTURE,
                 NEXTEST_PROFILE_BLOCK,
-                "[profile.mutants.fail-fast]\nmax-fail = 1\nterminate = \"immediate\"\n",
+                &format!(
+                    "[profile.mutants]\n{NEXTEST_SLOW_TIMEOUT_LINE}\n{NEXTEST_OVERRIDES_LINE}\n\n\
+                     [profile.mutants.fail-fast]\nmax-fail = 1\nterminate = \"immediate\"\n"
+                ),
             ))),
             QA12_ACCEPTED,
         ),
@@ -6170,7 +6835,7 @@ fn lib_qa_012_equivalent_forms_are_accepted() {
         control(
             "the whole file in dotted keys",
             with_nextest_toml(Some(
-                "nextest-version.required = \"0.9.111\"\nprofile.mutants.fail-fast = { terminate = \"immediate\", max-fail = 1 }\n".to_owned(),
+                format!("nextest-version.required = \"0.9.111\"\nprofile.mutants.fail-fast = {{ terminate = \"immediate\", max-fail = 1 }}\nprofile.mutants.{NEXTEST_SLOW_TIMEOUT_LINE}\nprofile.mutants.{NEXTEST_OVERRIDES_LINE}\n"),
             )),
             QA12_ACCEPTED,
         ),

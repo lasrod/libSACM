@@ -1,0 +1,79 @@
+name: fuzz
+
+# LIB-SEC-004 and LIB-RT-004 (ADR 0046 D1, D2): weekly, and on demand, each cargo-fuzz
+# target for 20 minutes, and the property tests and fuzz regressions with 4096 cases from
+# a new seed each run. Advisory: no required check reads it. The pull request smoke run
+# is the `fuzz-smoke` job of ci.yml. A crash, timeout or out-of-memory input is uploaded;
+# see fuzz/README.md for turning it into a regression input.
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [xmi_read, serde_records]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly-2026-11-25
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: fuzz
+      - run: cargo +nightly-2026-11-25 install cargo-fuzz --locked --version 0.13.2
+      # The corpus grows from run to run: each run restores the newest and saves its own.
+      - name: Restore the corpus
+        uses: actions/cache/restore@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - run: mkdir -p fuzz/corpus/${{ matrix.target }}
+      - name: Fuzz xmi_read for 20 minutes
+        if: matrix.target == 'xmi_read'
+        run: cargo +nightly-2026-11-25 fuzz run xmi_read ${{ github.workspace }}/fuzz/corpus/xmi_read ${{ github.workspace }}/crates/sacm/tests/data ${{ github.workspace }}/crates/sacm-cli/tests/data -- -dict=${{ github.workspace }}/fuzz/xmi.dict -max_total_time=1200 -max_len=65536 -timeout=10 -rss_limit_mb=2048
+      - name: Fuzz serde_records for 20 minutes
+        if: matrix.target == 'serde_records'
+        run: cargo +nightly-2026-11-25 fuzz run serde_records ${{ github.workspace }}/fuzz/corpus/serde_records ${{ github.workspace }}/crates/sacm/tests/data/golden/serde -- -max_total_time=1200 -max_len=16384 -timeout=10 -rss_limit_mb=2048
+      - name: Save the corpus
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts
+          if-no-files-found: warn
+
+  properties:
+    name: properties (4096 cases)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PROPTEST_CASES: "4096"
+      # A new seed each run; the run number reproduces a failure locally.
+      PROPTEST_RNG_SEED: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo test -p sacm --all-features --release --test properties --test fuzz_regressions

@@ -52,6 +52,7 @@ decisions.md has a one-line entry pointing to it.
 | [0043](0043-the-sacm-xml-schema.md) | The SACM XML Schema this project generates | accepted |
 | [0044](0044-the-emf-dialect-and-foreign-subclasses.md) | The EMF dialect and foreign subclasses | accepted |
 | [0045](0045-public-api-review.md) | Public API review before 1.0 | accepted |
+| [0046](0046-quality-tooling.md) | Quality tooling: property tests, fuzzing, coverage and semver checks | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

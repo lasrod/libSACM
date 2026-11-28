@@ -24,6 +24,8 @@
 //! - [`catalog`]: the machine-readable diagnostics catalog,
 //!   `crates/sacm/src/diagnostic/catalog.json` (`cargo xtask catalog`;
 //!   LIB-DIAG-006).
+//! - [`semver`]: the check of `sacm`'s public API against the last release
+//!   with cargo-semver-checks (`cargo xtask semver`; LIB-QA-006).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -43,6 +45,8 @@
 //!                                           DIR/outputs with xmllint
 //! cargo xtask catalog             Write crates/sacm/src/diagnostic/catalog.json from the
 //!                                 crate's codes and templates
+//! cargo xtask semver              Check sacm's public API against the last release
+//!                                 (cargo-semver-checks, the serde feature only)
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -67,6 +71,7 @@ pub mod fetch;
 pub mod matrix;
 pub mod metamodel;
 pub mod schema;
+pub mod semver;
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -94,6 +99,7 @@ commands:
                           generate it, then check the strict golden files and
                           DIR/outputs with xmllint
   catalog   write crates/sacm/src/diagnostic/catalog.json from the crate's codes and templates
+  semver                  check sacm's public API against the last release (cargo-semver-checks)
 
 environment:
   XTASK_ROOT              repository to work on (default: the one xtask was built in);
@@ -191,7 +197,8 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
 ///   [`matrix::cmd_next`], [`matrix::cmd_status`], [`fetch::cmd_fetch`],
 ///   [`fetch::cmd_fetch_corpus`], [`schema::cmd_schema`],
-///   [`schema::cmd_validate`] and [`catalog::cmd_catalog`]);
+///   [`schema::cmd_validate`], [`catalog::cmd_catalog`] and
+///   [`semver::cmd_semver`]);
 ///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
 ///   describes;
 /// - writing to or flushing `out` fails.
@@ -239,6 +246,7 @@ fn dispatch(
         ["schema", "validate"] => schema::cmd_validate(root, &root.join(schema::DEFAULT_OUT), out),
         ["schema", "validate", "--out", dir] => schema::cmd_validate(root, &root.join(dir), out),
         ["catalog"] => catalog::cmd_catalog(root, out),
+        ["semver"] => semver::cmd_semver(root, out),
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
         _ => Err(format!(
             "unrecognized arguments: {}\n\n{USAGE}",
