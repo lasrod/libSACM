@@ -50,8 +50,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ### Added
 
-- A user guide (`GUIDE.md`) and a SACM primer (`PRIMER.md`) ship with the crate; every code
-  block in the guide runs as a doctest [LIB-DOC-003, LIB-DOC-005].
+- A user guide (`GUIDE.md`) and a SACM primer (`PRIMER.md`) ship with the crate; every Rust
+  code block in the guide runs as a doctest [LIB-DOC-003, LIB-DOC-005].
 - Four example programs: `read_and_validate`, `build_and_save`, `edit_in_place` and
   `translate_diagnostics` (`cargo run -p sacm --example <name>`) [LIB-DOC-004].
 - `ArgumentValue::Prose` and `ArgumentValue::as_prose` [LIB-DIAG-004].

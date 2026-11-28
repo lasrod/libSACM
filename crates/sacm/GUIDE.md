@@ -4,7 +4,7 @@ How to read, inspect, validate, edit and save a SACM 2.3 assurance case with the
 
 - **New to SACM?** The [SACM primer](https://github.com/lasrod/libSACM/blob/main/crates/sacm/PRIMER.md)
   explains packages, claims, asserted relationships and the rest.
-- **Every code block runs.** Each is compiled and run as a test of the crate, so it
+- **Every Rust code block runs.** Each is compiled and run as a test of the crate, so it
   works as shown.
 - **One type is the centre.** A `Document` holds one file's elements: read it, work on
   it, write it.
@@ -232,7 +232,8 @@ assert_eq!(document.element_count(), 3);
   set for each feature, and `DeleteElement`, `MoveElement` and `CopyElements`.
 - **Several as one.** `edit::batch` and `edit::apply_all` apply several operations as
   one change: all of them, or none.
-- **Content is not refused.** An edit accepts an empty name, say; `validate` reports it.
+- **Content rules are not refused.** An edit accepts an AssertedEvidence whose source is a
+  Claim, say; `validate` reports it (SACM-REF-002, clause 11.15).
 
 ### Edit one language's value
 
@@ -267,11 +268,6 @@ let input = br#"<?xml version="1.0" encoding="UTF-8"?>
           <value lang="sv" content="Locket skyddar bladet"/>
         </content>
       </description>
-      <description xmi:id="c1_d2">
-        <content>
-          <value xmi:type="sacm:ExpressionLangString" lang="en" expression="blade"/>
-        </content>
-      </description>
       <taggedValue xmi:id="c1_tv1">
         <content>
           <value lang="en" content="draft"/>
@@ -282,9 +278,18 @@ let input = br#"<?xml version="1.0" encoding="UTF-8"?>
         </key>
       </taggedValue>
     </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name lang="en" content="The lid is shut"/>
+      <description xmi:id="c2_d1">
+        <content>
+          <value xmi:type="sacm:ExpressionLangString" lang="en" expression="blade"/>
+        </content>
+      </description>
+    </argumentElement>
   </argumentPackage>
 </sacm:AssuranceCasePackage>"#;
 let mut document = xmi::read(input, &ReadOptions::default())?.into_document();
+assert!(sacm::validation::validate(&document).is_empty());
 
 // A name is one value: change its content, and keep its language.
 let c1 = document.get("c1").expect("the file has c1");
@@ -310,10 +315,10 @@ edit::apply(&mut document, SetTaggedValue::new("c1", "status", status))?;
 
 // An expression value links a Term or an Expression. Link another: the value keeps
 // its language and its place.
-let linked = document.get("c1_d2").expect("the file has c1_d2");
+let linked = document.get("c2_d1").expect("the file has c2_d1");
 let mut content = linked.content().expect("it has a content").clone();
 content.values_mut()[0] = content.values()[0].clone().with_expression("lid");
-edit::apply(&mut document, SetContent::new("c1_d2", content))?;
+edit::apply(&mut document, SetContent::new("c2_d1", content))?;
 
 // Each value changed; its neighbours did not.
 let c1 = document.get("c1").expect("the file has c1");
@@ -324,7 +329,7 @@ assert_eq!(description.values()[1].content(), Some("Locket täcker bladet"));
 let status = c1.tagged_value("status").and_then(|tag| tag.content()).expect("as before");
 assert_eq!(status.values()[0].content(), Some("reviewed"));
 assert_eq!(status.values()[1].content(), Some("utkast"));
-let linked = document.get("c1_d2").and_then(|d2| d2.content()).expect("as before");
+let linked = document.get("c2_d1").and_then(|d1| d1.content()).expect("as before");
 assert_eq!(linked.values()[0].expression(), Some(&ElementId::from("lid")));
 assert_eq!(linked.values()[0].lang(), Some("en"));
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -468,8 +473,10 @@ assert!(text.contains(r#"tool:colour="green""#));
 - **Open another tool's file:** read in tolerant mode, and look at the Warnings.
 - **Keep what a tolerant read kept:** write in tolerant mode.
 - **Hand a file on as SACM 2.3:** write in strict mode.
-- **Tolerant still refuses some input:** malformed XML, a DOCTYPE, a SACM 2.4 root, a
-  repeated `xmi:id` and input over the read limits.
+- **Known gap.** A namespace prefix used only inside a preserved attribute's value is not
+  declared on a tolerant write, so its binding is lost (LIB-COMPAT-013).
+- **Tolerant still refuses some input,** such as malformed XML, a DOCTYPE, a root that is
+  not a SACM package, a SACM 2.4 root, a repeated `xmi:id` and input over the read limits.
 
 ## Examples
 

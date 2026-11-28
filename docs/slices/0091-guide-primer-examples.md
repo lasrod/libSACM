@@ -40,3 +40,7 @@ the way the README's do, and the crate root links them.
 - 2026-11-28 lead decision: LIB-QA-012's reviewed-key check accepts `default-filter` in
   `[profile.mutants]` only with the exact value that skips the example run; any other filter
   is reported (it could hide tests from mutants, ADR 0009).
+- 2026-11-28 verification: LIB-DOC-004 and LIB-DOC-005 PASS; LIB-DOC-003 FAIL on two blocking
+  findings (the guide said `validate` reports an empty name; its language example gave a
+  Claim two descriptions). Fix round: both fixed and twelve wording items applied with the
+  verifier's text.

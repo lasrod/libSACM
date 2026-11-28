@@ -15,13 +15,14 @@ SACM is a metamodel for exchanging such cases between tools.
 
 - **A record, not a verdict.** Representing an argument in SACM "does not imply that the
   argument is complete, valid, or correct" (7.4). Evaluating it is outside SACM.
-- **Claims and links.** A structured argument is claims asserted by its author, with
-  relationships asserted to hold between them (7.4).
+- **Claims and links.** A structured argument is argument elements, primarily claims,
+  asserted by its author, with relationships asserted to hold between them (7.4).
 - **Evidence.** Artifacts support the claims; SACM also records how they were made (7.5).
 
 ## Packages
 
-Everything in SACM lives in a package. The four kinds are each a unit of interchange (clause 2).
+A SACM model is organised in packages. Each of the four kinds can be the top object of a
+file, a unit of interchange (clause 2).
 
 | Package | Clause | Contains |
 |---|---|---|
@@ -74,7 +75,7 @@ There are five kinds:
 |---|---|---|---|
 | `AssertedInference` | 11.14 | One or more Assertions (premises) infer another (conclusion). | |
 | `AssertedEvidence` | 11.15 | Cited artifacts help establish the truth of a Claim. | Each source must be an ArtifactReference. |
-| `AssertedContext` | 11.16 | A cited artifact, or a Claim, is the context of a Claim, another Assertion or an ArgumentReasoning. | |
+| `AssertedContext` | 11.16 | A cited artifact is the context of a Claim or an ArgumentReasoning; a Claim, of another Assertion or an ArgumentReasoning. | |
 | `AssertedArtifactSupport` | 11.17 | One or more artifacts support another artifact. | Source and target must be ArtifactReferences. |
 | `AssertedArtifactContext` | 11.18 | One or more artifacts provide context for another artifact. | Source and target must be ArtifactReferences. |
 
@@ -117,7 +118,7 @@ Artifact Metamodel records their provenance: how they were created and managed (
 
 All of these are an `ArtifactAsset` (12.6), and each can hold `Property` elements.
 
-| Class | Clause | What it records | Own attributes |
+| Class | Clause | What it records | Own features |
 |---|---|---|---|
 | `Artifact` | 12.7 | A unit of data used in the case: a plan, a report, a specification. | `version`, `date` |
 | `Property` | 12.8 | A characteristic, such as a test result or a judgement of quality. | |
@@ -159,12 +160,14 @@ artifacts (10.4). The formalism is there for those who need it, and is not manda
 These features belong to `SACMElement` (8.2), so every element has them.
 
 - **`gid`.** An optional identifier, unique within the model instance. It is part of the
-  model, unlike the id an XMI file gives each element.
+  model, unlike `xmi:id`, which XMI defines to identify an XML element within one file
+  (XMI 2.5.1, 7.6.1).
 - **Citation.** `isCitation` true marks an element that cites another element;
   `citedElement` names the one cited. If `citedElement` is set, `isCitation` must be true.
 - **A cited Claim.** A Claim that cites another Claim, and is supported by it, can declare
   itself `asCited` (11.11).
-- **Abstract.** `isAbstract` true marks an element that is part of a pattern or template.
+- **Abstract.** `isAbstract` true marks an element as abstract, such as one that is part
+  of a pattern or template.
 - **Abstract form.** `abstractForm` on a concrete element names the abstract element it
   conforms to. The abstract one should be of the same type.
 
